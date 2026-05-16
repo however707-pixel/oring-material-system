@@ -21,7 +21,7 @@ if "lang" not in st.session_state:
 # =========================
 # 1. 頁面設定
 # =========================
-st.set_page_config(page_title="ORing 工單調撥決策看板", page_icon="📦", layout="wide")
+st.set_page_config(page_title="資材管理決策系統", page_icon="📦", layout="wide")
 inject_css()
 
 # 語言切換按鈕（右上角）
