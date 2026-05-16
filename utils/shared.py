@@ -27,9 +27,11 @@ def ensure_calamine():
 def inject_css():
     st.markdown("""
 <style>
-    #MainMenu { visibility: hidden !important; }
-    [data-testid="stToolbar"] { display: none !important; }
-    footer { visibility: hidden !important; }
+    #MainMenu { visibility: hidden !important; display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; visibility: hidden !important; }
+    [data-testid="stHeader"] { display: none !important; }
+    header { display: none !important; }
+    footer { visibility: hidden !important; display: none !important; }
 
     [data-testid="stAppViewContainer"] {
         background: linear-gradient(160deg, #eef2fb 0%, #e8eef8 50%, #dde6f5 100%);
