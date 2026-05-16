@@ -24,41 +24,21 @@ if "lang" not in st.session_state:
 st.set_page_config(page_title="資材管理決策系統", page_icon="📦", layout="wide")
 inject_css()
 
-# 語言切換按鈕（右上角）
-st.markdown("""
-<style>
-.lang-toggle-wrap {
-    position: fixed; top: 12px; right: 24px; z-index: 99999;
-    display: flex; gap: 4px;
-}
-.lang-btn {
-    padding: 5px 14px; border-radius: 20px; font-size: 0.82rem;
-    font-weight: 700; cursor: pointer; border: 1.5px solid;
-    transition: all 0.15s;
-}
-.lang-btn.active {
-    background: #1d4ed8; color: white; border-color: #1d4ed8;
-    box-shadow: 0 3px 10px rgba(29,78,216,0.35);
-}
-.lang-btn.inactive {
-    background: white; color: #64748b; border-color: #e2e8f0;
-}
-</style>
-""", unsafe_allow_html=True)
-
-col_space, col_zh, col_en = st.columns([10, 0.6, 0.6])
-with col_zh:
-    if st.button("中文", key="btn_zh",
-                 type="primary" if st.session_state["lang"] == "zh" else "secondary",
-                 use_container_width=True):
-        st.session_state["lang"] = "zh"
-        st.rerun()
-with col_en:
-    if st.button("EN", key="btn_en",
-                 type="primary" if st.session_state["lang"] == "en" else "secondary",
-                 use_container_width=True):
-        st.session_state["lang"] = "en"
-        st.rerun()
+# 語言切換（側邊欄頂部）
+with st.sidebar:
+    col_zh, col_en = st.columns(2)
+    with col_zh:
+        if st.button("🇹🇼 中文", key="btn_zh",
+                     type="primary" if st.session_state["lang"] == "zh" else "secondary",
+                     use_container_width=True):
+            st.session_state["lang"] = "zh"
+            st.rerun()
+    with col_en:
+        if st.button("🇺🇸 EN", key="btn_en",
+                     type="primary" if st.session_state["lang"] == "en" else "secondary",
+                     use_container_width=True):
+            st.session_state["lang"] = "en"
+            st.rerun()
 
 render_header(
     title=t("header_title"),
