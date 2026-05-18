@@ -230,18 +230,34 @@ with st.spinner("分析中，請稍候..."):
         return '、'.join(result) if result else ''
 
     def src_avail_excl(pno, excl_names):
-        """排除指定倉名後，所有可見倉的可用量加總
-        注意：供需表 summary 列的 庫別 = 倉名，必須直接略過與 excl_names 相符的代碼。
-        """
+        """排除指定倉名後，所有可用來源倉的可用量加總（與 source_wh 相同識別邏輯）"""
         excl = set(excl_names)
-        part_rows = sd[sd['品號']==pno]
-        seen, total = set(), 0
-        for wh_code in part_rows['庫別'].dropna().unique():
-            ws = str(wh_code)
-            if ws in seen or len(ws) > 12: continue
-            if ws in excl: continue   # ← 直接略過倉名即代碼的 summary 列
-            seen.add(ws)
+        part_sd = sd[sd['品號']==pno]
+        total = 0
+
+        dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
+        code_name = (dated_part[['庫別','庫別名稱']]
+                     .drop_duplicates('庫別')
+                     .set_index('庫別')['庫別名稱']
+                     .to_dict())
+        code_name = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+        names_with_dated = set(code_name.values())
+        dated_codes      = set(code_name.keys())
+
+        for wh_code, wh_name in code_name.items():
+            if wh_name in excl: continue
             total += get_avail(sd, pno, wh_code, excl)
+
+        init_rows = part_sd[part_sd['日期'].isna() & part_sd['庫別名稱'].isna()]
+        for wh_k in init_rows['庫別'].dropna().unique():
+            ws = str(wh_k)
+            if ws in dated_codes or ws in names_with_dated: continue
+            if ws in excl: continue
+            if len(ws) > 12: continue
+            qty = init_rows[init_rows['庫別']==wh_k]['異動數量'].dropna()
+            if not qty.empty and float(qty.iloc[0]) > 0:
+                total += float(qty.iloc[0])
+
         return int(total)
 
     parts = gz['品號'].dropna().unique()
