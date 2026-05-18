@@ -274,6 +274,8 @@ with st.spinner("分析中，請稍候..."):
             '唐佑代工倉 缺料量':  fmt_deficit(t_qty, t_deficit),
             '國智代工倉 缺料量':  fmt_deficit(k_qty, k_deficit),
             '合計委外缺料':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
+            '_唐佑qty':          t_qty,   # 隱藏數值欄，供統計用
+            '_國智qty':          k_qty,   # 隱藏數值欄，供統計用
             '可調撥來源倉（倉代碼/可用量）': src,
             '⚠️ 配料說明':       alloc_note,
             'Customer P/N':     cust_pn,
@@ -289,8 +291,8 @@ with st.spinner("分析中，請稍候..."):
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("H2O 料號總數",   f"{len(df_out)} 個")
 col2.metric("有委外缺料料號", f"{len(has_any)} 個")
-col3.metric("唐佑總缺料量",   f"{int(df_out['唐佑代工倉 缺料量'].fillna(0).sum()):,}")
-col4.metric("國智總缺料量",   f"{int(df_out['國智代工倉 缺料量'].fillna(0).sum()):,}")
+col3.metric("唐佑總缺料量",   f"{int(df_out['_唐佑qty'].fillna(0).sum()):,}")
+col4.metric("國智總缺料量",   f"{int(df_out['_國智qty'].fillna(0).sum()):,}")
 col5.metric("⚠️ 庫存不足料號", f"{len(short_warn)} 個",
             delta=None if len(short_warn)==0 else f"需人工配料",
             delta_color="inverse")
