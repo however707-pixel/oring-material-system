@@ -67,17 +67,34 @@ if not h2o_file or not sd_file:
     st.stop()
 
 with st.spinner("分析中，請稍候..."):
-    # 讀 H2O 缺料檔
+    # 讀國智缺料表（第3行為欄位標題，前2行為說明列）
     try:
         if h2o_file.name.endswith('.csv'):
+            gz = None
             for enc in ['utf-8-sig', 'cp950', 'big5']:
                 try:
-                    h2o = pd.read_csv(h2o_file, header=0, encoding=enc)
+                    gz = pd.read_csv(h2o_file, header=0, encoding=enc)
                     break
                 except Exception:
                     h2o_file.seek(0)
+            if gz is None:
+                st.error("國智缺料表 CSV 無法讀取，請確認編碼。")
+                st.stop()
         else:
-            h2o = pd.read_excel(h2o_file, sheet_name=0, header=0)
+            # 先試 header=2（W11格式：前2行為說明）
+            try:
+                gz = pd.read_excel(h2o_file, sheet_name=0, header=2, engine='calamine')
+            except Exception:
+                h2o_file.seek(0)
+                gz = pd.read_excel(h2o_file, sheet_name=0, header=2, engine='openpyxl')
+            # 若讀出來沒有 品號 欄，改用 header=0
+            if '品號' not in gz.columns:
+                h2o_file.seek(0)
+                try:
+                    gz = pd.read_excel(h2o_file, sheet_name=0, header=0, engine='calamine')
+                except Exception:
+                    h2o_file.seek(0)
+                    gz = pd.read_excel(h2o_file, sheet_name=0, header=0, engine='openpyxl')
     except Exception as e:
         st.error(f"國智缺料表讀取失敗：{e}")
         st.stop()
@@ -99,8 +116,8 @@ with st.spinner("分析中，請稍候..."):
         st.stop()
 
     # 欄位檢查
-    if '料號' not in h2o.columns:
-        st.error("國智缺料表找不到「料號」欄位，請確認檔案格式。")
+    if '品號' not in gz.columns:
+        st.error(f"國智缺料表找不到「品號」欄位，偵測到的欄位：{gz.columns.tolist()}")
         st.stop()
     for col in ['品號', '庫別名稱', '日期', '異動別', '異動數量']:
         if col not in sd.columns:
@@ -178,13 +195,12 @@ with st.spinner("分析中，請稍候..."):
                 if remaining <= 0: break
         return '、'.join(result) if result else ''
 
-    parts = h2o['料號'].dropna().unique()
+    parts = gz['品號'].dropna().unique()
 
     rows = []
     for pno in parts:
-        h_row    = h2o[h2o['料號']==pno].iloc[0]
-        shortage = h_row.get('正的是缺料', 0) or 0
-        spq      = spq_map.get(pno, 1)
+        gz_row = gz[gz['品號']==pno].iloc[0]
+        spq    = spq_map.get(pno, 1)
 
         k_deficit = end_deficit(sd, pno, KUO)
         k_qty = apply_spq(k_deficit, spq)
@@ -194,30 +210,26 @@ with st.spinner("分析中，請稍候..."):
 
         src = source_wh(sd, pno, set(), k_qty)
 
-        cust_pn = ''
-        for col in h_row.index:
-            if 'Customer' in str(col) or 'P/N' in str(col):
-                cust_pn = h_row[col]
-                break
+        # 客戶料號：從缺料表取 客戶料號 欄
+        cust_pn = gz_row.get('客戶料號', '') or ''
 
         rows.append({
-            '料號':              pno,
-            'SPQ':               int(spq) if spq else 1,
-            '缺料量':            int(shortage) if shortage > 0 else None,
-            '國智代工倉 缺料量':  k_qty,
+            '品號':               pno,
+            'SPQ':                int(spq) if spq else 1,
+            '國智代工倉 缺料量':   k_qty,
             '可調撥來源倉（倉代碼/可用量）': src,
-            'Customer P/N':     cust_pn,
+            '客戶料號':            cust_pn,
         })
 
     df_out = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=['料號','SPQ','缺料量','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','Customer P/N']
+        columns=['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','客戶料號']
     )
 
 # =========================
 # 統計卡片
 # =========================
 col1, col2, col3 = st.columns(3)
-col1.metric("H2O 料號總數",     f"{len(h2o['料號'].dropna().unique())} 個")
+col1.metric("缺料表料號總數",    f"{len(gz['品號'].dropna().unique())} 個")
 col2.metric("國智有缺料料號",   f"{len(df_out)} 個")
 col3.metric("國智總缺料量",     f"{int(df_out['國智代工倉 缺料量'].sum()):,}" if len(df_out) else "0")
 
@@ -231,11 +243,8 @@ st.markdown(f"#### 🏭 國智配料表（區間末結存）　{date_start} ～ 
 if df_out.empty:
     st.success("✅ 區間內國智代工倉無缺料！")
 else:
-    df_display = df_out.copy()
-    df_display['缺料量'] = df_display['缺料量'].fillna('-')
-
     st.dataframe(
-        df_display,
+        df_out,
         use_container_width=True,
         height=520,
         hide_index=True,
@@ -251,7 +260,7 @@ else:
         thin   = Side(style='thin', color='FFCCCCCC')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        ws.merge_cells('A1:F1')
+        ws.merge_cells('A1:E1')
         c = ws['A1']
         c.value = f'國智配料表　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
         c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
@@ -259,9 +268,9 @@ else:
         c.alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[1].height = 24
 
-        headers   = ['料號', 'SPQ', '缺料量', '國智代工倉\n缺料量', '可調撥來源倉\n（倉代碼/可用量）', 'Customer P/N']
-        hdr_color = ['FFD9E8FF', 'FFF2F2F2', 'FFFCE4D6', 'FFE2EFDA', 'FFF5E6FF', 'FFF2F2F2']
-        col_order = ['料號', 'SPQ', '缺料量', '國智代工倉 缺料量', '可調撥來源倉（倉代碼/可用量）', 'Customer P/N']
+        headers   = ['品號', 'SPQ', '國智代工倉\n缺料量', '可調撥來源倉\n（倉代碼/可用量）', '客戶料號']
+        hdr_color = ['FFD9E8FF', 'FFF2F2F2', 'FFE2EFDA', 'FFF5E6FF', 'FFF2F2F2']
+        col_order = ['品號', 'SPQ', '國智代工倉 缺料量', '可調撥來源倉（倉代碼/可用量）', '客戶料號']
         for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
             cell = ws.cell(row=2, column=i, value=h)
             cell.font  = Font(name='Arial', bold=True, size=9)
@@ -277,18 +286,16 @@ else:
                 cell.font   = Font(name='Arial', size=9)
                 cell.border = border
                 cell.alignment = Alignment(
-                    horizontal='left' if c_i in (1, 5, 6) else 'center',
+                    horizontal='left' if c_i in (1, 4, 5) else 'center',
                     vertical='center',
                 )
-                if c_i == 3 and val and isinstance(val, (int, float)) and val > 0:
-                    cell.fill = PatternFill('solid', start_color='FFFCE4D6')
-                elif c_i == 4 and val:
+                if c_i == 3 and val:
                     cell.fill = PatternFill('solid', start_color='FFE2EFDA')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
-                elif c_i == 5 and val:
+                elif c_i == 4 and val:
                     cell.fill = PatternFill('solid', start_color='FFFFF0CC')
 
-        col_widths = [28, 8, 12, 16, 36, 28]
+        col_widths = [28, 8, 16, 36, 28]
         for i, w in enumerate(col_widths, 1):
             ws.column_dimensions[chr(64+i)].width = w
         ws.freeze_panes = 'A3'
