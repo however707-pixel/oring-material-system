@@ -284,10 +284,11 @@ with st.spinner("分析中，請稍候..."):
         src = source_wh(sd, pno, set(), total_need) if total_need > 0 else ''
 
         # ── 庫存不足時：依最早缺料日期決定配料優先順序 ──
+        # 使用 _src_total（已排除委外倉本身）確保判斷正確
         alloc_note = ''
         if t_qty > 0 and k_qty > 0:
-            avail = total_src_avail(pno)
-            if avail < total_need:
+            if _src_total < total_need:
+                avail = _src_total   # 可調撥來源可用量（不含委外倉自身）
                 t_date = first_deficit_date(pno, TANG)
                 k_date = first_deficit_date(pno, KUO)
                 td_str = t_date.strftime('%m/%d') if t_date else '區間末'
