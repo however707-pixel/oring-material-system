@@ -330,7 +330,7 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         st.markdown(f"""
-        <a href="/" target="_self" style="
+        <a href="/transfer" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
