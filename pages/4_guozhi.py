@@ -388,7 +388,7 @@ else:
         thin   = Side(style='thin', color='FFCCCCCC')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        ws.merge_cells('A1:E1')
+        ws.merge_cells('A1:F1')
         c = ws['A1']
         c.value = f'國智配料表　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
         c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
@@ -396,9 +396,9 @@ else:
         c.alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[1].height = 24
 
-        headers   = ['品號', 'SPQ', '國智代工倉\n缺料量', '可調撥來源倉\n（倉代碼/可用量）', '客戶料號']
-        hdr_color = ['FFD9E8FF', 'FFF2F2F2', 'FFE2EFDA', 'FFF5E6FF', 'FFF2F2F2']
-        col_order = ['品號', 'SPQ', '國智代工倉 缺料量', '可調撥來源倉（倉代碼/可用量）', '客戶料號']
+        headers   = ['品號', 'SPQ', '國智代工倉\n缺料量', '可調撥來源倉\n（倉代碼/可用量）', '配料說明\n（庫存不足時）', '客戶料號']
+        hdr_color = ['FFD9E8FF', 'FFF2F2F2', 'FFE2EFDA', 'FFF5E6FF', 'FFFCE4D6', 'FFF2F2F2']
+        col_order = ['品號', 'SPQ', '國智代工倉 缺料量', '可調撥來源倉（倉代碼/可用量）', '⚠️ 配料說明', '客戶料號']
         for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
             cell = ws.cell(row=2, column=i, value=h)
             cell.font  = Font(name='Arial', bold=True, size=9)
@@ -408,22 +408,28 @@ else:
         ws.row_dimensions[2].height = 32
 
         for r_i, row_dict in enumerate(df.to_dict('records'), 3):
+            is_short = bool(row_dict.get('_shortage', False))
             vals = [row_dict.get(c) for c in col_order]
             for c_i, val in enumerate(vals, 1):
                 cell = ws.cell(row=r_i, column=c_i, value=val)
-                cell.font   = Font(name='Arial', size=9)
+                cell.font   = Font(name='Arial', size=9,
+                                   bold=is_short,
+                                   color='FF991B1B' if is_short else 'FF000000')
                 cell.border = border
                 cell.alignment = Alignment(
-                    horizontal='left' if c_i in (1, 4, 5) else 'center',
+                    horizontal='left' if c_i in (1, 4, 5, 6) else 'center',
                     vertical='center',
+                    wrap_text=(c_i == 5),
                 )
-                if c_i == 3 and val:
+                if is_short:
+                    cell.fill = PatternFill('solid', start_color='FFFCE4EC')
+                elif c_i == 3 and val:
                     cell.fill = PatternFill('solid', start_color='FFE2EFDA')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
                 elif c_i == 4 and val:
                     cell.fill = PatternFill('solid', start_color='FFFFF0CC')
 
-        col_widths = [28, 8, 16, 36, 28]
+        col_widths = [28, 8, 16, 36, 40, 28]
         for i, w in enumerate(col_widths, 1):
             ws.column_dimensions[chr(64+i)].width = w
         ws.freeze_panes = 'A3'
