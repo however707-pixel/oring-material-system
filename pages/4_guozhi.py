@@ -260,52 +260,81 @@ with st.spinner("分析中，請稍候..."):
 
         return int(total)
 
+    def first_deficit_date(pno, wh_name):
+        sub = sd[(sd['品號']==pno) & (sd['庫別名稱']==wh_name) &
+                 (sd['日期'] >= start) & (sd['日期'] <= end) &
+                 sd['預計結存'].notna() & (sd['預計結存'] < 0)]
+        if sub.empty: return None
+        return sub.sort_values('日期').iloc[0]['日期']
+
     parts = gz['品號'].dropna().unique()
 
     rows = []
     for pno in parts:
-        gz_row = gz[gz['品號']==pno].iloc[0]
-        spq    = spq_map.get(pno, 1)
+        gz_row  = gz[gz['品號']==pno].iloc[0]
+        spq     = spq_map.get(pno, 1)
+        spq_int = int(spq) if spq and spq > 0 else 1
 
         k_deficit = end_deficit(sd, pno, KUO)
-        k_qty = apply_spq(k_deficit, spq)
+        k_qty     = apply_spq(k_deficit, spq)
 
         if k_qty <= 0:
             continue  # 只顯示國智有缺料的料號
 
-        # 來源可用量調整：若來源庫存可覆蓋原始缺料量，不需強制SPQ進位
+        # ── 來源可用量 ──
         _src_total = src_avail_excl(pno, {KUO})
+
+        # 來源充足：不需強制SPQ進位，給實際可用量（上限為SPQ進位值）
         if _src_total >= k_deficit:
             k_qty = min(_src_total, k_qty)
 
         src = source_wh(sd, pno, set(), k_qty)
 
-        # 客戶料號：從缺料表取 客戶料號 欄
-        cust_pn = gz_row.get('客戶料號', '') or ''
+        # ── 庫存不足判斷 ──
+        shortage = _src_total < k_deficit
+        k_alloc  = min(_src_total, k_qty) if shortage else k_qty
 
-        d = int(k_deficit)
-        k_qty_str = f"{k_qty:,}  (原缺 {d:,})" if k_qty != d else k_qty
+        if shortage:
+            k_qty_str = f"⚠️ {int(k_alloc):,}  （需 {int(k_deficit):,}）"
+            short_note = (
+                f"⚠️ 庫存不足（需 {int(k_deficit):,}，可用 {int(_src_total):,}）\n"
+                f"► 國智代工倉 → 僅可配 {int(k_alloc):,}，尚缺 {int(k_deficit - k_alloc):,}"
+            )
+        else:
+            d = int(k_deficit)
+            k_qty_str  = f"{k_qty:,}  (原缺 {d:,})" if k_qty != d else k_qty
+            short_note = ''
+
+        # 客戶料號
+        cust_pn = gz_row.get('客戶料號', '') or ''
 
         rows.append({
             '品號':               pno,
-            'SPQ':                int(spq) if spq else 1,
+            'SPQ':                spq_int,
             '國智代工倉 缺料量':   k_qty_str,
-            '_國智qty':           k_qty,   # 隱藏數值欄，供統計用
+            '_國智qty':           k_qty,
+            '_shortage':          shortage,
             '可調撥來源倉（倉代碼/可用量）': src,
+            '⚠️ 配料說明':        short_note,
             '客戶料號':            cust_pn,
         })
 
     df_out = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=['品號','SPQ','國智代工倉 缺料量','_國智qty','可調撥來源倉（倉代碼/可用量）','客戶料號']
+        columns=['品號','SPQ','國智代工倉 缺料量','_國智qty','_shortage',
+                 '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     )
 
 # =========================
 # 統計卡片
 # =========================
-col1, col2, col3 = st.columns(3)
+short_warn = df_out[df_out['_shortage'] == True] if len(df_out) else pd.DataFrame()
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("缺料表料號總數",    f"{len(gz['品號'].dropna().unique())} 個")
 col2.metric("國智有缺料料號",   f"{len(df_out)} 個")
 col3.metric("國智總缺料量",     f"{int(df_out['_國智qty'].sum()):,}" if len(df_out) else "0")
+col4.metric("⚠️ 庫存不足料號",  f"{len(short_warn)} 個",
+            delta=None if len(short_warn)==0 else "需確認配料",
+            delta_color="inverse")
 
 st.divider()
 
@@ -317,21 +346,36 @@ st.markdown(f"#### 🏭 國智配料表（區間末結存）　{date_start} ～ 
 if df_out.empty:
     st.success("✅ 區間內國智代工倉無缺料！")
 else:
-    display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','客戶料號']
+    # 庫存不足警告橫幅
+    if len(short_warn) > 0:
+        pno_list = '、'.join(short_warn['品號'].tolist())
+        st.warning(
+            f"**⚠️ 以下 {len(short_warn)} 個料號庫存不足，請確認配料：**\n\n{pno_list}",
+            icon="⚠️",
+        )
+
+    display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     df_display = df_out[display_cols].copy()
 
-    def _highlight_multi(row):
-        """需跨多倉調撥的料號：反色提醒"""
+    _shortage_pnos = set(short_warn['品號'].tolist()) if len(short_warn) else set()
+
+    def _row_style(row):
+        pno = row.get('品號', '')
+        if pno in _shortage_pnos:
+            return ['background-color: #fef2f2; color: #991b1b; font-weight:600;'] * len(row)
         src_val = str(row.get('可調撥來源倉（倉代碼/可用量）', ''))
         if '、' in src_val:
             return ['background-color: #fff7ed; color: #9a3412; font-weight:600;'] * len(row)
         return [''] * len(row)
 
     st.dataframe(
-        df_display.style.apply(_highlight_multi, axis=1),
+        df_display.style.apply(_row_style, axis=1),
         use_container_width=True,
         height=520,
         hide_index=True,
+        column_config={
+            '⚠️ 配料說明': st.column_config.TextColumn(width='large'),
+        }
     )
 
     # =========================
