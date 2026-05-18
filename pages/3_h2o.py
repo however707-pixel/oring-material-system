@@ -133,20 +133,27 @@ with st.spinner("分析中，請稍候..."):
         return max(0, -last_bal)  # 負數才是缺料
 
     def get_avail(df_sd, pno, wh_code, excl):
-        """計算指定倉的可用量"""
+        """計算指定倉的可用量：直接取區間末 預計結存（正值即可調撥）"""
         w = df_sd[(df_sd['品號']==pno) & (df_sd['庫別']==wh_code)]
         if w.empty: return 0
         wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
         if wh_name in excl: return 0
+        # ── 有日期列：取區間末最後一筆 預計結存 ──
         dated = w[w['日期'].notna() & w['預計結存'].notna()]
         in_range = dated[dated['日期'] <= end]
         if not in_range.empty:
             last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
-            incoming = dated[(dated['日期']>=start)&(dated['日期']<=end)&(dated['異動別']=='預計進貨')]['異動數量'].sum()
-            return max(0, last_bal - incoming)
-        else:
-            init_rows = w[w['日期'].isna() & w['異動數量'].notna()]
-            return max(0, init_rows.iloc[0]['異動數量']) if not init_rows.empty else 0
+            return max(0, last_bal)
+        # ── 無日期列（僅初始庫存）：優先讀 異動數量，其次讀 預計結存 ──
+        init_rows = w[w['日期'].isna()]
+        if not init_rows.empty:
+            qty = init_rows['異動數量'].dropna()
+            if not qty.empty:
+                return max(0, qty.iloc[0])
+            qty = init_rows['預計結存'].dropna()
+            if not qty.empty:
+                return max(0, qty.iloc[0])
+        return 0
 
     def source_wh(df_sd, pno, exclude_names, need_qty):
         """電子倉優先；不夠再找其他倉（排除委外倉 & 工單型代碼）"""
@@ -179,7 +186,24 @@ with st.spinner("分析中，請稍候..."):
 
         return '、'.join(result) if result else ''
 
-    EXCL = {TANG, KUO, '唐佑代工倉', '修研/華盈/國智代工倉'}
+    def first_deficit_date(pno, wh_name):
+        """在分析區間內，找最早出現負結存（需補料）的日期"""
+        sub = sd[(sd['品號']==pno) & (sd['庫別名稱']==wh_name) &
+                 (sd['日期'] >= start) & (sd['日期'] <= end) &
+                 sd['預計結存'].notna() & (sd['預計結存'] < 0)]
+        if sub.empty: return None
+        return sub.sort_values('日期').iloc[0]['日期']
+
+    def total_src_avail(pno):
+        """所有可用來源倉的總可用量（排除工單型代碼）"""
+        part_rows = sd[sd['品號']==pno]
+        seen, total = set(), 0
+        for wh_code in part_rows['庫別'].dropna().unique():
+            if wh_code in seen or len(str(wh_code)) > 12: continue
+            seen.add(wh_code)
+            total += get_avail(sd, pno, wh_code, set())
+        return int(total)
+
     parts = h2o['料號'].dropna().unique()
 
     rows = []
@@ -195,8 +219,36 @@ with st.spinner("分析中，請稍候..."):
         k_qty = apply_spq(k_deficit, spq)
 
         # 來源倉（電子倉優先，不夠再找其他倉）
+        # 不強制排除委外倉：get_avail 內部用 max(0,...) 自動過濾，有餘額才會顯示
         total_need = t_qty + k_qty
-        src = source_wh(sd, pno, EXCL, total_need) if total_need > 0 else ''
+        src = source_wh(sd, pno, set(), total_need) if total_need > 0 else ''
+
+        # ── 庫存不足時：依最早缺料日期決定配料優先順序 ──
+        alloc_note = ''
+        if t_qty > 0 and k_qty > 0:
+            avail = total_src_avail(pno)
+            if avail < total_need:
+                t_date = first_deficit_date(pno, TANG)
+                k_date = first_deficit_date(pno, KUO)
+                td_str = t_date.strftime('%m/%d') if t_date else '區間末'
+                kd_str = k_date.strftime('%m/%d') if k_date else '區間末'
+                td = t_date or pd.Timestamp('2099-12-31')
+                kd = k_date or pd.Timestamp('2099-12-31')
+                spq_int = int(spq) if spq and spq > 0 else 1
+                if td <= kd:
+                    first_nm, first_qty, first_ds = '唐佑', t_qty, td_str
+                    second_nm, second_qty, second_ds = '國智', k_qty, kd_str
+                else:
+                    first_nm, first_qty, first_ds = '國智', k_qty, kd_str
+                    second_nm, second_qty, second_ds = '唐佑', t_qty, td_str
+                after_first  = max(0, avail - first_qty)
+                second_can   = (after_first // spq_int) * spq_int
+                second_short = second_qty - second_can
+                alloc_note = (
+                    f"⚠️ 庫存不足（需 {total_need:,}，可用 {avail:,}）\n"
+                    f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_qty:,}\n"
+                    f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_can:,}，尚缺 {second_short:,}"
+                )
 
         cust_pn = ''
         for col in h_row.index:
@@ -212,20 +264,25 @@ with st.spinner("分析中，請稍候..."):
             '國智代工倉 缺料量':  k_qty if k_qty else None,
             '合計委外缺料':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
             '可調撥來源倉（倉代碼/可用量）': src,
+            '⚠️ 配料說明':       alloc_note,
             'Customer P/N':     cust_pn,
         })
 
     df_out = pd.DataFrame(rows)
-    has_any = df_out[df_out['合計委外缺料'].notna()]
+    has_any    = df_out[df_out['合計委外缺料'].notna()]
+    short_warn = df_out[df_out['⚠️ 配料說明'].str.len() > 0]
 
 # =========================
 # 統計卡片
 # =========================
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("H2O 料號總數",   f"{len(df_out)} 個")
 col2.metric("有委外缺料料號", f"{len(has_any)} 個")
 col3.metric("唐佑總缺料量",   f"{int(df_out['唐佑代工倉 缺料量'].fillna(0).sum()):,}")
 col4.metric("國智總缺料量",   f"{int(df_out['國智代工倉 缺料量'].fillna(0).sum()):,}")
+col5.metric("⚠️ 庫存不足料號", f"{len(short_warn)} 個",
+            delta=None if len(short_warn)==0 else f"需人工配料",
+            delta_color="inverse")
 
 st.divider()
 
@@ -238,13 +295,25 @@ st.markdown(f"#### 💧 H2O 委外缺料試算（區間末結存）　{date_star
 df_display = df_out.copy()
 for col in ['缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']:
     df_display[col] = df_display[col].fillna('-')
-df_display = df_display[['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','Customer P/N']]
+df_display = df_display[['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']]
+
+# 若有庫存不足料號，先用 callout 提醒
+if len(short_warn) > 0:
+    pno_list = '、'.join(short_warn['料號'].tolist())
+    st.warning(
+        f"**⚠️ 以下 {len(short_warn)} 個料號庫存不足，已依最早缺料日期自動排定配料優先順序，請確認：**\n\n"
+        f"{pno_list}",
+        icon="⚠️",
+    )
 
 st.dataframe(
     df_display,
     use_container_width=True,
     height=520,
     hide_index=True,
+    column_config={
+        '⚠️ 配料說明': st.column_config.TextColumn(width='large'),
+    }
 )
 
 # =========================
@@ -257,7 +326,7 @@ def build_excel(df, start, end):
     thin   = Side(style='thin', color='FFCCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells('A1:H1')
+    ws.merge_cells('A1:I1')
     c = ws['A1']
     c.value = f'H2O 缺料委外領用試算　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
     c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
@@ -265,9 +334,9 @@ def build_excel(df, start, end):
     c.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[1].height = 24
 
-    headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','Customer P/N']
-    hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF5E6FF','FFF2F2F2']
-    col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','Customer P/N']
+    headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
+    hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2']
+    col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
     for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
         cell = ws.cell(row=2, column=i, value=h)
         cell.font  = Font(name='Arial', bold=True, size=9)
@@ -282,7 +351,11 @@ def build_excel(df, start, end):
             cell = ws.cell(row=r_i, column=c_i, value=val)
             cell.font   = Font(name='Arial', size=9)
             cell.border = border
-            cell.alignment = Alignment(horizontal='left' if c_i in (1,7,8) else 'center', vertical='center')
+            cell.alignment = Alignment(
+                horizontal='left' if c_i in (1,7,8,9) else 'center',
+                vertical='center',
+                wrap_text=(c_i == 8),
+            )
             if c_i == 3 and val and isinstance(val,(int,float)) and val > 0:
                 cell.fill = PatternFill('solid', start_color='FFFCE4D6')
             elif c_i == 4 and val:
@@ -295,8 +368,12 @@ def build_excel(df, start, end):
                 cell.fill = PatternFill('solid', start_color='FFFFFF99')
             elif c_i == 7 and val:
                 cell.fill = PatternFill('solid', start_color='FFFFF0CC')
+            elif c_i == 8 and val:                         # ⚠️ 配料說明：橘紅底＋紅字
+                cell.fill = PatternFill('solid', start_color='FFFDE8D0')
+                cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
+                ws.row_dimensions[r_i].height = 52
 
-    col_widths = [28,8,12,14,14,14,32,28]
+    col_widths = [28,8,12,14,14,14,32,42,28]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
     ws.freeze_panes = 'A3'
