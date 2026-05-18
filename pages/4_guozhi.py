@@ -176,20 +176,39 @@ with st.spinner("分析中，請稍候..."):
         part_sd = df_sd[df_sd['品號']==pno]
         result = []
         remaining = need_qty
+
+        # 有日期資料的列：建立 代碼→名稱 對照
         dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
         code_name = (dated_part[['庫別','庫別名稱']]
                      .drop_duplicates('庫別')
                      .set_index('庫別')['庫別名稱']
                      .to_dict())
         code_name = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+        names_with_dated = set(code_name.values())
+        dated_codes      = set(code_name.keys())
+
+        # 只有初始列的倉（無日期、無倉名、不在有交易的倉之中）
+        init_rows = part_sd[part_sd['日期'].isna() & part_sd['庫別名稱'].isna()]
+        init_only = {}
+        for wh_k in init_rows['庫別'].dropna().unique():
+            ws = str(wh_k)
+            if ws in dated_codes or ws in names_with_dated: continue
+            if len(ws) > 12: continue
+            qty = init_rows[init_rows['庫別']==wh_k]['異動數量'].dropna()
+            if not qty.empty and qty.iloc[0] > 0:
+                init_only[ws] = qty.iloc[0]
+
+        # Step 1: 電子倉優先（有交易→代碼查；無交易→初始列直讀）
         e_code = next((c for c, n in code_name.items() if n == '電子倉'), None)
-        if e_code:
-            e_avail = get_avail(df_sd, pno, e_code, excl)
-            if e_avail > 0:
-                result.append(f"電子倉（{int(e_avail):,}）")
-                remaining -= min(e_avail, remaining)
+        e_avail = get_avail(df_sd, pno, e_code, excl) if e_code else init_only.get('電子倉', 0)
+        if e_avail > 0:
+            result.append(f"電子倉（{int(e_avail):,}）")
+            remaining -= min(e_avail, remaining)
+
         if remaining <= 0:
             return '、'.join(result)
+
+        # Step 2: 有交易的其他倉
         for wh_code, wh_name in code_name.items():
             if e_code and wh_code == e_code: continue
             if wh_name in excl: continue
@@ -198,6 +217,16 @@ with st.spinner("分析中，請稍候..."):
                 result.append(f"{wh_name}（{int(avail):,}）")
                 remaining -= avail
                 if remaining <= 0: break
+
+        # Step 3: 只有初始列的其他倉
+        for wh_name, avail in init_only.items():
+            if wh_name == '電子倉': continue
+            if wh_name in excl: continue
+            if avail > 0:
+                result.append(f"{wh_name}（{int(avail):,}）")
+                remaining -= avail
+                if remaining <= 0: break
+
         return '、'.join(result) if result else ''
 
     parts = gz['品號'].dropna().unique()
