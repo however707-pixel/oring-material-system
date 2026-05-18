@@ -28,18 +28,27 @@ def inject_css():
     st.markdown("""
 <style>
     #MainMenu { visibility: hidden !important; display: none !important; }
-    [data-testid="stToolbar"] { display: none !important; visibility: hidden !important; }
     footer { visibility: hidden !important; display: none !important; }
 
-    /* header 只隱藏視覺，不隱藏側欄展開/收合按鈕 */
-    [data-testid="stHeader"] { background: transparent !important; height: 0 !important;
-        min-height: 0 !important; overflow: visible !important; }
-    [data-testid="stHeader"] > * { display: none !important; }
+    /* header：背景透明，不 display:none（避免側欄展開按鈕消失） */
+    [data-testid="stHeader"] {
+        background: transparent !important;
+        box-shadow: none !important;
+        border-bottom: none !important;
+    }
+    /* 只隱藏 toolbar（右上角選單/Deploy/Share），不隱藏整個 header */
+    [data-testid="stToolbar"]          { display: none !important; }
+    [data-testid="stDecoration"]       { display: none !important; }
+    [data-testid="stStatusWidget"]     { display: none !important; }
 
-    /* 保留側欄展開按鈕（縮起後仍可點） */
-    [data-testid="stSidebarCollapsedControl"] {
+    /* 確保側欄收合後的展開按鈕（> 箭頭）永遠可見 */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    section[data-testid="stSidebarCollapsedControl"] {
         display: flex !important;
         visibility: visible !important;
+        opacity: 1 !important;
+        z-index: 999 !important;
     }
 
     [data-testid="stAppViewContainer"] {
