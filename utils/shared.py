@@ -275,6 +275,7 @@ def render_sidebar():
         """, unsafe_allow_html=True)
         st.page_link("app.py",               label=t("link_transfer"))
         st.page_link("pages/2_outsource.py", label=t("link_outsource"))
+        st.page_link("pages/3_h2o.py",       label="💧 H2O 缺料試算表")
 
         # 生管 PC
         st.markdown(f"""
