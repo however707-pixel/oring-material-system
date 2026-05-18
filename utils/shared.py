@@ -29,9 +29,18 @@ def inject_css():
 <style>
     #MainMenu { visibility: hidden !important; display: none !important; }
     [data-testid="stToolbar"] { display: none !important; visibility: hidden !important; }
-    [data-testid="stHeader"] { display: none !important; }
-    header { display: none !important; }
     footer { visibility: hidden !important; display: none !important; }
+
+    /* header 只隱藏視覺，不隱藏側欄展開/收合按鈕 */
+    [data-testid="stHeader"] { background: transparent !important; height: 0 !important;
+        min-height: 0 !important; overflow: visible !important; }
+    [data-testid="stHeader"] > * { display: none !important; }
+
+    /* 保留側欄展開按鈕（縮起後仍可點） */
+    [data-testid="stSidebarCollapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
 
     [data-testid="stAppViewContainer"] {
         background: linear-gradient(160deg, #eef2fb 0%, #e8eef8 50%, #dde6f5 100%);
@@ -257,6 +266,10 @@ def render_sidebar():
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+        # 首頁按鈕
+        st.page_link("app.py", label="🏠 首頁", use_container_width=True)
+        st.markdown('<div style="margin-bottom:10px;"></div>', unsafe_allow_html=True)
 
         st.markdown(f"""<div style="color:#94a3b8; font-size:0.68rem; font-weight:800;
             letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px;">
