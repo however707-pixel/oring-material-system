@@ -241,13 +241,17 @@ with st.spinner("分析中，請稍候..."):
         return int(total)
 
     def src_avail_excl(pno, excl_names):
-        """排除指定倉名後，所有可見倉的可用量加總（用於判斷是否需要SPQ進位）"""
+        """排除指定倉名後，所有可見倉的可用量加總（用於判斷是否需要SPQ進位）
+        注意：供需表 summary 列的 庫別 = 倉名（NaN名稱欄），get_avail 內排除失效，
+        必須在迴圈層直接略過與 excl_names 相符的代碼。
+        """
         excl = set(excl_names)
         part_rows = sd[sd['品號']==pno]
         seen, total = set(), 0
         for wh_code in part_rows['庫別'].dropna().unique():
             ws = str(wh_code)
             if ws in seen or len(ws) > 12: continue
+            if ws in excl: continue   # ← 直接略過倉名即代碼的 summary 列（如 '唐佑代工倉'）
             seen.add(ws)
             total += get_avail(sd, pno, wh_code, excl)
         return int(total)
