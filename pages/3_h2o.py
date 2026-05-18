@@ -240,6 +240,18 @@ with st.spinner("分析中，請稍候..."):
             total += get_avail(sd, pno, wh_code, set())
         return int(total)
 
+    def src_avail_excl(pno, excl_names):
+        """排除指定倉名後，所有可見倉的可用量加總（用於判斷是否需要SPQ進位）"""
+        excl = set(excl_names)
+        part_rows = sd[sd['品號']==pno]
+        seen, total = set(), 0
+        for wh_code in part_rows['庫別'].dropna().unique():
+            ws = str(wh_code)
+            if ws in seen or len(ws) > 12: continue
+            seen.add(ws)
+            total += get_avail(sd, pno, wh_code, excl)
+        return int(total)
+
     parts = h2o['料號'].dropna().unique()
 
     rows = []
@@ -253,6 +265,18 @@ with st.spinner("分析中，請稍候..."):
         k_deficit = end_deficit(sd, pno, KUO)
         t_qty = apply_spq(t_deficit, spq)
         k_qty = apply_spq(k_deficit, spq)
+
+        # ── 來源可用量調整：若來源庫存已可覆蓋原始缺料量，不需強制SPQ進位 ──
+        # 邏輯：source_avail >= original_deficit → qty = min(source_avail, spq_qty)
+        #       source_avail <  original_deficit → 維持 spq_qty（需多倉或不足）
+        if t_deficit > 0 or k_deficit > 0:
+            _src_total = src_avail_excl(pno, {TANG, KUO})
+        else:
+            _src_total = 0
+        if t_deficit > 0 and _src_total >= t_deficit:
+            t_qty = min(_src_total, t_qty)
+        if k_deficit > 0 and _src_total >= k_deficit:
+            k_qty = min(_src_total, k_qty)
 
         # 來源倉（電子倉優先，不夠再找其他倉）
         # 不強制排除委外倉：get_avail 內部用 max(0,...) 自動過濾，有餘額才會顯示
@@ -350,8 +374,15 @@ if len(short_warn) > 0:
         icon="⚠️",
     )
 
+def _highlight_multi(row):
+    """需跨多倉調撥的料號：反色提醒"""
+    src_val = str(row.get('可調撥來源倉（倉代碼/可用量）', ''))
+    if '、' in src_val:
+        return ['background-color: #fff7ed; color: #9a3412; font-weight:600;'] * len(row)
+    return [''] * len(row)
+
 st.dataframe(
-    df_display,
+    df_display.style.apply(_highlight_multi, axis=1),
     use_container_width=True,
     height=520,
     hide_index=True,

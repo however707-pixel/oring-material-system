@@ -229,6 +229,18 @@ with st.spinner("分析中，請稍候..."):
 
         return '、'.join(result) if result else ''
 
+    def src_avail_excl(pno, excl_names):
+        """排除指定倉名後，所有可見倉的可用量加總"""
+        excl = set(excl_names)
+        part_rows = sd[sd['品號']==pno]
+        seen, total = set(), 0
+        for wh_code in part_rows['庫別'].dropna().unique():
+            ws = str(wh_code)
+            if ws in seen or len(ws) > 12: continue
+            seen.add(ws)
+            total += get_avail(sd, pno, wh_code, excl)
+        return int(total)
+
     parts = gz['品號'].dropna().unique()
 
     rows = []
@@ -242,6 +254,11 @@ with st.spinner("分析中，請稍候..."):
         if k_qty <= 0:
             continue  # 只顯示國智有缺料的料號
 
+        # 來源可用量調整：若來源庫存可覆蓋原始缺料量，不需強制SPQ進位
+        _src_total = src_avail_excl(pno, {KUO})
+        if _src_total >= k_deficit:
+            k_qty = min(_src_total, k_qty)
+
         src = source_wh(sd, pno, set(), k_qty)
 
         # 客戶料號：從缺料表取 客戶料號 欄
@@ -254,12 +271,13 @@ with st.spinner("分析中，請稍候..."):
             '品號':               pno,
             'SPQ':                int(spq) if spq else 1,
             '國智代工倉 缺料量':   k_qty_str,
+            '_國智qty':           k_qty,   # 隱藏數值欄，供統計用
             '可調撥來源倉（倉代碼/可用量）': src,
             '客戶料號':            cust_pn,
         })
 
     df_out = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','客戶料號']
+        columns=['品號','SPQ','國智代工倉 缺料量','_國智qty','可調撥來源倉（倉代碼/可用量）','客戶料號']
     )
 
 # =========================
@@ -268,7 +286,7 @@ with st.spinner("分析中，請稍候..."):
 col1, col2, col3 = st.columns(3)
 col1.metric("缺料表料號總數",    f"{len(gz['品號'].dropna().unique())} 個")
 col2.metric("國智有缺料料號",   f"{len(df_out)} 個")
-col3.metric("國智總缺料量",     f"{int(df_out['國智代工倉 缺料量'].sum()):,}" if len(df_out) else "0")
+col3.metric("國智總缺料量",     f"{int(df_out['_國智qty'].sum()):,}" if len(df_out) else "0")
 
 st.divider()
 
@@ -280,8 +298,18 @@ st.markdown(f"#### 🏭 國智配料表（區間末結存）　{date_start} ～ 
 if df_out.empty:
     st.success("✅ 區間內國智代工倉無缺料！")
 else:
+    display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','客戶料號']
+    df_display = df_out[display_cols].copy()
+
+    def _highlight_multi(row):
+        """需跨多倉調撥的料號：反色提醒"""
+        src_val = str(row.get('可調撥來源倉（倉代碼/可用量）', ''))
+        if '、' in src_val:
+            return ['background-color: #fff7ed; color: #9a3412; font-weight:600;'] * len(row)
+        return [''] * len(row)
+
     st.dataframe(
-        df_out,
+        df_display.style.apply(_highlight_multi, axis=1),
         use_container_width=True,
         height=520,
         hide_index=True,
