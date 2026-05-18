@@ -161,52 +161,69 @@ def inject_css():
 </style>
 """, unsafe_allow_html=True)
 
-    # ── 浮動展開側欄按鈕（側欄縮起時自動出現，確保任何版本都可用） ──────────────
+    # ── 浮動展開側欄按鈕（側欄縮起時自動出現） ───────────────────────────────────
     components.html("""
 <script>
 (function(){
-    function run(){
-        var doc = window.parent.document;
-        var sidebar = doc.querySelector('[data-testid="stSidebar"]');
-        if(!sidebar) return;
-
-        var btn = doc.getElementById('_oring_sidebar_open');
-        if(!btn){
-            btn = doc.createElement('button');
-            btn.id = '_oring_sidebar_open';
-            btn.title = '展開側欄';
-            btn.innerHTML = '&#9776;';
-            btn.style.cssText = [
-                'position:fixed','top:10px','left:10px','z-index:99999',
-                'width:38px','height:38px','border-radius:9px','border:none',
-                'background:linear-gradient(135deg,#0f2460,#1d4ed8)',
-                'color:#fff','font-size:18px','cursor:pointer',
-                'box-shadow:0 3px 12px rgba(29,78,216,0.45)',
-                'display:none','align-items:center','justify-content:center',
-                'transition:opacity .2s'
-            ].join(';');
-            btn.onmouseover = function(){ this.style.opacity='.85'; };
-            btn.onmouseout  = function(){ this.style.opacity='1'; };
-            btn.onclick = function(){
-                // 嘗試點擊原生的展開按鈕
-                var targets = [
-                    doc.querySelector('[data-testid="stSidebarCollapsedControl"] button'),
-                    doc.querySelector('[data-testid="collapsedControl"]'),
-                    doc.querySelector('[data-testid="stSidebar"] button')
-                ];
-                for(var i=0;i<targets.length;i++){
-                    if(targets[i]){ targets[i].click(); break; }
-                }
-            };
-            doc.body.appendChild(btn);
+    function clickNativeExpand(doc){
+        // 策略1：已知 testid
+        var sel = [
+            '[data-testid="stSidebarCollapsedControl"] button',
+            '[data-testid="collapsedControl"] button',
+            '[data-testid="collapsedControl"]',
+            '[data-testid="stSidebarCollapsedControl"]'
+        ];
+        for(var i=0;i<sel.length;i++){
+            var el=doc.querySelector(sel[i]);
+            if(el){el.click();return true;}
         }
-
-        // 判斷是否縮起
-        var collapsed = sidebar.getAttribute('aria-expanded')==='false'
-                     || sidebar.offsetWidth < 50;
-        btn.style.display = collapsed ? 'flex' : 'none';
+        // 策略2：找座標在左上角 (x<60, y<80) 的小按鈕
+        var all=doc.querySelectorAll('button');
+        for(var j=0;j<all.length;j++){
+            var r=all[j].getBoundingClientRect();
+            if(r.left<60 && r.top<80 && r.width>0 && r.width<80){
+                all[j].click();return true;
+            }
+        }
+        return false;
     }
-    setInterval(run, 600);
+
+    function run(){
+        try{
+            var doc=window.parent.document;
+            var sidebar=doc.querySelector('[data-testid="stSidebar"]');
+            if(!sidebar) return;
+
+            var btn=doc.getElementById('_oring_sb_btn');
+            if(!btn){
+                btn=doc.createElement('button');
+                btn.id='_oring_sb_btn';
+                btn.innerHTML='&#9776;';
+                btn.title='展開側欄';
+                btn.style.cssText='position:fixed;top:10px;left:10px;z-index:99999;'+
+                    'width:38px;height:38px;border-radius:9px;border:none;'+
+                    'background:linear-gradient(135deg,#0f2460,#1d4ed8);'+
+                    'color:#fff;font-size:18px;cursor:pointer;'+
+                    'box-shadow:0 3px 12px rgba(29,78,216,.45);'+
+                    'display:none;align-items:center;justify-content:center;';
+                btn.onmouseover=function(){this.style.opacity='.8';};
+                btn.onmouseout=function(){this.style.opacity='1';};
+                btn.onclick=function(){
+                    // 先嘗試原生按鈕，失敗則直接操作 sidebar 樣式
+                    if(!clickNativeExpand(doc)){
+                        sidebar.style.setProperty('width','','important');
+                        sidebar.style.setProperty('min-width','','important');
+                        sidebar.setAttribute('aria-expanded','true');
+                    }
+                };
+                doc.body.appendChild(btn);
+            }
+            var collapsed=sidebar.getAttribute('aria-expanded')==='false'
+                        ||sidebar.offsetWidth<60;
+            btn.style.display=collapsed?'flex':'none';
+        }catch(e){}
+    }
+    setInterval(run,600);
 })();
 </script>
 """, height=0)
