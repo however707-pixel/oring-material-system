@@ -358,6 +358,16 @@ def render_sidebar():
            onmouseout="this.style.background='';this.style.color='#475569'">
             💧 H2O 缺料試算表
         </a>
+        <a href="/guozhi" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#475569 !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
+           onmouseout="this.style.background='';this.style.color='#475569'">
+            🏭 國智配料表
+        </a>
         """, unsafe_allow_html=True)
 
         # 生管 PC
