@@ -176,18 +176,23 @@ with st.spinner("分析中，請稍候..."):
         part_sd = df_sd[df_sd['品號']==pno]
         result = []
         remaining = need_qty
-        e_avail = get_avail(df_sd, pno, '電子倉', excl)
-        if e_avail > 0:
-            use = min(e_avail, remaining)
-            result.append(f"電子倉（{int(e_avail):,}）")
-            remaining -= use
+        dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
+        code_name = (dated_part[['庫別','庫別名稱']]
+                     .drop_duplicates('庫別')
+                     .set_index('庫別')['庫別名稱']
+                     .to_dict())
+        code_name = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+        e_code = next((c for c, n in code_name.items() if n == '電子倉'), None)
+        if e_code:
+            e_avail = get_avail(df_sd, pno, e_code, excl)
+            if e_avail > 0:
+                result.append(f"電子倉（{int(e_avail):,}）")
+                remaining -= min(e_avail, remaining)
         if remaining <= 0:
             return '、'.join(result)
-        for wh_code in part_sd['庫別'].dropna().unique():
-            if wh_code in excl or wh_code == '電子倉': continue
-            if len(str(wh_code)) > 12: continue
-            wh_name = part_sd[part_sd['庫別']==wh_code]['庫別名稱'].dropna()
-            if not wh_name.empty and wh_name.iloc[0] in excl: continue
+        for wh_code, wh_name in code_name.items():
+            if e_code and wh_code == e_code: continue
+            if wh_name in excl: continue
             avail = get_avail(df_sd, pno, wh_code, excl)
             if avail > 0:
                 result.append(f"{wh_code}（{int(avail):,}）")

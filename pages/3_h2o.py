@@ -161,28 +161,37 @@ with st.spinner("分析中，請稍候..."):
         return 0
 
     def source_wh(df_sd, pno, exclude_names, need_qty):
-        """電子倉優先；不夠再找其他倉（排除委外倉 & 工單型代碼）"""
+        """電子倉優先；不夠再找其他倉。
+        只使用有日期資料的倉別「代碼」查詢，避免讀到彙總列（庫別=倉名、無日期）的錯誤最終餘額。
+        """
         excl = set(exclude_names)
         part_sd = df_sd[df_sd['品號']==pno]
         result = []
         remaining = need_qty
 
-        # ── Step 1：先抓電子倉 ──
-        e_avail = get_avail(df_sd, pno, '電子倉', excl)
-        if e_avail > 0:
-            use = min(e_avail, remaining)
-            result.append(f"電子倉（{int(e_avail):,}）")
-            remaining -= use
+        # 建立 倉別代碼→倉別名稱 對照（只取有日期且有倉名的列，排除彙總列與工單型代碼）
+        dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
+        code_name = (dated_part[['庫別','庫別名稱']]
+                     .drop_duplicates('庫別')
+                     .set_index('庫別')['庫別名稱']
+                     .to_dict())
+        code_name = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+
+        # ── Step 1：先用代碼找電子倉 ──
+        e_code = next((c for c, n in code_name.items() if n == '電子倉'), None)
+        if e_code:
+            e_avail = get_avail(df_sd, pno, e_code, excl)
+            if e_avail > 0:
+                result.append(f"電子倉（{int(e_avail):,}）")
+                remaining -= min(e_avail, remaining)
 
         if remaining <= 0:
             return '、'.join(result)
 
-        # ── Step 2：電子倉不夠，找其他倉 ──
-        for wh_code in part_sd['庫別'].dropna().unique():
-            if wh_code in excl or wh_code == '電子倉': continue
-            if len(str(wh_code)) > 12: continue  # 排除工單型代碼
-            wh_name = part_sd[part_sd['庫別']==wh_code]['庫別名稱'].dropna()
-            if not wh_name.empty and wh_name.iloc[0] in excl: continue
+        # ── Step 2：電子倉不夠，依代碼找其他倉 ──
+        for wh_code, wh_name in code_name.items():
+            if e_code and wh_code == e_code: continue  # 電子倉已處理
+            if wh_name in excl: continue
             avail = get_avail(df_sd, pno, wh_code, excl)
             if avail > 0:
                 result.append(f"{wh_code}（{int(avail):,}）")
