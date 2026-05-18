@@ -122,8 +122,7 @@ with st.spinner("分析中，請稍候..."):
     def apply_spq(qty, spq):
         s = int(spq) if spq and spq > 0 else 1
         if qty <= 0: return 0
-        if qty >= s: return math.floor(qty / s) * s
-        return int(qty)  # 不足一個 SPQ 給實際量
+        return math.ceil(qty / s) * s  # 不足一個 SPQ 進位到整數 SPQ
 
     parts    = h2o['料號'].dropna().unique()
     sd_range = sd[
@@ -138,11 +137,16 @@ with st.spinner("分析中，請稍候..."):
         shortage = h_row.get('正的是缺料', 0) or 0
         spq      = spq_map.get(pno, 1)
 
-        t_raw = sd_range[(sd_range['品號']==pno) & (sd_range['庫別名稱']==TANG)]['異動數量'].sum()
-        k_raw = sd_range[(sd_range['品號']==pno) & (sd_range['庫別名稱']==KUO )]['異動數量'].sum()
+        t_sub  = sd_range[(sd_range['品號']==pno) & (sd_range['庫別名稱']==TANG)]
+        k_sub  = sd_range[(sd_range['品號']==pno) & (sd_range['庫別名稱']==KUO )]
+        t_raw  = t_sub['異動數量'].sum()
+        k_raw  = k_sub['異動數量'].sum()
+        t_qty  = apply_spq(t_raw, spq)
+        k_qty  = apply_spq(k_raw, spq)
 
-        t_qty = apply_spq(t_raw, spq)
-        k_qty = apply_spq(k_raw, spq)
+        # 來源倉代碼
+        t_wh_codes = '、'.join(t_sub['庫別'].dropna().unique()) if not t_sub.empty else ''
+        k_wh_codes = '、'.join(k_sub['庫別'].dropna().unique()) if not k_sub.empty else ''
 
         cust_pn = ''
         for col in h_row.index:
@@ -151,13 +155,15 @@ with st.spinner("分析中，請稍候..."):
                 break
 
         rows.append({
-            '料號':            pno,
-            'SPQ':             int(spq) if spq else 1,
-            '缺料量':          int(shortage) if shortage > 0 else None,
-            '唐佑代工倉 領用量': t_qty if t_qty else None,
-            '國智代工倉 領用量': k_qty if k_qty else None,
-            '合計委外領用':    int(t_qty + k_qty) if (t_qty+k_qty) else None,
-            'Customer P/N':   cust_pn,
+            '料號':              pno,
+            'SPQ':               int(spq) if spq else 1,
+            '缺料量':            int(shortage) if shortage > 0 else None,
+            '唐佑代工倉 領用量':  t_qty    if t_qty  else None,
+            '唐佑來源倉代碼':     t_wh_codes if t_qty else '',
+            '國智代工倉 領用量':  k_qty    if k_qty  else None,
+            '國智來源倉代碼':     k_wh_codes if k_qty else '',
+            '合計委外領用':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
+            'Customer P/N':     cust_pn,
         })
 
     df_out = pd.DataFrame(rows)
@@ -183,6 +189,7 @@ st.markdown(f"#### 💧 H2O 委外領用試算　{date_start} ～ {date_end}")
 df_display = df_out.copy()
 for col in ['缺料量','唐佑代工倉 領用量','國智代工倉 領用量','合計委外領用']:
     df_display[col] = df_display[col].fillna('-')
+df_display = df_display[['料號','SPQ','缺料量','唐佑代工倉 領用量','唐佑來源倉代碼','國智代工倉 領用量','國智來源倉代碼','合計委外領用','Customer P/N']]
 
 st.dataframe(
     df_display,
@@ -201,7 +208,7 @@ def build_excel(df, start, end):
     thin   = Side(style='thin', color='FFCCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells('A1:G1')
+    ws.merge_cells('A1:I1')
     c = ws['A1']
     c.value = f'H2O 缺料委外領用試算　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
     c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
@@ -209,10 +216,9 @@ def build_excel(df, start, end):
     c.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[1].height = 24
 
-    # 欄順序：料號, SPQ, 缺料量, 唐佑, 國智, 合計, Customer P/N
-    headers   = ['料號', 'SPQ', '缺料量', '唐佑代工倉\n領用量', '國智代工倉\n領用量', '合計委外領用', 'Customer P/N']
-    hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF2F2F2']
-    col_order = ['料號','SPQ','缺料量','唐佑代工倉 領用量','國智代工倉 領用量','合計委外領用','Customer P/N']
+    headers   = ['料號','SPQ','缺料量','唐佑代工倉\n領用量','唐佑\n來源倉代碼','國智代工倉\n領用量','國智\n來源倉代碼','合計委外領用','Customer P/N']
+    hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFDCE6F1','FFE2EFDA','FFE2EFDA','FFFFF2CC','FFF2F2F2']
+    col_order = ['料號','SPQ','缺料量','唐佑代工倉 領用量','唐佑來源倉代碼','國智代工倉 領用量','國智來源倉代碼','合計委外領用','Customer P/N']
     for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
         cell = ws.cell(row=2, column=i, value=h)
         cell.font  = Font(name='Arial', bold=True, size=9)
@@ -227,25 +233,21 @@ def build_excel(df, start, end):
             cell = ws.cell(row=r_i, column=c_i, value=val)
             cell.font   = Font(name='Arial', size=9)
             cell.border = border
-            cell.alignment = Alignment(horizontal='left' if c_i in (1,7) else 'center', vertical='center')
+            cell.alignment = Alignment(horizontal='left' if c_i in (1,9) else 'center', vertical='center')
             if c_i == 3 and val and isinstance(val,(int,float)) and val > 0:
                 cell.fill = PatternFill('solid', start_color='FFFCE4D6')
-            elif c_i == 4 and val:
+            elif c_i in (4,5) and val:
                 cell.fill = PatternFill('solid', start_color='FFDCE6F1')
-                cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-            elif c_i == 5 and val:
+                if c_i == 4: cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
+            elif c_i in (6,7) and val:
                 cell.fill = PatternFill('solid', start_color='FFE2EFDA')
-                cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
-            elif c_i == 6 and val:
+                if c_i == 6: cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
+            elif c_i == 8 and val:
                 cell.fill = PatternFill('solid', start_color='FFFFFF99')
 
-    ws.column_dimensions['A'].width = 28
-    ws.column_dimensions['B'].width = 8
-    ws.column_dimensions['C'].width = 12
-    ws.column_dimensions['D'].width = 14
-    ws.column_dimensions['E'].width = 14
-    ws.column_dimensions['F'].width = 14
-    ws.column_dimensions['G'].width = 28
+    col_widths = [28,8,12,14,12,14,12,14,28]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[chr(64+i)].width = w
     ws.freeze_panes = 'A3'
 
     buf = io.BytesIO()
