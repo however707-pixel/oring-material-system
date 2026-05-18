@@ -290,6 +290,24 @@ def render_sidebar():
         st.markdown(f"""<div style="padding:4px 10px 8px 22px; color:#94a3b8; font-size:0.8rem;
             font-style:italic;">{t("coming_soon")}</div>""", unsafe_allow_html=True)
 
+        # 快速連結
+        st.divider()
+        st.markdown("""<div style="color:#94a3b8; font-size:0.68rem; font-weight:800;
+            letter-spacing:0.12em; text-transform:uppercase; margin-bottom:8px;">
+            QUICK LINKS</div>""", unsafe_allow_html=True)
+        st.markdown("""
+        <a href="https://apolloxe.mayohr.com/ta/personal/shiftschedule" target="_blank"
+           style="display:flex; align-items:center; gap:8px; padding:9px 14px;
+                  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+                  border:1px solid #bfdbfe; border-radius:10px; text-decoration:none;
+                  color:#1d4ed8; font-size:0.88rem; font-weight:700;
+                  box-shadow: 0 2px 8px rgba(29,78,216,0.12);
+                  transition: all 0.15s;">
+            📅 班表查詢
+            <span style="margin-left:auto; font-size:0.75rem; color:#93c5fd;">↗</span>
+        </a>
+        """, unsafe_allow_html=True)
+
         # 倉管 WH
         st.markdown(f"""
         <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
