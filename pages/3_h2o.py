@@ -288,32 +288,41 @@ with st.spinner("分析中，請稍候..."):
         src = source_wh(sd, pno, set(), total_need) if total_need > 0 else ''
 
         # ── 庫存不足時：依最早缺料日期決定配料優先順序 ──
-        # 使用 _src_total（已排除委外倉本身）確保判斷正確
+        # t_alloc / k_alloc：實際可配量（可能小於 t_qty/k_qty）
+        t_alloc = t_qty
+        k_alloc = k_qty
         alloc_note = ''
-        if t_qty > 0 and k_qty > 0:
-            if _src_total < total_need:
-                avail = _src_total   # 可調撥來源可用量（不含委外倉自身）
-                t_date = first_deficit_date(pno, TANG)
-                k_date = first_deficit_date(pno, KUO)
-                td_str = t_date.strftime('%m/%d') if t_date else '區間末'
-                kd_str = k_date.strftime('%m/%d') if k_date else '區間末'
-                td = t_date or pd.Timestamp('2099-12-31')
-                kd = k_date or pd.Timestamp('2099-12-31')
-                spq_int = int(spq) if spq and spq > 0 else 1
-                if td <= kd:
-                    first_nm, first_qty, first_ds = '唐佑', t_qty, td_str
-                    second_nm, second_qty, second_ds = '國智', k_qty, kd_str
-                else:
-                    first_nm, first_qty, first_ds = '國智', k_qty, kd_str
-                    second_nm, second_qty, second_ds = '唐佑', t_qty, td_str
-                after_first  = max(0, avail - first_qty)
-                second_can   = (after_first // spq_int) * spq_int
-                second_short = second_qty - second_can
-                alloc_note = (
-                    f"⚠️ 庫存不足（需 {total_need:,}，可用 {avail:,}）\n"
-                    f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_qty:,}\n"
-                    f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_can:,}，尚缺 {second_short:,}"
-                )
+        if t_qty > 0 and k_qty > 0 and _src_total < total_need:
+            avail    = _src_total
+            t_date   = first_deficit_date(pno, TANG)
+            k_date   = first_deficit_date(pno, KUO)
+            td_str   = t_date.strftime('%m/%d') if t_date else '區間末'
+            kd_str   = k_date.strftime('%m/%d') if k_date else '區間末'
+            td       = t_date or pd.Timestamp('2099-12-31')
+            kd       = k_date or pd.Timestamp('2099-12-31')
+            spq_int  = int(spq) if spq and spq > 0 else 1
+            tang_first = td <= kd
+            if tang_first:
+                first_nm, first_def, first_ds  = '唐佑', t_qty, td_str
+                second_nm, second_def, second_ds = '國智', k_qty, kd_str
+            else:
+                first_nm, first_def, first_ds  = '國智', k_qty, kd_str
+                second_nm, second_def, second_ds = '唐佑', t_qty, td_str
+            after_first  = max(0, avail - first_def)
+            second_can   = (after_first // spq_int) * spq_int
+            second_short = second_def - second_can
+            # 更新實際可配量
+            if tang_first:
+                t_alloc = first_def          # 唐佑優先，足額配
+                k_alloc = second_can         # 國智配剩餘
+            else:
+                k_alloc = first_def          # 國智優先，足額配
+                t_alloc = second_can         # 唐佑配剩餘
+            alloc_note = (
+                f"⚠️ 庫存不足（需 {total_need:,}，可用 {avail:,}）\n"
+                f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_def:,}\n"
+                f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_can:,}，尚缺 {second_short:,}"
+            )
 
         cust_pn = ''
         for col in h_row.index:
@@ -321,9 +330,15 @@ with st.spinner("分析中，請稍候..."):
                 cust_pn = h_row[col]
                 break
 
-        def fmt_deficit(qty, deficit):
-            """SPQ調整後數量 + 原始缺料量（若不同才附加）"""
+        def fmt_deficit(qty, deficit, alloc=None):
+            """缺料量顯示：
+            - 庫存不足（alloc < qty）：顯示「實配 (需 X)」
+            - 來源調整（qty != deficit）：顯示「qty (原缺 X)」
+            - 正常：直接顯示 qty
+            """
             if not qty: return None
+            if alloc is not None and int(alloc) < int(qty):
+                return f"⚠️ {int(alloc):,}  （需 {int(qty):,}）"
             d = int(deficit)
             return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
 
@@ -331,11 +346,12 @@ with st.spinner("分析中，請稍候..."):
             '料號':              pno,
             'SPQ':               int(spq) if spq else 1,
             '缺料量':            int(shortage) if shortage > 0 else None,
-            '唐佑代工倉 缺料量':  fmt_deficit(t_qty, t_deficit),
-            '國智代工倉 缺料量':  fmt_deficit(k_qty, k_deficit),
+            '唐佑代工倉 缺料量':  fmt_deficit(t_qty, t_deficit, t_alloc if t_qty > 0 and k_qty > 0 else None),
+            '國智代工倉 缺料量':  fmt_deficit(k_qty, k_deficit, k_alloc if t_qty > 0 and k_qty > 0 else None),
             '合計委外缺料':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
-            '_唐佑qty':          t_qty,   # 隱藏數值欄，供統計用
-            '_國智qty':          k_qty,   # 隱藏數值欄，供統計用
+            '_唐佑qty':          t_qty,
+            '_國智qty':          k_qty,
+            '_shortage':         bool(alloc_note),   # 庫存不足旗標，供列高亮用
             '可調撥來源倉（倉代碼/可用量）': src,
             '⚠️ 配料說明':       alloc_note,
             'Customer P/N':     cust_pn,
@@ -343,7 +359,7 @@ with st.spinner("分析中，請稍候..."):
 
     df_out = pd.DataFrame(rows)
     has_any    = df_out[df_out['合計委外缺料'].notna()]
-    short_warn = df_out[df_out['⚠️ 配料說明'].str.len() > 0]
+    short_warn = df_out[df_out['_shortage'] == True]
 
 # =========================
 # 統計卡片
@@ -364,10 +380,14 @@ st.divider()
 # =========================
 st.markdown(f"#### 💧 H2O 委外缺料試算（區間末結存）　{date_start} ～ {date_end}")
 
-# 顯示用：空值換成 "-"
+# 顯示用：空值換成 "-"，隱藏內部欄位
 df_display = df_out.copy()
 for col in ['缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']:
     df_display[col] = df_display[col].fillna('-')
+# 合計委外缺料去掉小數（pandas混型列會變float）
+df_display['合計委外缺料'] = df_display['合計委外缺料'].apply(
+    lambda x: str(int(float(x))) if x not in ('-', None, '') else '-'
+)
 df_display = df_display[['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']]
 
 # 若有庫存不足料號，先用 callout 提醒
@@ -379,15 +399,22 @@ if len(short_warn) > 0:
         icon="⚠️",
     )
 
-def _highlight_multi(row):
-    """需跨多倉調撥的料號：反色提醒"""
+# 庫存不足的 shortage 集合（用料號比對，因 df_display 已不含 _shortage 欄）
+_shortage_pnos = set(short_warn['料號'].tolist())
+
+def _row_style(row):
+    pno = row.get('料號', '')
+    if pno in _shortage_pnos:
+        # 庫存不足：橘紅底，標示缺料欄位
+        return ['background-color: #fef2f2; color: #991b1b; font-weight:600;'] * len(row)
     src_val = str(row.get('可調撥來源倉（倉代碼/可用量）', ''))
     if '、' in src_val:
+        # 需跨多倉：橘黃底
         return ['background-color: #fff7ed; color: #9a3412; font-weight:600;'] * len(row)
     return [''] * len(row)
 
 st.dataframe(
-    df_display.style.apply(_highlight_multi, axis=1),
+    df_display.style.apply(_row_style, axis=1),
     use_container_width=True,
     height=520,
     hide_index=True,
