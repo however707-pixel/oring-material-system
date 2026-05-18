@@ -42,25 +42,21 @@ def inject_css():
     [data-testid="stDecoration"]  { display: none !important; }
     [data-testid="stStatusWidget"]{ visibility: hidden !important; }
 
-    /* ── 側欄收合按鈕：永遠隱藏（避免不小心縮起來找不到）── */
-    [data-testid="stSidebarCollapseButton"],
-    [data-testid="stSidebarCollapseButton"] *,
-    [data-testid="stSidebar"] [data-testid="baseButton-headerNoPadding"],
-    [data-testid="stSidebar"] button[aria-expanded="true"],
-    [data-testid="stSidebar"] > div > button {
+    /* ── 側欄收合按鈕：僅透過 testid 精準隱藏，不影響展開按鈕 ── */
+    [data-testid="stSidebarCollapseButton"] {
         display: none !important;
     }
 
-    /* ── 萬一側欄已收合：強制展開按鈕可見 ── */
+    /* ── 展開按鈕（收合後才出現）：強制可見可點 ── */
     [data-testid="stSidebarCollapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] *,
+    [data-testid="stSidebarCollapsedControl"] button,
     [data-testid="collapsedControl"],
-    [data-testid="collapsedControl"] * {
-        display:    flex        !important;
-        visibility: visible     !important;
-        opacity:    1           !important;
-        z-index:    99999       !important;
+    [data-testid="collapsedControl"] button {
+        display:        flex    !important;
+        visibility:     visible !important;
+        opacity:        1       !important;
         pointer-events: all     !important;
+        z-index:        99999   !important;
     }
 
     [data-testid="stAppViewContainer"] {
