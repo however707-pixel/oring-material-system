@@ -133,22 +133,32 @@ with st.spinner("分析中，請稍候..."):
         return max(0, -last_bal)  # 負數才是缺料
 
     def source_wh(df_sd, pno, exclude_names):
-        """找有正可用量的來源倉（排除委外倉本身）"""
+        """找有正可用量的來源倉（E欄庫別，排除委外倉）"""
         excl = set(exclude_names)
         part_sd = df_sd[df_sd['品號']==pno]
         avail_whs = []
         for wh_code in part_sd['庫別'].dropna().unique():
+            # 排除委外倉 & 排除料號型的倉別代碼（太長的視為工單倉）
+            if wh_code in excl or len(str(wh_code)) > 12: continue
             w = part_sd[part_sd['庫別']==wh_code]
-            wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else wh_code
-            if wh_name in excl or wh_code in excl: continue
-            # 期末結存
-            w_in_range = w[(w['日期'] <= end) & w['預計結存'].notna()]
-            if w_in_range.empty: continue
-            last_bal = w_in_range.sort_values('日期').iloc[-1]['預計結存']
-            incoming = w[(w['日期']>=start)&(w['日期']<=end)&(w['異動別']=='預計進貨')]['異動數量'].sum()
-            avail = last_bal - incoming
+            wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
+            if wh_name in excl: continue
+
+            # ① 有日期的行中找區間末結存
+            dated = w[w['日期'].notna() & w['預計結存'].notna()]
+            in_range = dated[dated['日期'] <= end]
+            if not in_range.empty:
+                last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
+                incoming = dated[(dated['日期']>=start)&(dated['日期']<=end)&(dated['異動別']=='預計進貨')]['異動數量'].sum()
+                avail = last_bal - incoming
+            else:
+                # ② 無未來異動 → 用初始庫存行的「異動數量」
+                init_rows = w[w['日期'].isna() & w['異動數量'].notna()]
+                avail = init_rows.iloc[0]['異動數量'] if not init_rows.empty else 0
+
             if avail > 0:
-                avail_whs.append(f"{wh_code}({int(avail):,})")
+                label = wh_code if not wh_name else wh_code
+                avail_whs.append(f"{wh_code}（{int(avail):,}）")
         return '、'.join(avail_whs) if avail_whs else ''
 
     EXCL = {TANG, KUO, '唐佑代工倉', '修研/華盈/國智代工倉'}
