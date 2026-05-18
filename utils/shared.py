@@ -291,18 +291,26 @@ def render_sidebar():
 
         # 首頁按鈕
         st.markdown("""
-        <a href="/" target="_self" style="
+        <style>
+        #oring-home-btn, #oring-home-btn *, #oring-home-btn span {
+            color: #ffffff !important;
+            text-decoration: none !important;
+        }
+        </style>
+        <a id="oring-home-btn" href="/" target="_self" style="
             display: flex; align-items: center; justify-content: center; gap: 8px;
             background: linear-gradient(135deg, #0f2460 0%, #1d4ed8 60%, #3b82f6 100%);
             color: #ffffff !important; text-decoration: none !important;
             border-radius: 10px; padding: 11px 16px; margin-bottom: 14px;
             font-size: 0.93rem; font-weight: 800; letter-spacing: 0.04em;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.4);
             box-shadow: 0 4px 16px rgba(29,78,216,0.40), inset 0 1px 0 rgba(255,255,255,0.18);
             transition: all 0.18s cubic-bezier(.34,1.56,.64,1);
         "
-        onmouseover="this.style.transform='translateY(-2px) scale(1.02)'; this.style.boxShadow='0 7px 22px rgba(29,78,216,0.55), inset 0 1px 0 rgba(255,255,255,0.2)'"
-        onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 16px rgba(29,78,216,0.40), inset 0 1px 0 rgba(255,255,255,0.18)'">
-            🏠 &nbsp;首頁 &nbsp;<span style="font-size:0.75rem; opacity:0.75;">Home</span>
+        onmouseover="this.style.transform='translateY(-2px) scale(1.02)'"
+        onmouseout="this.style.transform=''">
+            🏠 &nbsp;<span style="color:#ffffff !important; font-weight:800;">首頁</span>
+            &nbsp;<span style="color:#cfe0ff !important; font-size:0.75rem; font-weight:600;">Home</span>
         </a>
         """, unsafe_allow_html=True)
 
