@@ -42,21 +42,25 @@ def inject_css():
     [data-testid="stDecoration"]  { display: none !important; }
     [data-testid="stStatusWidget"]{ visibility: hidden !important; }
 
-    /* ── 側欄收合按鈕：僅透過 testid 精準隱藏，不影響展開按鈕 ── */
-    [data-testid="stSidebarCollapseButton"] {
-        display: none !important;
+    /* ══ 側欄：永遠展開，CSS 層面完全鎖定，無視 JS 的 aria-expanded ══ */
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        transform:   translateX(0) !important;
+        width:       244px         !important;
+        min-width:   244px         !important;
+        max-width:   244px         !important;
+        display:     flex          !important;
+        visibility:  visible       !important;
+        opacity:     1             !important;
+        pointer-events: all        !important;
+        position: relative         !important;
     }
-
-    /* ── 展開按鈕（收合後才出現）：強制可見可點 ── */
+    /* 收合 / 展開按鈕全部隱藏（側欄已鎖定，不需要這些控制） */
+    [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] button,
-    [data-testid="collapsedControl"],
-    [data-testid="collapsedControl"] button {
-        display:        flex    !important;
-        visibility:     visible !important;
-        opacity:        1       !important;
-        pointer-events: all     !important;
-        z-index:        99999   !important;
+    [data-testid="collapsedControl"] {
+        display: none !important;
     }
 
     [data-testid="stAppViewContainer"] {
