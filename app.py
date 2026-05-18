@@ -41,9 +41,10 @@ with st.sidebar:
             st.rerun()
 
 render_header(
-    title=t("header_title"),
-    subtitle=t("header_subtitle"),
-    badge=t("header_badge"),
+    title="工單調撥決策看板",
+    subtitle="Work Order Transfer Decision Board &nbsp;·&nbsp; ORing Industrial Networking",
+    badge="Material Control · MC",
+    show_logo=False,
 )
 
 # =========================
