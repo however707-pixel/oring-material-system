@@ -33,7 +33,7 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
-    h2o_file = st.file_uploader("📂 上傳 H2O 缺料明細", type=["xlsx", "xls", "csv"])
+    h2o_file = st.file_uploader("📂 上傳國智缺料表", type=["xlsx", "xls", "csv"])
     sd_file  = st.file_uploader("📂 上傳供需表",         type=["xlsx", "xls", "csv"])
 
     st.markdown("**📅 分析區間**")
@@ -62,7 +62,7 @@ if not h2o_file or not sd_file:
     <div style="text-align:center; padding:80px 0; color:#94a3b8;">
         <div style="font-size:3.5rem; margin-bottom:16px;">🏭</div>
         <div style="font-size:1.1rem; font-weight:700; color:#64748b; margin-bottom:8px;">國智配料表</div>
-        <div style="font-size:0.85rem;">請從左側上傳 <b>H2O 缺料明細</b> 及 <b>供需表</b> 開始分析</div>
+        <div style="font-size:0.85rem;">請從左側上傳 <b>國智缺料表</b> 及 <b>供需表</b> 開始分析</div>
     </div>""", unsafe_allow_html=True)
     st.stop()
 
@@ -79,7 +79,7 @@ with st.spinner("分析中，請稍候..."):
         else:
             h2o = pd.read_excel(h2o_file, sheet_name=0, header=0)
     except Exception as e:
-        st.error(f"H2O 缺料明細讀取失敗：{e}")
+        st.error(f"國智缺料表讀取失敗：{e}")
         st.stop()
 
     # 讀供需表
@@ -100,7 +100,7 @@ with st.spinner("分析中，請稍候..."):
 
     # 欄位檢查
     if '料號' not in h2o.columns:
-        st.error("H2O 缺料明細找不到「料號」欄位，請確認檔案格式。")
+        st.error("國智缺料表找不到「料號」欄位，請確認檔案格式。")
         st.stop()
     for col in ['品號', '庫別名稱', '日期', '異動別', '異動數量']:
         if col not in sd.columns:
