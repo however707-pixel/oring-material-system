@@ -132,34 +132,52 @@ with st.spinner("分析中，請稍候..."):
         last_bal = sub.sort_values('日期').iloc[-1]['預計結存']
         return max(0, -last_bal)  # 負數才是缺料
 
-    def source_wh(df_sd, pno, exclude_names):
-        """找有正可用量的來源倉（E欄庫別，排除委外倉）"""
+    def get_avail(df_sd, pno, wh_code, excl):
+        """計算指定倉的可用量"""
+        w = df_sd[(df_sd['品號']==pno) & (df_sd['庫別']==wh_code)]
+        if w.empty: return 0
+        wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
+        if wh_name in excl: return 0
+        dated = w[w['日期'].notna() & w['預計結存'].notna()]
+        in_range = dated[dated['日期'] <= end]
+        if not in_range.empty:
+            last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
+            incoming = dated[(dated['日期']>=start)&(dated['日期']<=end)&(dated['異動別']=='預計進貨')]['異動數量'].sum()
+            return max(0, last_bal - incoming)
+        else:
+            init_rows = w[w['日期'].isna() & w['異動數量'].notna()]
+            return max(0, init_rows.iloc[0]['異動數量']) if not init_rows.empty else 0
+
+    def source_wh(df_sd, pno, exclude_names, need_qty):
+        """電子倉優先；不夠再找其他倉（排除委外倉 & 工單型代碼）"""
         excl = set(exclude_names)
         part_sd = df_sd[df_sd['品號']==pno]
-        avail_whs = []
+        result = []
+        remaining = need_qty
+
+        # ── Step 1：先抓電子倉 ──
+        e_avail = get_avail(df_sd, pno, '電子倉', excl)
+        if e_avail > 0:
+            use = min(e_avail, remaining)
+            result.append(f"電子倉（{int(e_avail):,}）")
+            remaining -= use
+
+        if remaining <= 0:
+            return '、'.join(result)
+
+        # ── Step 2：電子倉不夠，找其他倉 ──
         for wh_code in part_sd['庫別'].dropna().unique():
-            # 排除委外倉 & 排除料號型的倉別代碼（太長的視為工單倉）
-            if wh_code in excl or len(str(wh_code)) > 12: continue
-            w = part_sd[part_sd['庫別']==wh_code]
-            wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
-            if wh_name in excl: continue
-
-            # ① 有日期的行中找區間末結存
-            dated = w[w['日期'].notna() & w['預計結存'].notna()]
-            in_range = dated[dated['日期'] <= end]
-            if not in_range.empty:
-                last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
-                incoming = dated[(dated['日期']>=start)&(dated['日期']<=end)&(dated['異動別']=='預計進貨')]['異動數量'].sum()
-                avail = last_bal - incoming
-            else:
-                # ② 無未來異動 → 用初始庫存行的「異動數量」
-                init_rows = w[w['日期'].isna() & w['異動數量'].notna()]
-                avail = init_rows.iloc[0]['異動數量'] if not init_rows.empty else 0
-
+            if wh_code in excl or wh_code == '電子倉': continue
+            if len(str(wh_code)) > 12: continue  # 排除工單型代碼
+            wh_name = part_sd[part_sd['庫別']==wh_code]['庫別名稱'].dropna()
+            if not wh_name.empty and wh_name.iloc[0] in excl: continue
+            avail = get_avail(df_sd, pno, wh_code, excl)
             if avail > 0:
-                label = wh_code if not wh_name else wh_code
-                avail_whs.append(f"{wh_code}（{int(avail):,}）")
-        return '、'.join(avail_whs) if avail_whs else ''
+                result.append(f"{wh_code}（{int(avail):,}）")
+                remaining -= avail
+                if remaining <= 0: break
+
+        return '、'.join(result) if result else ''
 
     EXCL = {TANG, KUO, '唐佑代工倉', '修研/華盈/國智代工倉'}
     parts = h2o['料號'].dropna().unique()
@@ -176,8 +194,9 @@ with st.spinner("分析中，請稍候..."):
         t_qty = apply_spq(t_deficit, spq)
         k_qty = apply_spq(k_deficit, spq)
 
-        # 來源倉（有可用量的內部倉別）
-        src = source_wh(sd, pno, EXCL) if (t_qty or k_qty) else ''
+        # 來源倉（電子倉優先，不夠再找其他倉）
+        total_need = t_qty + k_qty
+        src = source_wh(sd, pno, EXCL, total_need) if total_need > 0 else ''
 
         cust_pn = ''
         for col in h_row.index:
