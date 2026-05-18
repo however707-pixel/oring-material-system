@@ -188,13 +188,13 @@ with st.spinner("分析中，請稍候..."):
         if remaining <= 0:
             return '、'.join(result)
 
-        # ── Step 2：電子倉不夠，依代碼找其他倉 ──
+        # ── Step 2：電子倉不夠，依代碼找其他倉（顯示倉別名稱）──
         for wh_code, wh_name in code_name.items():
             if e_code and wh_code == e_code: continue  # 電子倉已處理
             if wh_name in excl: continue
             avail = get_avail(df_sd, pno, wh_code, excl)
             if avail > 0:
-                result.append(f"{wh_code}（{int(avail):,}）")
+                result.append(f"{wh_name}（{int(avail):,}）")
                 remaining -= avail
                 if remaining <= 0: break
 

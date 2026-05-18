@@ -195,7 +195,7 @@ with st.spinner("分析中，請稍候..."):
             if wh_name in excl: continue
             avail = get_avail(df_sd, pno, wh_code, excl)
             if avail > 0:
-                result.append(f"{wh_code}（{int(avail):,}）")
+                result.append(f"{wh_name}（{int(avail):,}）")
                 remaining -= avail
                 if remaining <= 0: break
         return '、'.join(result) if result else ''
