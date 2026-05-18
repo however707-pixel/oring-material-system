@@ -133,17 +133,23 @@ with st.spinner("分析中，請稍候..."):
         return max(0, -last_bal)  # 負數才是缺料
 
     def get_avail(df_sd, pno, wh_code, excl):
-        """計算指定倉的可用量：直接取區間末 預計結存（正值即可調撥）"""
+        """計算指定倉的可用量：區間末預計結存 扣除 期間內預計進貨（未到貨不算庫存）"""
         w = df_sd[(df_sd['品號']==pno) & (df_sd['庫別']==wh_code)]
         if w.empty: return 0
         wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
         if wh_name in excl: return 0
-        # ── 有日期列：取區間末最後一筆 預計結存 ──
+        # ── 有日期列：取區間末最後一筆 預計結存，再扣掉期間內預計進貨 ──
         dated = w[w['日期'].notna() & w['預計結存'].notna()]
         in_range = dated[dated['日期'] <= end]
         if not in_range.empty:
-            last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
-            return max(0, last_bal)
+            last_bal  = in_range.sort_values('日期').iloc[-1]['預計結存']
+            # 預計進貨在分析區間內的合計（尚未實際入庫，不算可用庫存）
+            incoming  = dated[
+                (dated['日期'] >= start) &
+                (dated['日期'] <= end) &
+                (dated['異動別'] == '預計進貨')
+            ]['異動數量'].sum()
+            return max(0, last_bal - incoming)
         # ── 無日期列（僅初始庫存）：優先讀 異動數量，其次讀 預計結存 ──
         init_rows = w[w['日期'].isna()]
         if not init_rows.empty:
