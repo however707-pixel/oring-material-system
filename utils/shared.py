@@ -356,7 +356,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            💧 H2O 缺料試算表
+            💧 唐佑配料表
         </a>
         <a href="/guozhi" target="_self" style="
             display:flex; align-items:center; gap:8px;
