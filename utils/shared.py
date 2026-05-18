@@ -292,27 +292,25 @@ def render_sidebar():
         # 首頁按鈕
         st.markdown("""
         <style>
-        #oring-home-btn, #oring-home-btn *, #oring-home-btn span {
+        [data-testid="stSidebar"] [data-testid="stLinkButton"] > a {
+            background: linear-gradient(135deg, #0f2460 0%, #1d4ed8 60%, #3b82f6 100%) !important;
             color: #ffffff !important;
-            text-decoration: none !important;
+            font-weight: 800 !important;
+            font-size: 0.93rem !important;
+            letter-spacing: 0.04em !important;
+            border: none !important;
+            border-radius: 10px !important;
+            box-shadow: 0 4px 16px rgba(29,78,216,0.40), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+            text-shadow: 0 1px 4px rgba(0,0,0,0.4) !important;
+            margin-bottom: 4px !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stLinkButton"] > a:hover {
+            background: linear-gradient(135deg, #1a3a8f 0%, #2563eb 60%, #60a5fa 100%) !important;
+            box-shadow: 0 6px 20px rgba(29,78,216,0.55) !important;
         }
         </style>
-        <a id="oring-home-btn" href="/" target="_self" style="
-            display: flex; align-items: center; justify-content: center; gap: 8px;
-            background: linear-gradient(135deg, #0f2460 0%, #1d4ed8 60%, #3b82f6 100%);
-            color: #ffffff !important; text-decoration: none !important;
-            border-radius: 10px; padding: 11px 16px; margin-bottom: 14px;
-            font-size: 0.93rem; font-weight: 800; letter-spacing: 0.04em;
-            text-shadow: 0 1px 4px rgba(0,0,0,0.4);
-            box-shadow: 0 4px 16px rgba(29,78,216,0.40), inset 0 1px 0 rgba(255,255,255,0.18);
-            transition: all 0.18s cubic-bezier(.34,1.56,.64,1);
-        "
-        onmouseover="this.style.transform='translateY(-2px) scale(1.02)'"
-        onmouseout="this.style.transform=''">
-            🏠 &nbsp;<span style="color:#ffffff !important; font-weight:800;">首頁</span>
-            &nbsp;<span style="color:#cfe0ff !important; font-size:0.75rem; font-weight:600;">Home</span>
-        </a>
         """, unsafe_allow_html=True)
+        st.link_button("🏠  首頁  Home", url="/", use_container_width=True)
 
         st.markdown(f"""<div style="color:#94a3b8; font-size:0.68rem; font-weight:800;
             letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px;">
