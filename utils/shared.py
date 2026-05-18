@@ -28,24 +28,30 @@ def inject_css():
     st.markdown("""
 <style>
     #MainMenu { visibility: hidden !important; display: none !important; }
-    footer { visibility: hidden !important; display: none !important; }
+    footer    { visibility: hidden !important; display: none !important; }
 
-    /* header：背景透明，不 display:none（避免側欄展開按鈕消失） */
+    /* ── Header：高度歸零但 overflow:visible，讓側欄展開按鈕仍可見 ── */
     [data-testid="stHeader"] {
-        background: transparent !important;
+        height: 0 !important; min-height: 0 !important; padding: 0 !important;
+        overflow: visible !important;
+        background: transparent !important; border: none !important;
         box-shadow: none !important;
-        border-bottom: none !important;
     }
-    /* 只隱藏 toolbar（右上角選單/Deploy/Share），不隱藏整個 header */
-    [data-testid="stToolbar"]          { display: none !important; }
-    [data-testid="stDecoration"]       { display: none !important; }
-    [data-testid="stStatusWidget"]     { display: none !important; }
+    /* toolbar 用 visibility:hidden（不用 display:none），保留 DOM 佔位 */
+    [data-testid="stToolbar"]     { visibility: hidden !important; }
+    [data-testid="stDecoration"]  { display: none !important; }
+    [data-testid="stStatusWidget"]{ visibility: hidden !important; }
 
-    /* 側欄展開按鈕：保底顯示 */
+    /* ── 側欄展開 / 收合按鈕：強制可見 ── */
     [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"] {
-        display: flex !important; visibility: visible !important;
-        opacity: 1 !important; z-index: 9999 !important;
+    [data-testid="stSidebarCollapsedControl"] *,
+    [data-testid="collapsedControl"],
+    [data-testid="collapsedControl"] * {
+        display:    flex        !important;
+        visibility: visible     !important;
+        opacity:    1           !important;
+        z-index:    99999       !important;
+        pointer-events: all     !important;
     }
 
     [data-testid="stAppViewContainer"] {
@@ -161,72 +167,6 @@ def inject_css():
 </style>
 """, unsafe_allow_html=True)
 
-    # ── 浮動展開側欄按鈕（側欄縮起時自動出現） ───────────────────────────────────
-    components.html("""
-<script>
-(function(){
-    function clickNativeExpand(doc){
-        // 策略1：已知 testid
-        var sel = [
-            '[data-testid="stSidebarCollapsedControl"] button',
-            '[data-testid="collapsedControl"] button',
-            '[data-testid="collapsedControl"]',
-            '[data-testid="stSidebarCollapsedControl"]'
-        ];
-        for(var i=0;i<sel.length;i++){
-            var el=doc.querySelector(sel[i]);
-            if(el){el.click();return true;}
-        }
-        // 策略2：找座標在左上角 (x<60, y<80) 的小按鈕
-        var all=doc.querySelectorAll('button');
-        for(var j=0;j<all.length;j++){
-            var r=all[j].getBoundingClientRect();
-            if(r.left<60 && r.top<80 && r.width>0 && r.width<80){
-                all[j].click();return true;
-            }
-        }
-        return false;
-    }
-
-    function run(){
-        try{
-            var doc=window.parent.document;
-            var sidebar=doc.querySelector('[data-testid="stSidebar"]');
-            if(!sidebar) return;
-
-            var btn=doc.getElementById('_oring_sb_btn');
-            if(!btn){
-                btn=doc.createElement('button');
-                btn.id='_oring_sb_btn';
-                btn.innerHTML='&#9776;';
-                btn.title='展開側欄';
-                btn.style.cssText='position:fixed;top:10px;left:10px;z-index:99999;'+
-                    'width:38px;height:38px;border-radius:9px;border:none;'+
-                    'background:linear-gradient(135deg,#0f2460,#1d4ed8);'+
-                    'color:#fff;font-size:18px;cursor:pointer;'+
-                    'box-shadow:0 3px 12px rgba(29,78,216,.45);'+
-                    'display:none;align-items:center;justify-content:center;';
-                btn.onmouseover=function(){this.style.opacity='.8';};
-                btn.onmouseout=function(){this.style.opacity='1';};
-                btn.onclick=function(){
-                    // 先嘗試原生按鈕，失敗則直接操作 sidebar 樣式
-                    if(!clickNativeExpand(doc)){
-                        sidebar.style.setProperty('width','','important');
-                        sidebar.style.setProperty('min-width','','important');
-                        sidebar.setAttribute('aria-expanded','true');
-                    }
-                };
-                doc.body.appendChild(btn);
-            }
-            var collapsed=sidebar.getAttribute('aria-expanded')==='false'
-                        ||sidebar.offsetWidth<60;
-            btn.style.display=collapsed?'flex':'none';
-        }catch(e){}
-    }
-    setInterval(run,600);
-})();
-</script>
-""", height=0)
 
 # ── Logo 檔案路徑 ─────────────────────────────────────────────────────────────
 
