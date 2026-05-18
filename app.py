@@ -311,7 +311,7 @@ with st.sidebar:
         st.error(t("date_err"))
         end_date = analysis_date
 
-    days_range = (end_date - analysis_date).days
+    days_range = (end_date - analysis_date).days + 1
     st.caption(f"📆 {t('date_caption')} **{days_range}** {t('date_caption2')}（{analysis_date} ～ {end_date}）")
 
     st.divider()
