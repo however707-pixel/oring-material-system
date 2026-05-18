@@ -13,7 +13,7 @@ from utils.shared import ensure_calamine, inject_css, render_header, render_side
 
 ensure_calamine()
 
-st.set_page_config(page_title="H2O缺料試算表", page_icon="💧", layout="wide")
+st.set_page_config(page_title="H2O缺料試算表", page_icon="💧", layout="wide", initial_sidebar_state="expanded")
 inject_css()
 render_header(
     title="H2O 缺料試算表",

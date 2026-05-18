@@ -21,7 +21,7 @@ if "lang" not in st.session_state:
 # =========================
 # 1. 頁面設定
 # =========================
-st.set_page_config(page_title="資材管理決策系統", page_icon="📦", layout="wide")
+st.set_page_config(page_title="資材管理決策系統", page_icon="📦", layout="wide", initial_sidebar_state="expanded")
 inject_css()
 
 # 語言切換（側邊欄頂部）

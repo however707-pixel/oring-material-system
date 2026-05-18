@@ -16,7 +16,7 @@ ensure_calamine()
 # =========================
 # 1. 頁面設定
 # =========================
-st.set_page_config(page_title="委外調撥確認", page_icon="🏭", layout="wide")
+st.set_page_config(page_title="委外調撥確認", page_icon="🏭", layout="wide", initial_sidebar_state="expanded")
 inject_css()
 render_header(
     title="委外調撥確認",
