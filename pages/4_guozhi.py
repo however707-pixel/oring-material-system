@@ -155,8 +155,8 @@ with st.spinner("分析中，請稍候..."):
         in_range = dated[dated['日期'] <= end]
         if not in_range.empty:
             last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
+            # 扣除所有預計進貨（不限起始日，未實際入庫不算可用）
             incoming = dated[
-                (dated['日期'] >= start) &
                 (dated['日期'] <= end) &
                 (dated['異動別'] == '預計進貨')
             ]['異動數量'].sum()
@@ -213,10 +213,13 @@ with st.spinner("分析中，請稍候..."):
         # 客戶料號：從缺料表取 客戶料號 欄
         cust_pn = gz_row.get('客戶料號', '') or ''
 
+        d = int(k_deficit)
+        k_qty_str = f"{k_qty:,}  (原缺 {d:,})" if k_qty != d else k_qty
+
         rows.append({
             '品號':               pno,
             'SPQ':                int(spq) if spq else 1,
-            '國智代工倉 缺料量':   k_qty,
+            '國智代工倉 缺料量':   k_qty_str,
             '可調撥來源倉（倉代碼/可用量）': src,
             '客戶料號':            cust_pn,
         })

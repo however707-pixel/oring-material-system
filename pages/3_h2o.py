@@ -138,14 +138,13 @@ with st.spinner("分析中，請稍候..."):
         if w.empty: return 0
         wh_name = w['庫別名稱'].dropna().iloc[0] if w['庫別名稱'].dropna().shape[0]>0 else ''
         if wh_name in excl: return 0
-        # ── 有日期列：取區間末最後一筆 預計結存，再扣掉期間內預計進貨 ──
+        # ── 有日期列：取區間末最後一筆 預計結存，扣掉所有預計進貨（不限起始日）──
         dated = w[w['日期'].notna() & w['預計結存'].notna()]
         in_range = dated[dated['日期'] <= end]
         if not in_range.empty:
             last_bal  = in_range.sort_values('日期').iloc[-1]['預計結存']
-            # 預計進貨在分析區間內的合計（尚未實際入庫，不算可用庫存）
+            # 預計進貨：無論日期早晚，只要納入 last_bal 計算的都扣除（未實際入庫不算可用）
             incoming  = dated[
-                (dated['日期'] >= start) &
                 (dated['日期'] <= end) &
                 (dated['異動別'] == '預計進貨')
             ]['異動數量'].sum()
@@ -262,12 +261,18 @@ with st.spinner("分析中，請稍候..."):
                 cust_pn = h_row[col]
                 break
 
+        def fmt_deficit(qty, deficit):
+            """SPQ調整後數量 + 原始缺料量（若不同才附加）"""
+            if not qty: return None
+            d = int(deficit)
+            return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
+
         rows.append({
             '料號':              pno,
             'SPQ':               int(spq) if spq else 1,
             '缺料量':            int(shortage) if shortage > 0 else None,
-            '唐佑代工倉 缺料量':  t_qty if t_qty else None,
-            '國智代工倉 缺料量':  k_qty if k_qty else None,
+            '唐佑代工倉 缺料量':  fmt_deficit(t_qty, t_deficit),
+            '國智代工倉 缺料量':  fmt_deficit(k_qty, k_deficit),
             '合計委外缺料':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
             '可調撥來源倉（倉代碼/可用量）': src,
             '⚠️ 配料說明':       alloc_note,
