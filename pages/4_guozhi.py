@@ -82,12 +82,12 @@ with st.spinner("分析中，請稍候..."):
                 st.error("國智缺料表 CSV 無法讀取，請確認編碼。")
                 st.stop()
         else:
-            # W11 缺料表：第2張工作表，第3列為標題（header=2），A欄='品號'
+            # W11 缺料表：第2張工作表，第1列即為標題（header=0），A欄='品號'
             try:
-                gz = pd.read_excel(h2o_file, sheet_name=1, header=2, engine='calamine')
+                gz = pd.read_excel(h2o_file, sheet_name=1, header=0, engine='calamine')
             except Exception:
                 h2o_file.seek(0)
-                gz = pd.read_excel(h2o_file, sheet_name=1, header=2, engine='openpyxl')
+                gz = pd.read_excel(h2o_file, sheet_name=1, header=0, engine='openpyxl')
     except Exception as e:
         st.error(f"國智缺料表讀取失敗：{e}")
         st.stop()
