@@ -347,8 +347,11 @@ def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
             shortage_qty = max(needed - prod_stock, 0.0) if is_short else 0.0
 
         # 其他倉庫存（排除生產區，用於缺料原因判斷）
-        other_wh = {wh_map.get(k, k): v for k, v in pno_stocks.items()
-                    if k != prod_wh_code and v > 0}
+        # 模板模式下不判斷「在其他倉庫」：期初庫存在其他倉可能已被計劃消耗，不代表可用
+        other_wh = {} if is_template else {
+            wh_map.get(k, k): v for k, v in pno_stocks.items()
+            if k != prod_wh_code and v > 0
+        }
 
         reason = reason_detail = ""
         if is_short:
