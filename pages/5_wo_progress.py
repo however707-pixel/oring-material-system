@@ -223,14 +223,17 @@ def parse_transfer(file_bytes):
 # 主邏輯
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date=""):
+def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
+                        mo_no="", all_order_nos=None):
     """
     從 bom_map 找出對應成品品號的 BOM 料號。
 
     匹配策略（依優先順序）：
     1. 來源訂單 = wo_order_no（工單有訂單單號時精準匹配）
     2. 僅有一個來源訂單群組時，直接回傳（該群組即為本工單的需求）
-    3. 多個來源訂單時回傳全部（讓 analyze_bom 以結存判斷）
+    3. 來源訂單 = mo_no（製令編號直接出現在供需表來源訂單欄）
+    4. 排除其他工單已認領的來源訂單，取剩餘未認領的群組
+    5. 多個群組仍無法區分時，顯示全部（並讓用戶知道）
     """
     all_entries = []
     for key, entries in bom_map.items():
@@ -240,7 +243,7 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date=""):
     if not all_entries:
         return []
 
-    # 策略1：精準以來源訂單過濾
+    # 策略1：精準以訂單單號匹配來源訂單
     if wo_order_no:
         filtered = [e for e in all_entries if e.get("來源訂單") == wo_order_no]
         if filtered:
@@ -251,7 +254,21 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date=""):
     if len(src_orders) == 1:
         return all_entries
 
-    # 策略3：多個來源訂單，回傳全部（顯示整體供需狀況）
+    # 策略3：製令編號直接作為來源訂單
+    if mo_no:
+        filtered = [e for e in all_entries if e.get("來源訂單") == mo_no]
+        if filtered:
+            return filtered
+
+    # 策略4：排除已被其他工單（含訂單單號）認領的來源訂單，取剩餘群組
+    if all_order_nos:
+        claimed_src = {e.get("來源訂單", "") for e in all_entries
+                       if e.get("來源訂單", "") in all_order_nos}
+        unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
+        if unclaimed:
+            return unclaimed
+
+    # 策略5：無法判斷，回傳全部（可能含多工單需求，數量偏高）
     return all_entries
 
 
@@ -437,16 +454,35 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── 取得 BOM 料號 ──────────────────────────────────────────────────────────────
+# 所有工單中有訂單單號的集合，用於排除已被其他工單認領的來源訂單
+all_order_nos = {v.get("訂單單號", "") for v in wo_dict.values()
+                 if v.get("訂單單號", "").strip()}
+
 bom_entries = get_bom_for_product(
     product_pno, bom_map,
     wo_order_no=wo.get("訂單單號", ""),
     wo_open_date=wo.get("開 工 日", ""),
+    mo_no=mo_input,
+    all_order_nos=all_order_nos,
 )
 
 if not bom_entries:
     st.warning(f"在供需表中找不到成品品號「{product_pno}」的 BOM 料號。\n\n"
                "可能原因：供需表未含此工單的需求展開，或品號格式不符。")
     st.stop()
+
+# 若需求來源訂單全部被其他工單認領（策略4返回空），表示本工單的需求行在供需表中不存在或格式不符
+_src_in_result = {e.get("來源訂單", "") for e in bom_entries}
+_all_entry_src = set()
+for key, entries in bom_map.items():
+    if product_pno in key or key in product_pno:
+        _all_entry_src.update(e.get("來源訂單", "") for e in entries)
+
+if len(_all_entry_src) > 1 and not wo.get("訂單單號", "").strip() and _src_in_result == _all_entry_src:
+    st.warning(
+        "⚠️ 此工單無訂單單號，且供需表中存在多個來源訂單群組，"
+        "系統無法精確對應本工單的需求行，以下數據為全部群組合計，**需求數量可能偏高**。"
+    )
 
 # ── 分析 BOM ──────────────────────────────────────────────────────────────────
 with st.spinner("分析料況中..."):
