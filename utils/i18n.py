@@ -19,6 +19,7 @@ TEXTS = {
         "link_transfer": "工單調撥決策看板",
         "link_outsource":"委外調撥確認",
         "link_wo_progress": "工單進度表",
+        "link_shortage_detail": "區間工單缺料明細",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -121,6 +122,7 @@ TEXTS = {
         "link_transfer": "Transfer Decision Board",
         "link_outsource":"Outsource Confirmation",
         "link_wo_progress": "Work Order Progress",
+        "link_shortage_detail": "Period Shortage Detail",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",
