@@ -464,7 +464,7 @@ st.markdown(f"#### 💧 H2O 委外缺料試算（區間末結存）　{date_star
 
 # 顯示用：空值換成 "-"，隱藏內部欄位
 df_display = df_out.copy()
-fill_dash_cols = ['缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']
+fill_dash_cols = ['唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']
 if has_transfer:
     fill_dash_cols += ['唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
                        '國智代工倉 待調撥量','國智代工倉 實際應調撥量']
@@ -478,7 +478,7 @@ df_display['合計委外缺料'] = df_display['合計委外缺料'].apply(
 # 欄位順序：有互調表時插入4個新欄
 if has_transfer:
     disp_cols = [
-        '料號','SPQ','缺料量',
+        '料號','SPQ',
         '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
         '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
         '合計委外缺料','預計進料日','預計數量',
@@ -486,7 +486,7 @@ if has_transfer:
     ]
 else:
     disp_cols = [
-        '料號','SPQ','缺料量',
+        '料號','SPQ',
         '唐佑代工倉 缺料量','國智代工倉 缺料量',
         '合計委外缺料','預計進料日','預計數量',
         '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
@@ -537,48 +537,48 @@ def build_excel(df, start, end, with_transfer=False):
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     if with_transfer:
-        # 15 欄
-        total_cols = 15
+        # 14 欄
+        total_cols = 14
         headers = [
-            '料號','SPQ','缺料量',
+            '料號','SPQ',
             '唐佑代工倉\n缺料量','唐佑代工倉\n待調撥量','唐佑代工倉\n實際應調撥量',
             '國智代工倉\n缺料量','國智代工倉\n待調撥量','國智代工倉\n實際應調撥量',
             '合計委外\n缺料','預計進料日','預計數量',
             '可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N',
         ]
         hdr_color = [
-            'FFD9E8FF','FFF2F2F2','FFD9E8FF',
+            'FFD9E8FF','FFF2F2F2',
             'FFD6EACB','FFC5DFB0','FFB0D096',   # 唐佑：淡綠色系
             'FFD9E8FF','FFB8D4EE','FFA0C4E8',   # 國智：淡藍色系
             'FFFFF2CC','FFE8F4FD','FFD6EEF8',   # 合計、預計進料日、預計數量
             'FFF5E6FF','FFFDE8D0','FFF2F2F2',
         ]
         col_order = [
-            '料號','SPQ','缺料量',
+            '料號','SPQ',
             '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
             '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
             '合計委外缺料','預計進料日','預計數量',
             '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
         ]
-        col_widths  = [28,8,12, 14,14,16, 14,14,16, 14,14,12, 32,42,28]
-        left_cols   = {1,13,14,15}
-        wrap_col    = 14
-        note_col    = 14
-        src_col     = 13
+        col_widths  = [28,8, 14,14,16, 14,14,16, 14,14,12, 32,42,28]
+        left_cols   = {1,12,13,14}
+        wrap_col    = 13
+        note_col    = 13
+        src_col     = 12
     else:
-        # 11 欄
-        total_cols = 11
-        headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料',
+        # 10 欄
+        total_cols = 10
+        headers   = ['料號','SPQ','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料',
                      '預計進料日','預計數量','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
-        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFD6EACB','FFD9E8FF','FFFFF2CC',
+        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD6EACB','FFD9E8FF','FFFFF2CC',
                      'FFE8F4FD','FFD6EEF8','FFF5E6FF','FFFDE8D0','FFF2F2F2']
-        col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料',
+        col_order = ['料號','SPQ','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料',
                      '預計進料日','預計數量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
-        col_widths  = [28,8,12,14,14,14, 14,12, 32,42,28]
-        left_cols   = {1,9,10,11}
-        wrap_col    = 10
-        note_col    = 10
-        src_col     = 9
+        col_widths  = [28,8,14,14,14, 14,12, 32,42,28]
+        left_cols   = {1,8,9,10}
+        wrap_col    = 9
+        note_col    = 9
+        src_col     = 8
 
     merge_end = chr(64 + total_cols)
     ws.merge_cells(f'A1:{merge_end}1')
@@ -609,12 +609,10 @@ def build_excel(df, start, end, with_transfer=False):
                 wrap_text=(c_i == wrap_col),
             )
             # 顏色標記
-            if c_i == 3 and val and isinstance(val,(int,float)) and val > 0:
-                cell.fill = PatternFill('solid', start_color='FFFCE4D6')
-            elif c_i == 4 and val:   # 唐佑缺料量 → 淡綠色
+            if c_i == 3 and val:   # 唐佑缺料量 → 淡綠色
                 cell.fill = PatternFill('solid', start_color='FFE8F5E2')
                 cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
-            elif c_i == (7 if with_transfer else 5) and val:  # 國智缺料量 → 淡藍色
+            elif c_i == (6 if with_transfer else 4) and val:  # 國智缺料量 → 淡藍色
                 cell.fill = PatternFill('solid', start_color='FFD9E8FF')
                 cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
             elif c_i == src_col and val:
@@ -625,26 +623,26 @@ def build_excel(df, start, end, with_transfer=False):
                 ws.row_dimensions[r_i].height = 52
             # 待調撥量 & 實際應調撥量：唐佑=綠系, 國智=藍系；預計進料日/預計數量
             if with_transfer:
-                if c_i == 5:   # 唐佑 待調撥量 → 綠
+                if c_i == 4:   # 唐佑 待調撥量 → 綠
                     cell.fill = PatternFill('solid', start_color='FFC5DFB0')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
-                elif c_i == 6: # 唐佑 實際應調撥量 → 深綠
+                elif c_i == 5: # 唐佑 實際應調撥量 → 深綠
                     cell.fill = PatternFill('solid', start_color='FFB0D096')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF1A4D0A')
-                elif c_i == 8: # 國智 待調撥量 → 藍
+                elif c_i == 7: # 國智 待調撥量 → 藍
                     cell.fill = PatternFill('solid', start_color='FFB8D4EE')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-                elif c_i == 9: # 國智 實際應調撥量 → 深藍
+                elif c_i == 8: # 國智 實際應調撥量 → 深藍
                     cell.fill = PatternFill('solid', start_color='FFA0C4E8')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF0F2460')
-                elif c_i == 11 and val:  # 預計進料日
+                elif c_i == 10 and val:  # 預計進料日
                     cell.fill = PatternFill('solid', start_color='FFE8F4FD')
-                elif c_i == 12 and val:  # 預計數量
+                elif c_i == 11 and val:  # 預計數量
                     cell.fill = PatternFill('solid', start_color='FFD6EEF8')
             else:
-                if c_i == 7 and val:   # 預計進料日
+                if c_i == 6 and val:   # 預計進料日
                     cell.fill = PatternFill('solid', start_color='FFE8F4FD')
-                elif c_i == 8 and val:  # 預計數量
+                elif c_i == 7 and val:  # 預計數量
                     cell.fill = PatternFill('solid', start_color='FFD6EEF8')
 
     for i, w in enumerate(col_widths, 1):
