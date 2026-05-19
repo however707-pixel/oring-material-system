@@ -502,14 +502,53 @@ st.dataframe(
 # =========================
 # 匯出 Excel
 # =========================
-def build_excel(df, start, end):
+def build_excel(df, start, end, with_transfer=False):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'H2O委外領用試算'
     thin   = Side(style='thin', color='FFCCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    ws.merge_cells('A1:I1')
+    if with_transfer:
+        # 13 欄
+        total_cols = 13
+        headers = [
+            '料號','SPQ','缺料量',
+            '唐佑代工倉\n缺料量','唐佑代工倉\n待調撥量','唐佑代工倉\n實際應調撥量',
+            '國智代工倉\n缺料量','國智代工倉\n待調撥量','國智代工倉\n實際應調撥量',
+            '合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N',
+        ]
+        hdr_color = [
+            'FFD9E8FF','FFF2F2F2','FFD9E8FF',
+            'FFDCE6F1','FFBDD7EE','FFD6E4BC',
+            'FFE2EFDA','FFBDD7EE','FFD6E4BC',
+            'FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2',
+        ]
+        col_order = [
+            '料號','SPQ','缺料量',
+            '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
+            '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+            '合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
+        ]
+        col_widths  = [28,8,12, 14,14,16, 14,14,16, 14,32,42,28]
+        left_cols   = {1,11,12,13}
+        wrap_col    = 12
+        note_col    = 12
+        src_col     = 11
+    else:
+        # 9 欄（原版）
+        total_cols = 9
+        headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
+        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2']
+        col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
+        col_widths  = [28,8,12,14,14,14,32,42,28]
+        left_cols   = {1,7,8,9}
+        wrap_col    = 8
+        note_col    = 8
+        src_col     = 7
+
+    merge_end = chr(64 + total_cols)
+    ws.merge_cells(f'A1:{merge_end}1')
     c = ws['A1']
     c.value = f'H2O 缺料委外領用試算　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
     c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
@@ -517,9 +556,6 @@ def build_excel(df, start, end):
     c.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[1].height = 24
 
-    headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
-    hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2']
-    col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
     for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
         cell = ws.cell(row=2, column=i, value=h)
         cell.font  = Font(name='Arial', bold=True, size=9)
@@ -529,34 +565,40 @@ def build_excel(df, start, end):
     ws.row_dimensions[2].height = 32
 
     for r_i, row_dict in enumerate(df.to_dict('records'), 3):
-        vals = [row_dict.get(c) for c in col_order]
+        vals = [row_dict.get(col) for col in col_order]
         for c_i, val in enumerate(vals, 1):
             cell = ws.cell(row=r_i, column=c_i, value=val)
             cell.font   = Font(name='Arial', size=9)
             cell.border = border
             cell.alignment = Alignment(
-                horizontal='left' if c_i in (1,7,8,9) else 'center',
+                horizontal='left' if c_i in left_cols else 'center',
                 vertical='center',
-                wrap_text=(c_i == 8),
+                wrap_text=(c_i == wrap_col),
             )
+            # 顏色標記
             if c_i == 3 and val and isinstance(val,(int,float)) and val > 0:
                 cell.fill = PatternFill('solid', start_color='FFFCE4D6')
-            elif c_i == 4 and val:
+            elif c_i == 4 and val:   # 唐佑缺料量
                 cell.fill = PatternFill('solid', start_color='FFDCE6F1')
                 cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-            elif c_i == 5 and val:
+            elif c_i == (7 if with_transfer else 5) and val:  # 國智缺料量
                 cell.fill = PatternFill('solid', start_color='FFE2EFDA')
                 cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
-            elif c_i == 6 and val:
-                cell.fill = PatternFill('solid', start_color='FFFFFF99')
-            elif c_i == 7 and val:
+            elif c_i == src_col and val:
                 cell.fill = PatternFill('solid', start_color='FFFFF0CC')
-            elif c_i == 8 and val:                         # ⚠️ 配料說明：橘紅底＋紅字
+            elif c_i == note_col and val:
                 cell.fill = PatternFill('solid', start_color='FFFDE8D0')
                 cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
                 ws.row_dimensions[r_i].height = 52
+            # 待調撥量（藍底）＆ 實際應調撥量（綠底）
+            if with_transfer:
+                if c_i in (5, 8):   # 待調撥量
+                    cell.fill = PatternFill('solid', start_color='FFBDD7EE')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
+                elif c_i in (6, 9): # 實際應調撥量
+                    cell.fill = PatternFill('solid', start_color='FFD6E4BC')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF375623')
 
-    col_widths = [28,8,12,14,14,14,32,42,28]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
     ws.freeze_panes = 'A3'
@@ -566,7 +608,7 @@ def build_excel(df, start, end):
     buf.seek(0)
     return buf
 
-buf = build_excel(df_out, start, end)
+buf = build_excel(df_out, start, end, with_transfer=has_transfer)
 st.download_button(
     label="⬇️ 匯出試算結果（Excel）",
     data=buf,
