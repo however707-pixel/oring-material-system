@@ -20,6 +20,7 @@ TEXTS = {
         "link_outsource":"委外調撥確認",
         "link_wo_progress": "工單進度表",
         "link_shortage_detail": "區間工單缺料明細",
+        "link_production_tracker": "生產進度表",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -123,6 +124,7 @@ TEXTS = {
         "link_outsource":"Outsource Confirmation",
         "link_wo_progress": "Work Order Progress",
         "link_shortage_detail": "Period Shortage Detail",
+        "link_production_tracker": "Production Tracker",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",
