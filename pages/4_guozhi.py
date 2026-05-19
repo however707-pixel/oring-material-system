@@ -278,7 +278,7 @@ with st.spinner("分析中，請稍候..."):
         return sub.sort_values('日期').iloc[0]['日期']
 
     def get_incoming(pno):
-        """取得分析區間內所有預計進貨的日期（G欄）與數量（I欄，異動數量）"""
+        """取得分析區間內所有預計進貨的日期（G欄）與數量（I欄，異動數量），每筆分開顯示"""
         sub = sd[
             (sd['品號'] == pno) &
             (sd['異動別'] == '預計進貨') &
@@ -288,9 +288,9 @@ with st.spinner("分析中，請稍候..."):
         ].sort_values('日期')
         if sub.empty:
             return '', None
-        dates_str = '、'.join(sub['日期'].dt.strftime('%m/%d').unique().tolist())
-        qty_total = int(sub['異動數量'].sum())
-        return dates_str, qty_total
+        dates_str = '、'.join(sub['日期'].dt.strftime('%m/%d').tolist())
+        qty_str   = '、'.join(str(int(q)) for q in sub['異動數量'])
+        return dates_str, qty_str
 
     parts = gz['品號'].dropna().unique()
 
