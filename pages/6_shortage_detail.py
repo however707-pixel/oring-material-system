@@ -323,12 +323,13 @@ def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
 with st.sidebar:
     st.divider()
     st.markdown("### 📂 上傳資料檔案")
-    f_supply = st.file_uploader("供需表（分倉）", type=["xlsx", "xls"], key="f_supply")
-    f_wo     = st.file_uploader("工單表",         type=["xlsx", "xls"], key="f_wo")
-    f_qc     = st.file_uploader("QC表",           type=["xlsx", "xls"], key="f_qc")
+    f_supply   = st.file_uploader("供需表（分倉）", type=["xlsx", "xls"], key="f_supply")
+    f_wo       = st.file_uploader("工單表",         type=["xlsx", "xls"], key="f_wo")
+    f_qc       = st.file_uploader("QC表",           type=["xlsx", "xls"], key="f_qc")
+    f_transfer = st.file_uploader("調撥表",         type=["xlsx", "xls"], key="f_transfer")
 
 # ── 檔案檢查 ──────────────────────────────────────────────────────────────────
-if not (f_supply and f_wo and f_qc):
+if not (f_supply and f_wo and f_qc and f_transfer):
     st.info("👈 請先在左側上傳三個 Excel 檔案：供需表、工單表、QC表")
     st.markdown("""
     | 檔案 | 用途 |
@@ -336,6 +337,7 @@ if not (f_supply and f_wo and f_qc):
     | **供需表（分倉）** | BOM 料號清單 + 各倉庫存量 |
     | **工單表** | 工單資訊、開工日、生產庫別、廠商 |
     | **QC表** | 料件是否在 IQC 待驗中 |
+    | **調撥表** | 料件調撥紀錄參考 |
     """)
     st.stop()
 
