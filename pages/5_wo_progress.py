@@ -265,10 +265,13 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
         claimed_src = {e.get("來源訂單", "") for e in all_entries
                        if e.get("來源訂單", "") in all_order_nos}
         if claimed_src:
-            # 至少有部分群組被其他工單認領 → 只取未認領的
             unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
-            # 不管 unclaimed 是否為空，都回傳（空=本工單需求行不在供需表）
-            return unclaimed
+            if unclaimed:
+                return unclaimed
+            # 全部被認領 → 取最早來源訂單群組作為 BOM 模板，清除結存避免誤判
+            first_src = sorted(claimed_src)[0]
+            return [dict(e, 結存=None) for e in all_entries
+                    if e.get("來源訂單", "") == first_src]
 
     # 策略5：無法判斷，回傳全部（可能含多工單需求，數量偏高）
     return all_entries
@@ -496,7 +499,6 @@ with st.expander("🔍 診斷資訊（來源訂單匹配）", expanded=not bool(
     st.markdown(f"**本次回傳 BOM 條目數：** {len(bom_entries)}")
 
 if not bom_entries:
-    # 判斷是「供需表完全沒有此品號」還是「有但需求行屬於其他工單」
     _any_in_bom = any(product_pno in k or k in product_pno for k in bom_map)
     if _any_in_bom:
         st.warning(
@@ -510,6 +512,15 @@ if not bom_entries:
             "可能原因：供需表未含此工單的需求展開，或品號格式不符。"
         )
     st.stop()
+
+# 若回傳的是模板群組（所有來源訂單都屬於其他工單），顯示提示
+_entry_srcs = {e.get("來源訂單", "") for e in bom_entries if e.get("來源訂單", "")}
+_is_template = bool(_entry_srcs) and _entry_srcs <= all_order_nos
+if _is_template:
+    st.info(
+        "ℹ️ 此工單在供需表中無獨立需求行（可能為庫存補貨單或供需表版本未含此單），"
+        "以下 BOM 結構取自同款成品的參考群組，**庫存比較以期初庫存為基準，僅供參考**。"
+    )
 
 
 # ── 分析 BOM ──────────────────────────────────────────────────────────────────
