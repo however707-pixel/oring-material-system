@@ -33,8 +33,9 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
-    h2o_file = st.file_uploader("📂 上傳國智缺料表（W11）", type=["xlsx", "xls", "csv"])
-    sd_file  = st.file_uploader("📂 上傳供需表",         type=["xlsx", "xls", "csv"])
+    h2o_file      = st.file_uploader("📂 上傳國智缺料表（W11）",          type=["xlsx", "xls", "csv"])
+    sd_file       = st.file_uploader("📂 上傳供需表",                      type=["xlsx", "xls", "csv"])
+    transfer_file = st.file_uploader("📂 上傳加工廠互調料滙整表（選填）", type=["xlsx", "xls", "xlsm"])
 
     st.markdown("**📅 分析區間**")
     date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")
@@ -118,6 +119,23 @@ with st.spinner("分析中，請稍候..."):
 
     start = pd.Timestamp(date_start)
     end   = pd.Timestamp(date_end)
+
+    # ── 讀取加工廠互調料滙整表（選填）──
+    # H欄(index 7)=料號、J欄(index 9)=國智代工倉待調撥量、K欄(index 10)=唐佑代工倉待調撥量
+    kuo_pending_map = {}
+    if transfer_file is not None:
+        try:
+            tf_raw = pd.read_excel(transfer_file, sheet_name=0, header=None, engine='openpyxl')
+            tf = tf_raw.iloc[1:].copy()
+            tf_h = tf[7].astype(str).str.strip()
+            tf_j = pd.to_numeric(tf[9], errors='coerce').fillna(0)
+            tf_df = pd.DataFrame({'料號': tf_h, 'J': tf_j})
+            tf_df = tf_df[tf_df['料號'].notna() & (tf_df['料號'] != '') & (tf_df['料號'] != 'nan')]
+            kuo_pending_map = tf_df.groupby('料號')['J'].sum().to_dict()
+        except Exception as e:
+            st.warning(f"加工廠互調料滙整表讀取失敗（略過）：{e}")
+
+    has_transfer = bool(kuo_pending_map)
 
     spq_map = {}
     if 'SPQ' in sd.columns:
@@ -300,10 +318,17 @@ with st.spinner("分析中，請稍候..."):
         # B欄 = 客戶料號
         cust_pn = str(gz_row.get('客戶料號', '') or '') if pd.notna(gz_row.get('客戶料號', '')) else ''
 
+        # 待調撥量 & 實際應調撥量
+        pno_str   = str(pno).strip()
+        k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
+        k_actual  = max(0, k_qty - k_pending) if k_qty > 0 else None
+
         rows.append({
             '品號':               pno,
             'SPQ':                spq_int,
             '國智代工倉 缺料量':   k_qty_str,
+            '國智代工倉 待調撥量':    k_pending if (has_transfer and k_qty > 0) else None,
+            '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
             '_國智qty':           k_qty,
             '_shortage':          shortage,
             '可調撥來源倉（倉代碼/可用量）': src,
@@ -312,8 +337,8 @@ with st.spinner("分析中，請稍候..."):
         })
 
     df_out = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=['品號','SPQ','國智代工倉 缺料量','_國智qty','_shortage',
-                 '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+        columns=['品號','SPQ','國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+                 '_國智qty','_shortage','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     )
 
 # =========================
@@ -346,7 +371,12 @@ else:
             icon="⚠️",
         )
 
-    display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+    if has_transfer:
+        display_cols = ['品號','SPQ','國智代工倉 缺料量',
+                        '國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+                        '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+    else:
+        display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     df_display = df_out[display_cols].copy()
 
     _shortage_pnos = set(short_warn['品號'].tolist()) if len(short_warn) else set()
@@ -373,24 +403,42 @@ else:
     # =========================
     # 匯出 Excel
     # =========================
-    def build_excel(df, start, end):
+    def build_excel(df, start, end, with_transfer=False):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = '國智配料表'
         thin   = Side(style='thin', color='FFCCCCCC')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        ws.merge_cells('A1:F1')
+        if with_transfer:
+            total_cols = 8
+            headers   = ['品號','SPQ','國智代工倉\n缺料量','國智代工倉\n待調撥量','國智代工倉\n實際應調撥量',
+                         '可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
+            hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFB8D4EE','FFA0C4E8',
+                         'FFF5E6FF','FFFCE4D6','FFF2F2F2']
+            col_order = ['品號','SPQ','國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+                         '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+            col_widths  = [28, 8, 16, 14, 16, 36, 40, 28]
+            left_cols   = {1, 6, 7, 8}
+            note_col, src_col = 7, 6
+        else:
+            total_cols = 6
+            headers   = ['品號','SPQ','國智代工倉\n缺料量','可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
+            hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFF5E6FF','FFFCE4D6','FFF2F2F2']
+            col_order = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+            col_widths  = [28, 8, 16, 36, 40, 28]
+            left_cols   = {1, 4, 5, 6}
+            note_col, src_col = 5, 4
+
+        merge_end = chr(64 + total_cols)
+        ws.merge_cells(f'A1:{merge_end}1')
         c = ws['A1']
         c.value = f'國智配料表　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
         c.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
-        c.fill  = PatternFill('solid', start_color='FF15803D')
+        c.fill  = PatternFill('solid', start_color='FF1E3A8A')
         c.alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[1].height = 24
 
-        headers   = ['品號', 'SPQ', '國智代工倉\n缺料量', '可調撥來源倉\n（倉代碼/可用量）', '配料說明\n（庫存不足時）', '客戶料號']
-        hdr_color = ['FFD9E8FF', 'FFF2F2F2', 'FFE2EFDA', 'FFF5E6FF', 'FFFCE4D6', 'FFF2F2F2']
-        col_order = ['品號', 'SPQ', '國智代工倉 缺料量', '可調撥來源倉（倉代碼/可用量）', '⚠️ 配料說明', '客戶料號']
         for i, (h, hc) in enumerate(zip(headers, hdr_color), 1):
             cell = ws.cell(row=2, column=i, value=h)
             cell.font  = Font(name='Arial', bold=True, size=9)
@@ -409,19 +457,29 @@ else:
                                    color='FF991B1B' if is_short else 'FF000000')
                 cell.border = border
                 cell.alignment = Alignment(
-                    horizontal='left' if c_i in (1, 4, 5, 6) else 'center',
+                    horizontal='left' if c_i in left_cols else 'center',
                     vertical='center',
-                    wrap_text=(c_i == 5),
+                    wrap_text=(c_i == note_col),
                 )
                 if is_short:
                     cell.fill = PatternFill('solid', start_color='FFFCE4EC')
-                elif c_i == 3 and val:
-                    cell.fill = PatternFill('solid', start_color='FFE2EFDA')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
-                elif c_i == 4 and val:
+                elif c_i == 3 and val:   # 國智缺料量 → 淡藍
+                    cell.fill = PatternFill('solid', start_color='FFD9E8FF')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
+                elif c_i == src_col and val:
                     cell.fill = PatternFill('solid', start_color='FFFFF0CC')
+                elif c_i == note_col and val:
+                    cell.fill = PatternFill('solid', start_color='FFFDE8D0')
+                    cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
+                    ws.row_dimensions[r_i].height = 52
+                if with_transfer:
+                    if c_i == 4:   # 待調撥量 → 藍
+                        cell.fill = PatternFill('solid', start_color='FFB8D4EE')
+                        cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
+                    elif c_i == 5: # 實際應調撥量 → 深藍
+                        cell.fill = PatternFill('solid', start_color='FFA0C4E8')
+                        cell.font = Font(name='Arial', size=9, bold=True, color='FF0F2460')
 
-        col_widths = [28, 8, 16, 36, 40, 28]
         for i, w in enumerate(col_widths, 1):
             ws.column_dimensions[chr(64+i)].width = w
         ws.freeze_panes = 'A3'
@@ -431,7 +489,7 @@ else:
         buf.seek(0)
         return buf
 
-    buf = build_excel(df_out, start, end)
+    buf = build_excel(df_out, start, end, with_transfer=has_transfer)
     st.download_button(
         label="⬇️ 匯出國智配料表（Excel）",
         data=buf,
