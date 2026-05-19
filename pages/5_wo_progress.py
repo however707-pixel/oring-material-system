@@ -284,17 +284,17 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
     return all_entries
 
 
-def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code):
+def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
+                is_template=False):
     """
     對每個 BOM 料號計算可用性與缺料原因。
 
-    缺料判斷邏輯（以「結存」為核心）：
-    - bom_entries 已篩選為本工單的需求行，每行的「結存」是扣除本工單需求後的預計餘量。
-    - 結存 >= 0 → 齊料（扣除後仍有餘量）
-    - 結存 < 0  → 缺料
-      缺料量 = min(需求量, -結存)
-      （若在我們之前庫存已負，則需求量全缺；否則是部分缺）
-    - 若 bom_entries 不含結存資料（fallback），改用期初庫存 vs 需求量比較。
+    一般模式（工單在供需表中有自己的需求行）：
+    - 以「結存」為核心：結存 >= 0 → 齊料，結存 < 0 → 缺料。
+
+    模板模式（is_template=True，工單不在供需表，以他工單 BOM 作為參考）：
+    - 結存來自其他工單的供需計劃，不適用於本工單，改用「期初庫存合計」判斷。
+    - 期初庫存合計 = 該料號所有倉別的庫存可用量加總。
     """
     part_demand = {}
     for e in bom_entries:
@@ -320,16 +320,20 @@ def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code):
         prod_wh_code = info["庫別代號"]
         prod_wh_name = info["庫別名稱"] or wh_map.get(prod_wh_code, prod_wh_code)
         pno_stocks   = stocks.get(pno, {})
-        prod_stock   = pno_stocks.get(prod_wh_code, 0.0)
         bal          = info["結存"]
 
-        # 缺料判斷
-        if bal is not None:
-            is_short    = bal < 0
-            # 缺料量：min(需求, 超出部分)
+        if is_template:
+            # 模板模式：加總所有倉別期初庫存與需求比較
+            total_stock  = sum(pno_stocks.values()) if pno_stocks else 0.0
+            prod_stock   = total_stock
+            is_short     = total_stock < needed
+            shortage_qty = max(needed - total_stock, 0.0) if is_short else 0.0
+        elif bal is not None:
+            prod_stock   = pno_stocks.get(prod_wh_code, 0.0)
+            is_short     = bal < 0
             shortage_qty = min(needed, -bal) if is_short else 0.0
         else:
-            # fallback：期初庫存 vs 需求
+            prod_stock   = pno_stocks.get(prod_wh_code, 0.0)
             is_short     = prod_stock < needed
             shortage_qty = max(needed - prod_stock, 0.0) if is_short else 0.0
 
@@ -532,7 +536,8 @@ if _is_template:
 
 # ── 分析 BOM ──────────────────────────────────────────────────────────────────
 with st.spinner("分析料況中..."):
-    result_rows = analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code)
+    result_rows = analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
+                              is_template=_is_template)
 
 df_result = pd.DataFrame(result_rows)
 
