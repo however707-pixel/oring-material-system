@@ -79,7 +79,10 @@ with st.spinner("分析中，請稍候..."):
                 except Exception:
                     h2o_file.seek(0)
         else:
-            h2o = pd.read_excel(h2o_file, sheet_name=0, header=0)
+            # 優先讀 'H2O' 工作表；若不存在則退回第1張表
+            xl = pd.ExcelFile(h2o_file)
+            sh = 'H2O' if 'H2O' in xl.sheet_names else xl.sheet_names[0]
+            h2o = pd.read_excel(xl, sheet_name=sh, header=0)
     except Exception as e:
         st.error(f"H2O 缺料明細讀取失敗：{e}")
         st.stop()
@@ -100,10 +103,13 @@ with st.spinner("分析中，請稍候..."):
         st.error(f"供需表讀取失敗：{e}")
         st.stop()
 
-    # 欄位檢查
-    if '料號' not in h2o.columns:
-        st.error("H2O 缺料明細找不到「料號」欄位，請確認檔案格式。")
+    # ── 以 J 欄（第10欄，index 9）Customer P/N 作為料號來源，去重複 ──
+    if h2o.shape[1] < 10:
+        st.error("H2O 缺料明細欄位不足 10 欄，找不到 J 欄（Customer P/N），請確認檔案格式。")
         st.stop()
+    h2o['料號'] = h2o.iloc[:, 9].astype(str).str.strip().replace('nan', pd.NA)
+
+    # 欄位檢查
     for col in ['品號', '庫別名稱', '日期', '異動別', '異動數量']:
         if col not in sd.columns:
             st.error(f"供需表找不到「{col}」欄位，請確認檔案格式。")
@@ -306,8 +312,10 @@ with st.spinner("分析中，請稍候..."):
 
     rows = []
     for pno in parts:
-        h_row    = h2o[h2o['料號']==pno].iloc[0]
-        shortage = h_row.get('正的是缺料', 0) or 0
+        h_rows   = h2o[h2o['料號']==pno]
+        h_row    = h_rows.iloc[0]
+        # N欄(index 13) = Shortage Q'ty（不足數量），同料號多列時加總
+        shortage = pd.to_numeric(h_rows.iloc[:, 13], errors='coerce').fillna(0).sum()
         spq      = spq_map.get(pno, 1)
 
         # ✅ 正確邏輯：用區間末預計結存負數 = 委外廠缺料量
@@ -370,11 +378,8 @@ with st.spinner("分析中，請稍候..."):
                 f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_can:,}，尚缺 {second_short:,}"
             )
 
-        cust_pn = ''
-        for col in h_row.index:
-            if 'Customer' in str(col) or 'P/N' in str(col):
-                cust_pn = h_row[col]
-                break
+        # I欄(index 8) = Material P/N（子件件號，ORing 內部料號）
+        cust_pn = str(h_row.iloc[8]) if pd.notna(h_row.iloc[8]) else ''
 
         def fmt_deficit(qty, deficit, alloc=None):
             """缺料量顯示：
@@ -520,8 +525,8 @@ def build_excel(df, start, end, with_transfer=False):
         ]
         hdr_color = [
             'FFD9E8FF','FFF2F2F2','FFD9E8FF',
-            'FFDCE6F1','FFBDD7EE','FFD6E4BC',
-            'FFE2EFDA','FFBDD7EE','FFD6E4BC',
+            'FFD6EACB','FFC5DFB0','FFB0D096',   # 唐佑：淡綠色系
+            'FFD9E8FF','FFB8D4EE','FFA0C4E8',   # 國智：淡藍色系
             'FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2',
         ]
         col_order = [
@@ -539,7 +544,7 @@ def build_excel(df, start, end, with_transfer=False):
         # 9 欄（原版）
         total_cols = 9
         headers   = ['料號','SPQ','缺料量','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
-        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFDCE6F1','FFE2EFDA','FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2']
+        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFD6EACB','FFD9E8FF','FFFFF2CC','FFF5E6FF','FFFDE8D0','FFF2F2F2']
         col_order = ['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
         col_widths  = [28,8,12,14,14,14,32,42,28]
         left_cols   = {1,7,8,9}
@@ -578,26 +583,32 @@ def build_excel(df, start, end, with_transfer=False):
             # 顏色標記
             if c_i == 3 and val and isinstance(val,(int,float)) and val > 0:
                 cell.fill = PatternFill('solid', start_color='FFFCE4D6')
-            elif c_i == 4 and val:   # 唐佑缺料量
-                cell.fill = PatternFill('solid', start_color='FFDCE6F1')
+            elif c_i == 4 and val:   # 唐佑缺料量 → 淡綠色
+                cell.fill = PatternFill('solid', start_color='FFE8F5E2')
+                cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
+            elif c_i == (7 if with_transfer else 5) and val:  # 國智缺料量 → 淡藍色
+                cell.fill = PatternFill('solid', start_color='FFD9E8FF')
                 cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-            elif c_i == (7 if with_transfer else 5) and val:  # 國智缺料量
-                cell.fill = PatternFill('solid', start_color='FFE2EFDA')
-                cell.font = Font(name='Arial', size=9, bold=True, color='FF15803D')
             elif c_i == src_col and val:
                 cell.fill = PatternFill('solid', start_color='FFFFF0CC')
             elif c_i == note_col and val:
                 cell.fill = PatternFill('solid', start_color='FFFDE8D0')
                 cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
                 ws.row_dimensions[r_i].height = 52
-            # 待調撥量（藍底）＆ 實際應調撥量（綠底）
+            # 待調撥量 & 實際應調撥量：唐佑=綠系, 國智=藍系
             if with_transfer:
-                if c_i in (5, 8):   # 待調撥量
-                    cell.fill = PatternFill('solid', start_color='FFBDD7EE')
+                if c_i == 5:   # 唐佑 待調撥量 → 綠
+                    cell.fill = PatternFill('solid', start_color='FFC5DFB0')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
+                elif c_i == 6: # 唐佑 實際應調撥量 → 深綠
+                    cell.fill = PatternFill('solid', start_color='FFB0D096')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF1A4D0A')
+                elif c_i == 8: # 國智 待調撥量 → 藍
+                    cell.fill = PatternFill('solid', start_color='FFB8D4EE')
                     cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-                elif c_i in (6, 9): # 實際應調撥量
-                    cell.fill = PatternFill('solid', start_color='FFD6E4BC')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF375623')
+                elif c_i == 9: # 國智 實際應調撥量 → 深藍
+                    cell.fill = PatternFill('solid', start_color='FFA0C4E8')
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF0F2460')
 
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[chr(64+i)].width = w
