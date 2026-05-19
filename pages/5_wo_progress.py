@@ -264,8 +264,10 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
     if all_order_nos:
         claimed_src = {e.get("來源訂單", "") for e in all_entries
                        if e.get("來源訂單", "") in all_order_nos}
-        unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
-        if unclaimed:
+        if claimed_src:
+            # 至少有部分群組被其他工單認領 → 只取未認領的
+            unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
+            # 不管 unclaimed 是否為空，都回傳（空=本工單需求行不在供需表）
             return unclaimed
 
     # 策略5：無法判斷，回傳全部（可能含多工單需求，數量偏高）
@@ -467,22 +469,21 @@ bom_entries = get_bom_for_product(
 )
 
 if not bom_entries:
-    st.warning(f"在供需表中找不到成品品號「{product_pno}」的 BOM 料號。\n\n"
-               "可能原因：供需表未含此工單的需求展開，或品號格式不符。")
+    # 判斷是「供需表完全沒有此品號」還是「有但需求行屬於其他工單」
+    _any_in_bom = any(product_pno in k or k in product_pno for k in bom_map)
+    if _any_in_bom:
+        st.warning(
+            f"⚠️ 供需表中有成品品號「{product_pno}」的資料，"
+            "但其需求行（預計領用）全部對應到其他工單的訂單單號，"
+            "本工單的需求尚未展入供需表中，或供需表版本不含此工單。"
+        )
+    else:
+        st.warning(
+            f"在供需表中找不到成品品號「{product_pno}」的 BOM 料號。\n\n"
+            "可能原因：供需表未含此工單的需求展開，或品號格式不符。"
+        )
     st.stop()
 
-# 若需求來源訂單全部被其他工單認領（策略4返回空），表示本工單的需求行在供需表中不存在或格式不符
-_src_in_result = {e.get("來源訂單", "") for e in bom_entries}
-_all_entry_src = set()
-for key, entries in bom_map.items():
-    if product_pno in key or key in product_pno:
-        _all_entry_src.update(e.get("來源訂單", "") for e in entries)
-
-if len(_all_entry_src) > 1 and not wo.get("訂單單號", "").strip() and _src_in_result == _all_entry_src:
-    st.warning(
-        "⚠️ 此工單無訂單單號，且供需表中存在多個來源訂單群組，"
-        "系統無法精確對應本工單的需求行，以下數據為全部群組合計，**需求數量可能偏高**。"
-    )
 
 # ── 分析 BOM ──────────────────────────────────────────────────────────────────
 with st.spinner("分析料況中..."):
