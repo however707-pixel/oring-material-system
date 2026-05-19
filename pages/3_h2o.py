@@ -33,8 +33,9 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
-    h2o_file = st.file_uploader("📂 上傳 H2O 缺料明細", type=["xlsx", "xls", "csv"])
-    sd_file  = st.file_uploader("📂 上傳供需表",         type=["xlsx", "xls", "csv"])
+    h2o_file      = st.file_uploader("📂 上傳 H2O 缺料明細",      type=["xlsx", "xls", "csv"])
+    sd_file       = st.file_uploader("📂 上傳供需表",              type=["xlsx", "xls", "csv"])
+    transfer_file = st.file_uploader("📂 上傳加工廠互調料滙整表（選填）", type=["xlsx", "xls", "xlsm"])
 
     st.markdown("**📅 分析區間**")
     date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")
@@ -110,6 +111,28 @@ with st.spinner("分析中，請稍候..."):
 
     start = pd.Timestamp(date_start)
     end   = pd.Timestamp(date_end)
+
+    # ── 讀取加工廠互調料滙整表（選填）──
+    # H欄(index 7)=料號、J欄(index 9)=國智代工倉待調撥量、K欄(index 10)=唐佑代工倉待調撥量
+    tang_pending_map = {}
+    kuo_pending_map  = {}
+    if transfer_file is not None:
+        try:
+            tf_raw = pd.read_excel(transfer_file, sheet_name=0, header=None,
+                                   engine='openpyxl')
+            tf = tf_raw.iloc[1:].copy()  # 第1列為標題，從第2列開始
+            tf_h = tf[7].astype(str).str.strip()
+            tf_j = pd.to_numeric(tf[9], errors='coerce').fillna(0)
+            tf_k = pd.to_numeric(tf[10], errors='coerce').fillna(0)
+            tf_df = pd.DataFrame({'料號': tf_h, 'J': tf_j, 'K': tf_k})
+            tf_df = tf_df[tf_df['料號'].notna() & (tf_df['料號'] != '') & (tf_df['料號'] != 'nan')]
+            grp = tf_df.groupby('料號')
+            tang_pending_map = grp['K'].sum().to_dict()   # K = 唐佑待調撥
+            kuo_pending_map  = grp['J'].sum().to_dict()   # J = 國智待調撥
+        except Exception as e:
+            st.warning(f"加工廠互調料滙整表讀取失敗（略過）：{e}")
+
+    has_transfer = bool(tang_pending_map or kuo_pending_map)
 
     # SPQ map（從供需表 K 欄）
     spq_map = {}
@@ -365,19 +388,30 @@ with st.spinner("分析中，請稍候..."):
             d = int(deficit)
             return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
 
+        # ── 待調撥量 & 實際應調撥量（需上傳互調料滙整表才有值）──
+        pno_str = str(pno).strip()
+        t_pending = int(tang_pending_map.get(pno_str, 0) or 0)
+        k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
+        t_actual  = max(0, t_qty - t_pending) if t_qty > 0 else None
+        k_actual  = max(0, k_qty - k_pending) if k_qty > 0 else None
+
         rows.append({
             '料號':              pno,
             'SPQ':               int(spq) if spq else 1,
             '缺料量':            int(shortage) if shortage > 0 else None,
-            '唐佑代工倉 缺料量':  fmt_deficit(t_qty, t_deficit, t_alloc if t_qty > 0 and k_qty > 0 else None),
-            '國智代工倉 缺料量':  fmt_deficit(k_qty, k_deficit, k_alloc if t_qty > 0 and k_qty > 0 else None),
-            '合計委外缺料':      int(t_qty + k_qty) if (t_qty+k_qty) else None,
-            '_唐佑qty':          t_qty,
-            '_國智qty':          k_qty,
-            '_shortage':         bool(alloc_note),   # 庫存不足旗標，供列高亮用
+            '唐佑代工倉 缺料量':      fmt_deficit(t_qty, t_deficit, t_alloc if t_qty > 0 and k_qty > 0 else None),
+            '唐佑代工倉 待調撥量':    t_pending if (has_transfer and t_qty > 0) else None,
+            '唐佑代工倉 實際應調撥量': t_actual  if has_transfer else None,
+            '國智代工倉 缺料量':      fmt_deficit(k_qty, k_deficit, k_alloc if t_qty > 0 and k_qty > 0 else None),
+            '國智代工倉 待調撥量':    k_pending if (has_transfer and k_qty > 0) else None,
+            '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
+            '合計委外缺料':          int(t_qty + k_qty) if (t_qty+k_qty) else None,
+            '_唐佑qty':              t_qty,
+            '_國智qty':              k_qty,
+            '_shortage':             bool(alloc_note),
             '可調撥來源倉（倉代碼/可用量）': src,
-            '⚠️ 配料說明':       alloc_note,
-            'Customer P/N':     cust_pn,
+            '⚠️ 配料說明':           alloc_note,
+            'Customer P/N':         cust_pn,
         })
 
     df_out = pd.DataFrame(rows)
@@ -405,13 +439,32 @@ st.markdown(f"#### 💧 H2O 委外缺料試算（區間末結存）　{date_star
 
 # 顯示用：空值換成 "-"，隱藏內部欄位
 df_display = df_out.copy()
-for col in ['缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']:
+fill_dash_cols = ['缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料']
+if has_transfer:
+    fill_dash_cols += ['唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
+                       '國智代工倉 待調撥量','國智代工倉 實際應調撥量']
+for col in fill_dash_cols:
     df_display[col] = df_display[col].fillna('-')
-# 合計委外缺料去掉小數（pandas混型列會變float）
+# 合計委外缺料去掉小數
 df_display['合計委外缺料'] = df_display['合計委外缺料'].apply(
     lambda x: str(int(float(x))) if x not in ('-', None, '') else '-'
 )
-df_display = df_display[['料號','SPQ','缺料量','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']]
+
+# 欄位順序：有互調表時插入4個新欄
+if has_transfer:
+    disp_cols = [
+        '料號','SPQ','缺料量',
+        '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
+        '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+        '合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
+    ]
+else:
+    disp_cols = [
+        '料號','SPQ','缺料量',
+        '唐佑代工倉 缺料量','國智代工倉 缺料量',
+        '合計委外缺料','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
+    ]
+df_display = df_display[disp_cols]
 
 # 若有庫存不足料號，先用 callout 提醒
 if len(short_warn) > 0:
