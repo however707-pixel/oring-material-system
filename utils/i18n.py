@@ -18,6 +18,7 @@ TEXTS = {
         "coming_soon":   "功能開發中，敬請期待",
         "link_transfer": "工單調撥決策看板",
         "link_outsource":"委外調撥確認",
+        "link_wo_progress": "工單進度表",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -119,6 +120,7 @@ TEXTS = {
         "coming_soon":   "Coming Soon",
         "link_transfer": "Transfer Decision Board",
         "link_outsource":"Outsource Confirmation",
+        "link_wo_progress": "Work Order Progress",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",
