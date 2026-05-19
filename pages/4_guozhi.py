@@ -33,7 +33,7 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
-    h2o_file = st.file_uploader("📂 上傳國智缺料表", type=["xlsx", "xls", "csv"])
+    h2o_file = st.file_uploader("📂 上傳 H2O 缺料明細", type=["xlsx", "xls", "csv"])
     sd_file  = st.file_uploader("📂 上傳供需表",         type=["xlsx", "xls", "csv"])
 
     st.markdown("**📅 分析區間**")
@@ -81,20 +81,10 @@ with st.spinner("分析中，請稍候..."):
                 st.error("國智缺料表 CSV 無法讀取，請確認編碼。")
                 st.stop()
         else:
-            # 先試 header=2（W11格式：前2行為說明）
-            try:
-                gz = pd.read_excel(h2o_file, sheet_name=0, header=2, engine='calamine')
-            except Exception:
-                h2o_file.seek(0)
-                gz = pd.read_excel(h2o_file, sheet_name=0, header=2, engine='openpyxl')
-            # 若讀出來沒有 品號 欄，改用 header=0
-            if '品號' not in gz.columns:
-                h2o_file.seek(0)
-                try:
-                    gz = pd.read_excel(h2o_file, sheet_name=0, header=0, engine='calamine')
-                except Exception:
-                    h2o_file.seek(0)
-                    gz = pd.read_excel(h2o_file, sheet_name=0, header=0, engine='openpyxl')
+            # 優先讀 'H2O' 工作表；若不存在則退回第1張表
+            xl = pd.ExcelFile(h2o_file)
+            sh = 'H2O' if 'H2O' in xl.sheet_names else xl.sheet_names[0]
+            gz = pd.read_excel(xl, sheet_name=sh, header=0)
     except Exception as e:
         st.error(f"國智缺料表讀取失敗：{e}")
         st.stop()
@@ -115,10 +105,13 @@ with st.spinner("分析中，請稍候..."):
         st.error(f"供需表讀取失敗：{e}")
         st.stop()
 
-    # 欄位檢查
-    if '品號' not in gz.columns:
-        st.error(f"國智缺料表找不到「品號」欄位，偵測到的欄位：{gz.columns.tolist()}")
+    # ── 以 J 欄（第10欄，index 9）Customer P/N 作為品號來源 ──
+    if gz.shape[1] < 10:
+        st.error("H2O 缺料明細欄位不足 10 欄，找不到 J 欄（Customer P/N），請確認檔案格式。")
         st.stop()
+    gz['品號'] = gz.iloc[:, 9].astype(str).str.strip().replace('nan', pd.NA)
+
+    # 欄位檢查
     for col in ['品號', '庫別名稱', '日期', '異動別', '異動數量']:
         if col not in sd.columns:
             st.error(f"供需表找不到「{col}」欄位，請確認檔案格式。")
@@ -305,8 +298,8 @@ with st.spinner("分析中，請稍候..."):
             k_qty_str  = f"{k_qty:,}  (原缺 {d:,})" if k_qty != d else k_qty
             short_note = ''
 
-        # 客戶料號
-        cust_pn = gz_row.get('客戶料號', '') or ''
+        # I欄(index 8) = Material P/N（子件件號，ORing 內部料號）
+        cust_pn = str(gz_row.iloc[8]) if pd.notna(gz_row.iloc[8]) else ''
 
         rows.append({
             '品號':               pno,
