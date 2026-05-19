@@ -277,6 +277,21 @@ with st.spinner("分析中，請稍候..."):
         if sub.empty: return None
         return sub.sort_values('日期').iloc[0]['日期']
 
+    def get_incoming(pno):
+        """取得分析區間內所有預計進貨的日期（G欄）與數量（I欄，異動數量）"""
+        sub = sd[
+            (sd['品號'] == pno) &
+            (sd['異動別'] == '預計進貨') &
+            (sd['日期'].notna()) &
+            (sd['日期'] >= start) &
+            (sd['日期'] <= end)
+        ].sort_values('日期')
+        if sub.empty:
+            return '', None
+        dates_str = '、'.join(sub['日期'].dt.strftime('%m/%d').unique().tolist())
+        qty_total = int(sub['異動數量'].sum())
+        return dates_str, qty_total
+
     parts = gz['品號'].dropna().unique()
 
     rows = []
@@ -318,6 +333,9 @@ with st.spinner("分析中，請稍候..."):
         # B欄 = 客戶料號
         cust_pn = str(gz_row.get('客戶料號', '') or '') if pd.notna(gz_row.get('客戶料號', '')) else ''
 
+        # 預計進料日 & 預計數量（供需表 異動別=預計進貨）
+        incoming_date, incoming_qty = get_incoming(pno)
+
         # 待調撥量 & 實際應調撥量
         pno_str   = str(pno).strip()
         k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
@@ -329,6 +347,8 @@ with st.spinner("分析中，請稍候..."):
             '國智代工倉 缺料量':   k_qty_str,
             '國智代工倉 待調撥量':    k_pending if (has_transfer and k_qty > 0) else None,
             '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
+            '預計進料日':          incoming_date or None,
+            '預計數量':            incoming_qty,
             '_國智qty':           k_qty,
             '_shortage':          shortage,
             '可調撥來源倉（倉代碼/可用量）': src,
@@ -374,9 +394,12 @@ else:
     if has_transfer:
         display_cols = ['品號','SPQ','國智代工倉 缺料量',
                         '國智代工倉 待調撥量','國智代工倉 實際應調撥量',
+                        '預計進料日','預計數量',
                         '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     else:
-        display_cols = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+        display_cols = ['品號','SPQ','國智代工倉 缺料量',
+                        '預計進料日','預計數量',
+                        '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
     df_display = df_out[display_cols].copy()
 
     _shortage_pnos = set(short_warn['品號'].tolist()) if len(short_warn) else set()
@@ -411,24 +434,27 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         if with_transfer:
-            total_cols = 8
+            total_cols = 10
             headers   = ['品號','SPQ','國智代工倉\n缺料量','國智代工倉\n待調撥量','國智代工倉\n實際應調撥量',
-                         '可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
+                         '預計進料日','預計數量','可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
             hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFB8D4EE','FFA0C4E8',
-                         'FFF5E6FF','FFFCE4D6','FFF2F2F2']
+                         'FFE8F4FD','FFD6EEF8','FFF5E6FF','FFFCE4D6','FFF2F2F2']
             col_order = ['品號','SPQ','國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
-                         '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
-            col_widths  = [28, 8, 16, 14, 16, 36, 40, 28]
-            left_cols   = {1, 6, 7, 8}
-            note_col, src_col = 7, 6
+                         '預計進料日','預計數量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+            col_widths  = [28, 8, 16, 14, 16, 14, 12, 36, 40, 28]
+            left_cols   = {1, 6, 8, 9, 10}
+            note_col, src_col = 9, 8
         else:
-            total_cols = 6
-            headers   = ['品號','SPQ','國智代工倉\n缺料量','可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
-            hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFF5E6FF','FFFCE4D6','FFF2F2F2']
-            col_order = ['品號','SPQ','國智代工倉 缺料量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
-            col_widths  = [28, 8, 16, 36, 40, 28]
-            left_cols   = {1, 4, 5, 6}
-            note_col, src_col = 5, 4
+            total_cols = 8
+            headers   = ['品號','SPQ','國智代工倉\n缺料量','預計進料日','預計數量',
+                         '可調撥來源倉\n（倉代碼/可用量）','配料說明\n（庫存不足時）','客戶料號']
+            hdr_color = ['FFD9E8FF','FFF2F2F2','FFD9E8FF','FFE8F4FD','FFD6EEF8',
+                         'FFF5E6FF','FFFCE4D6','FFF2F2F2']
+            col_order = ['品號','SPQ','國智代工倉 缺料量','預計進料日','預計數量',
+                         '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','客戶料號']
+            col_widths  = [28, 8, 16, 14, 12, 36, 40, 28]
+            left_cols   = {1, 4, 6, 7, 8}
+            note_col, src_col = 7, 6
 
         merge_end = chr(64 + total_cols)
         ws.merge_cells(f'A1:{merge_end}1')
@@ -479,6 +505,15 @@ else:
                     elif c_i == 5: # 實際應調撥量 → 深藍
                         cell.fill = PatternFill('solid', start_color='FFA0C4E8')
                         cell.font = Font(name='Arial', size=9, bold=True, color='FF0F2460')
+                    if c_i == 6 and val:   # 預計進料日
+                        cell.fill = PatternFill('solid', start_color='FFE8F4FD')
+                    elif c_i == 7 and val:  # 預計數量
+                        cell.fill = PatternFill('solid', start_color='FFD6EEF8')
+                else:
+                    if c_i == 4 and val:   # 預計進料日
+                        cell.fill = PatternFill('solid', start_color='FFE8F4FD')
+                    elif c_i == 5 and val:  # 預計數量
+                        cell.fill = PatternFill('solid', start_color='FFD6EEF8')
 
         for i, w in enumerate(col_widths, 1):
             ws.column_dimensions[chr(64+i)].width = w
