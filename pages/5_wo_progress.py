@@ -468,6 +468,33 @@ bom_entries = get_bom_for_product(
     all_order_nos=all_order_nos,
 )
 
+# ── 診斷 expander（幫助確認來源訂單匹配狀況）─────────────────────────────────
+with st.expander("🔍 診斷資訊（來源訂單匹配）", expanded=not bool(bom_entries)):
+    st.markdown(f"**工單訂單單號：** `{wo.get('訂單單號','（無）')}`")
+    st.markdown(f"**工單製令編號：** `{mo_input}`")
+    # 找出供需表中此成品的所有來源訂單
+    _diag_all = []
+    for k, entries in bom_map.items():
+        if product_pno in k or k in product_pno:
+            _diag_all.extend(entries)
+    _diag_src = {}
+    for e in _diag_all:
+        s = e.get("來源訂單", "（空）") or "（空）"
+        _diag_src.setdefault(s, []).append(e.get("品號", ""))
+    st.markdown(f"**供需表中找到 {len(_diag_src)} 個來源訂單群組：**")
+    # 反查：哪個工單的訂單單號 = 哪個來源訂單
+    order_to_wo = {}
+    for mo, wrow in wo_dict.items():
+        ono = wrow.get("訂單單號", "").strip()
+        if ono:
+            order_to_wo.setdefault(ono, []).append(mo)
+    rows_diag = []
+    for src, parts in _diag_src.items():
+        claimed_by = "、".join(order_to_wo.get(src, [])) or "—"
+        rows_diag.append({"來源訂單": src, "料號數": len(parts), "被哪張工單認領": claimed_by})
+    st.dataframe(pd.DataFrame(rows_diag), use_container_width=True, hide_index=True)
+    st.markdown(f"**本次回傳 BOM 條目數：** {len(bom_entries)}")
+
 if not bom_entries:
     # 判斷是「供需表完全沒有此品號」還是「有但需求行屬於其他工單」
     _any_in_bom = any(product_pno in k or k in product_pno for k in bom_map)
