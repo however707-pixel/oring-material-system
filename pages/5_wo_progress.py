@@ -123,7 +123,7 @@ def parse_supply(file_bytes):
                 stocks.setdefault(current_pno, {})[wh_code] = qty
 
         # 預計領用（BOM 需求）
-        elif trans == "預計領用" and prod_name:
+        elif trans == "預計領用":
             # 解析日期
             try:
                 dt_str = pd.to_datetime(date_val).strftime("%Y/%m/%d")
@@ -138,7 +138,11 @@ def parse_supply(file_bytes):
                 "來源訂單": src_order or "",
                 "日期":     dt_str,
             }
-            bom_map.setdefault(prod_name, []).append(entry)
+            if prod_name:
+                bom_map.setdefault(prod_name, []).append(entry)
+            if src_order:
+                # 以來源訂單為鍵另存（供製令編號直接查找，不依賴產品名稱欄）
+                bom_map.setdefault(f"__mo__{src_order}", []).append(entry)
 
         # 預計進貨
         elif trans == "預計進貨":
@@ -235,8 +239,16 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
     4. 排除其他工單已認領的來源訂單，取剩餘未認領的群組
     5. 多個群組仍無法區分時，顯示全部（並讓用戶知道）
     """
+    # 策略0：以製令編號直接查找（供需表有來源訂單=製令編號的行，不依賴產品名稱欄）
+    if mo_no:
+        direct = bom_map.get(f"__mo__{mo_no}", [])
+        if direct:
+            return direct
+
     all_entries = []
     for key, entries in bom_map.items():
+        if key.startswith("__mo__"):
+            continue  # 跳過製令編號索引，只用產品名稱索引
         if product_pno in key or key in product_pno:
             all_entries.extend(entries)
 
