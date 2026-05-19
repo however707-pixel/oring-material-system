@@ -268,9 +268,17 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
             unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
             if unclaimed:
                 return unclaimed
-            # 全部被認領 → 取最早來源訂單群組作為 BOM 模板，保留結存用於缺料判斷
+            # 全部被認領 → 需求量取最早群組，結存取所有群組最小值（最保守判斷）
             first_src = sorted(claimed_src)[0]
-            return [e for e in all_entries if e.get("來源訂單", "") == first_src]
+            min_bal = {}
+            for e in all_entries:
+                pno = e["品號"]
+                bal = e.get("結存")
+                if bal is not None:
+                    if pno not in min_bal or bal < min_bal[pno]:
+                        min_bal[pno] = bal
+            return [dict(e, 結存=min_bal.get(e["品號"], e.get("結存")))
+                    for e in all_entries if e.get("來源訂單", "") == first_src]
 
     # 策略5：無法判斷，回傳全部（可能含多工單需求，數量偏高）
     return all_entries
