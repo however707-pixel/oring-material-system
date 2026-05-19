@@ -268,10 +268,9 @@ def get_bom_for_product(product_pno, bom_map, wo_order_no="", wo_open_date="",
             unclaimed = [e for e in all_entries if e.get("來源訂單", "") not in claimed_src]
             if unclaimed:
                 return unclaimed
-            # 全部被認領 → 取最早來源訂單群組作為 BOM 模板，清除結存避免誤判
+            # 全部被認領 → 取最早來源訂單群組作為 BOM 模板，保留結存用於缺料判斷
             first_src = sorted(claimed_src)[0]
-            return [dict(e, 結存=None) for e in all_entries
-                    if e.get("來源訂單", "") == first_src]
+            return [e for e in all_entries if e.get("來源訂單", "") == first_src]
 
     # 策略5：無法判斷，回傳全部（可能含多工單需求，數量偏高）
     return all_entries
