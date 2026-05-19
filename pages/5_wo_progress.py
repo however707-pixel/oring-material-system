@@ -323,11 +323,20 @@ def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
         bal          = info["結存"]
 
         if is_template:
-            # 模板模式：加總所有倉別期初庫存與需求比較
-            total_stock  = sum(pno_stocks.values()) if pno_stocks else 0.0
-            prod_stock   = total_stock
-            is_short     = total_stock < needed
-            shortage_qty = max(needed - total_stock, 0.0) if is_short else 0.0
+            # 模板模式：先以期初庫存合計判斷是否足夠
+            total_stock = sum(pno_stocks.values()) if pno_stocks else 0.0
+            prod_stock  = total_stock
+            if total_stock >= needed:
+                # 庫存合計足夠 → 齊料（不管結存，其他需求消耗的是其他工單的份）
+                is_short     = False
+                shortage_qty = 0.0
+            else:
+                # 庫存不足 → 以結存確認實際缺料量（結存已反映期初庫存被前段需求消耗後的餘量）
+                is_short = True
+                if bal is not None and bal < 0:
+                    shortage_qty = min(needed, -bal)
+                else:
+                    shortage_qty = max(needed - total_stock, 0.0)
         elif bal is not None:
             prod_stock   = pno_stocks.get(prod_wh_code, 0.0)
             is_short     = bal < 0
