@@ -115,11 +115,15 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
         # ── 委外工單：用供需表「備註=工單號」的預計結存判斷 ─────────────────
         if vendor != "廠內" and wo_no:
             if (mat_no, wo_no) in wo_supply:
-                balance = wo_supply[(mat_no, wo_no)][0]   # 用完本工單後的預計結存
-                if balance >= 0:
-                    reasons.add("需調撥")      # 供應鏈夠 → 待調撥
+                balance  = wo_supply[(mat_no, wo_no)][0]  # 預計結存（用完本工單後）
+                qty_used = wo_supply[(mat_no, wo_no)][1]  # 異動數量（本工單用量）
+                avail_before = balance - qty_used          # 本工單分配前的可用量（= 製造倉庫存顯示值）
+                if avail_before >= short:
+                    reasons.add("倉庫未補料")  # 料已分配夠，等倉庫發料 → 待扣帳
+                elif balance >= 0:
+                    reasons.add("需調撥")      # 分配量不足但源頭還有料 → 待調撥
                 else:
-                    reasons.add("庫存不足")    # 供應鏈不足 → 真缺料
+                    reasons.add("庫存不足")    # 源頭倉也不夠 → 真缺料
             else:
                 # 供需表找不到此工單的分配紀錄
                 # → 改查委外倉自身庫存（庫存可用量），再看廠內是否有料可轉
