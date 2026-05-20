@@ -116,8 +116,8 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
         if vendor != "廠內" and wo_no:
             if (mat_no, wo_no) in wo_supply:
                 balance  = wo_supply[(mat_no, wo_no)][0]  # 預計結存（用完本工單後）
-                qty_used = wo_supply[(mat_no, wo_no)][1]  # 異動數量（本工單用量）
-                avail_before = balance - qty_used          # 本工單分配前的可用量（= 製造倉庫存顯示值）
+                qty_used = wo_supply[(mat_no, wo_no)][1]  # 異動數量（本工單用量，正數）
+                avail_before = balance + qty_used          # 本工單用料前的可用量 = 預計結存 + 異動數量
                 if avail_before >= short:
                     pass  # 料已分配足夠，不算缺料，此材料略過
                 elif balance >= 0:
@@ -527,8 +527,8 @@ if sel_rows:
                 if vendor_sel != "廠內" and wo_supply:
                     supply = wo_supply.get((mat_no, wo_no))
                     if supply is not None:
-                        # 預計結存 - 欠料量 = 供應鏈在本工單前的可用量
-                        return supply[0] - supply[1]
+                        # 預計結存 + 異動數量 = 本工單用料前的可用量
+                        return supply[0] + supply[1]
                 return get_vendor_stock(mat_no, vendor_sel, stock_by_wh)
 
             if "材料品號" in detail_display.columns:
