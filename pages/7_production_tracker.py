@@ -540,13 +540,26 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# 顏色與設定
-_SL = ["已結案",  "生產中",  "待扣帳",  "待調撥",  "缺料",    "試產工單", "齊料未生產","完工日未到"]
-_SV = [cnt_done,  cnt_wip,   cnt_held,  cnt_transfer, cnt_short, cnt_trial, cnt_ready,  cnt_future]
-_SC = ["#16a34a", "#2563eb", "#d97706", "#7c3aed", "#dc2626",  "#6b7280",  "#ea580c",  "#ca8a04"]
-_SE = ["✅",      "⚙️",     "🟡",     "🔀",      "⚠️",      "🧪",      "🔴",       "📅"]
-# 問題類別放大突出（拉出效果 = 立體感）
-_PULL = [0.02, 0.02, 0.04, 0.04, 0.10, 0.02, 0.08, 0.04]
+# 圖表容器陰影（立體感）
+st.markdown("""
+<style>
+[data-testid="stPlotlyChart"] > div {
+    border-radius: 18px !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.16), 0 2px 10px rgba(0,0,0,0.10) !important;
+    overflow: hidden !important;
+    background: #f8fafc !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ── 顏色、emoji、pull（立體感） ───────────────────────────────────────────────
+_SL   = ["已結案",  "生產中",  "待扣帳",  "待調撥",  "缺料",    "試產工單", "齊料未生產","完工日未到"]
+_SV   = [cnt_done,  cnt_wip,   cnt_held,  cnt_transfer, cnt_short, cnt_trial, cnt_ready,  cnt_future]
+_SC   = ["#16a34a", "#2563eb", "#d97706", "#7c3aed", "#dc2626",  "#6b7280",  "#ea580c",  "#ca8a04"]
+_SE   = ["✅",      "⚙️",      "🟡",      "🔀",      "⚠️",      "🧪",       "🔴",       "📅"]
+_PULL = [0.02,      0.02,      0.06,      0.06,      0.14,       0.02,       0.12,       0.05]
+# 棒形圖文字顏色：深色系背景 → 白字；淺色系背景 → 深字
+_BTXT = ["white",  "white",   "#1e293b", "white",   "white",   "#1e293b",  "white",    "#1e293b"]
 
 # 過濾 0 值
 _nz = [(l,v,c,e,p) for l,v,c,e,p in zip(_SL,_SV,_SC,_SE,_PULL) if v > 0]
@@ -571,51 +584,75 @@ _cross = _cross.reindex(columns=_SL, fill_value=0)
 _cross = _cross.reindex([v for v in _vendor_order if v in _cross.index])
 _vens  = list(_cross.index)
 
-# ── 左圖：立體感甜甜圈 ───────────────────────────────────────────────────────
+# ── 左圖：立體感甜甜圈（文字在外側，深色清晰）────────────────────────────────
 fig_donut = go.Figure()
+
+# ① 陰影底層（稍大、深灰、不秀文字）
 fig_donut.add_trace(go.Pie(
-    labels=[f"{e} {l}" for l,e in zip(_lf,_ef)],
-    values=_vf,
-    hole=0.58,
-    pull=_pf,
+    labels=list(_lf),
+    values=list(_vf),
+    hole=0.54,
+    pull=[p + 0.015 for p in _pf],
     marker=dict(
-        colors=_cf,
-        line=dict(color="white", width=3),
+        colors=["rgba(0,0,0,0.10)"] * len(_vf),
+        line=dict(color="rgba(0,0,0,0)", width=0),
+    ),
+    textinfo="none",
+    hoverinfo="skip",
+    showlegend=False,
+    direction="clockwise",
+    sort=True,
+    rotation=92,   # 稍微偏移，形成投影感
+))
+
+# ② 主體甜甜圈（文字放外側→深色好讀）
+fig_donut.add_trace(go.Pie(
+    labels=[f"{e} {l}" for l, e in zip(_lf, _ef)],
+    values=list(_vf),
+    hole=0.58,
+    pull=list(_pf),
+    marker=dict(
+        colors=list(_cf),
+        line=dict(color="white", width=2.5),
     ),
     textinfo="label+value",
-    textfont=dict(size=12.5, color="white", family="Arial Black"),
-    insidetextorientation="radial",
+    textposition="outside",
+    automargin=True,
+    outsidetextfont=dict(size=11.5, color="#1e293b", family="Arial"),
     hovertemplate="<b>%{label}</b><br>%{value} 張　%{percent}<extra></extra>",
     direction="clockwise",
     sort=True,
     rotation=90,
 ))
+
 fig_donut.update_layout(
     annotations=[dict(
-        text=f"<b style='font-size:26px'>{cnt_total}</b><br>工單總數",
+        text=f"<b>{cnt_total}</b><br>工單總數",
         x=0.5, y=0.5, xref="paper", yref="paper",
-        showarrow=False, font=dict(size=18, color="#1e293b"), align="center",
+        showarrow=False,
+        font=dict(size=28, color="#1e293b", family="Arial Black"),
+        align="center",
     )],
-    showlegend=True,
-    legend=dict(
-        orientation="v", x=1.02, y=0.5, xanchor="left", yanchor="middle",
-        font=dict(size=12), bgcolor="rgba(255,255,255,0.8)",
-        bordercolor="#e2e8f0", borderwidth=1,
-    ),
-    height=460,
-    margin=dict(t=20, b=20, l=20, r=160),
+    showlegend=False,
+    height=500,
+    margin=dict(t=50, b=50, l=70, r=70),
     paper_bgcolor="rgba(248,250,252,1)",
     font=dict(family="Arial, sans-serif"),
 )
 
-# ── 右圖：立體感堆疊長條 ─────────────────────────────────────────────────────
+# ── 右圖：3D 感堆疊橫條（文字依背景深淺切換）────────────────────────────────
 fig_bar = go.Figure()
 _color_map = dict(zip(_SL, _SC))
+_btext_map = dict(zip(_SL, _BTXT))
+
 for _s in _SL:
     if _s not in _cross.columns: continue
     _vals = [int(_cross.loc[v, _s]) if v in _cross.index else 0 for v in _vens]
     if sum(_vals) == 0: continue
-    _c = _color_map[_s]
+    _c  = _color_map[_s]
+    _tc = _btext_map.get(_s, "white")
+
+    # 主要 bar
     fig_bar.add_trace(go.Bar(
         name=_s,
         x=_vals,
@@ -623,44 +660,53 @@ for _s in _SL:
         orientation="h",
         marker=dict(
             color=_c,
-            line=dict(color="rgba(255,255,255,0.6)", width=1.5),
-            opacity=0.92,
+            line=dict(color="rgba(255,255,255,0.75)", width=2),
+            opacity=0.94,
         ),
         text=[f"<b>{v}</b>" if v > 0 else "" for v in _vals],
         textposition="inside",
         insidetextanchor="middle",
-        textfont=dict(color="white", size=12, family="Arial Black"),
+        textfont=dict(color=_tc, size=13, family="Arial Black"),
         hovertemplate=f"<b>{_s}</b>: %{{x}} 張<extra></extra>",
     ))
 
 fig_bar.update_layout(
     barmode="stack",
-    height=460,
-    margin=dict(t=20, b=60, l=60, r=20),
+    height=500,
+    margin=dict(t=20, b=90, l=70, r=20),
     paper_bgcolor="rgba(248,250,252,1)",
     plot_bgcolor="rgba(241,245,249,1)",
     font=dict(family="Arial, sans-serif", size=13),
     legend=dict(
-        orientation="h", x=0.5, y=-0.18, xanchor="center",
-        font=dict(size=11), bgcolor="rgba(255,255,255,0.8)",
+        orientation="h", x=0.5, y=-0.25, xanchor="center",
+        font=dict(size=12, color="#374151"),
+        bgcolor="rgba(255,255,255,0.95)",
         bordercolor="#e2e8f0", borderwidth=1,
+        itemsizing="constant",
     ),
     xaxis=dict(
         showgrid=True, gridcolor="#cbd5e1", gridwidth=1,
-        zeroline=False, tickfont=dict(size=11),
+        zeroline=False, tickfont=dict(size=11, color="#475569"),
     ),
     yaxis=dict(
-        showgrid=False, tickfont=dict(size=14, family="Arial Black"),
+        showgrid=False,
+        tickfont=dict(size=15, color="#1e293b", family="Arial Black"),
     ),
-    bargap=0.25,
+    bargap=0.30,
 )
 
 _c1, _c2 = st.columns([1, 1])
 with _c1:
-    st.markdown("<p style='text-align:center;font-weight:700;color:#475569;margin-bottom:4px;'>工單狀態分布</p>", unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align:center;font-weight:700;color:#1e293b;"
+        "font-size:1.05rem;margin-bottom:6px;letter-spacing:0.03em;'>"
+        "工單狀態分布</p>", unsafe_allow_html=True)
     st.plotly_chart(fig_donut, use_container_width=True)
 with _c2:
-    st.markdown("<p style='text-align:center;font-weight:700;color:#475569;margin-bottom:4px;'>各生產方工單狀態</p>", unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align:center;font-weight:700;color:#1e293b;"
+        "font-size:1.05rem;margin-bottom:6px;letter-spacing:0.03em;'>"
+        "各生產方工單狀態</p>", unsafe_allow_html=True)
     st.plotly_chart(fig_bar, use_container_width=True)
 
 # ── 資料表 ────────────────────────────────────────────────────────────────────
