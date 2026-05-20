@@ -136,6 +136,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
             r.get("開工日", ""), shortage_map, today
         )
         label = reason if reason else cat
+        vendor = str(r.get("廠商名稱", "") or "").strip()
         rows.append({
             "製令編號":   r.get("製令編號", ""),
             "品號":       r.get("產品品號", ""),
@@ -145,6 +146,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
             "預計產量":   r.get("預計產量", ""),
             "已生產量":   r.get("已生產量", ""),
             "未生產量":   r.get("未生產量", ""),
+            "生產方":     vendor if vendor else "廠內",
             "ERP狀態":    r.get("製令狀態", ""),
             "分類":       cat,
             "狀態說明":   label,
@@ -204,7 +206,7 @@ with st.spinner("分析中..."):
     )
 
 # ── 篩選列 ────────────────────────────────────────────────────────────────────
-fc1, fc2, fc3 = st.columns([2, 2, 3])
+fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
 with fc1:
     status_opts = ["全部"] + sorted(df["狀態說明"].dropna().unique().tolist())
     sel_status = st.selectbox("篩選狀態", status_opts)
@@ -212,6 +214,9 @@ with fc2:
     erp_opts = ["全部"] + sorted(df["ERP狀態"].dropna().unique().tolist())
     sel_erp = st.selectbox("篩選 ERP 狀態", erp_opts)
 with fc3:
+    vendor_opts = ["全部"] + sorted(df["生產方"].dropna().unique().tolist())
+    sel_vendor = st.selectbox("篩選生產方", vendor_opts)
+with fc4:
     keyword = st.text_input("搜尋工單號 / 品號 / 品名", placeholder="輸入關鍵字...")
 
 df_view = df.copy()
@@ -219,6 +224,8 @@ if sel_status != "全部":
     df_view = df_view[df_view["狀態說明"] == sel_status]
 if sel_erp != "全部":
     df_view = df_view[df_view["ERP狀態"] == sel_erp]
+if sel_vendor != "全部":
+    df_view = df_view[df_view["生產方"] == sel_vendor]
 if keyword:
     mask = (
         df_view["製令編號"].str.contains(keyword, na=False) |
@@ -263,12 +270,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 
 # ── 資料表 ────────────────────────────────────────────────────────────────────
-display_cols = ["製令編號", "品號", "品名", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
+display_cols = ["製令編號", "品號", "品名", "生產方", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
 
 col_cfg = {
     "製令編號": st.column_config.TextColumn(width="medium"),
     "品號":     st.column_config.TextColumn(width="medium"),
     "品名":     st.column_config.TextColumn(width="large"),
+    "生產方":   st.column_config.TextColumn(width="small"),
     "開工日":   st.column_config.TextColumn(width="small"),
     "預計交期": st.column_config.TextColumn(width="small"),
     "預計產量": st.column_config.TextColumn(width="small"),
