@@ -214,7 +214,10 @@ def classify_wo(no, status, end_str, shortage_map, today):
         except Exception:
             end = None
         if end and end > today:
-            return "未生產", "完工日未到"
+            # 完工日未到 → 進一步分析是缺料還是齊料
+            if str(no) in shortage_map:
+                return "完工日未到", f"完工日未到｜缺料（{shortage_map[str(no)]}）"
+            return "完工日未到", "完工日未到｜齊料"
         if str(no) in shortage_map:
             return "未生產", f"缺料（{shortage_map[str(no)]}）"
         return "未生產", "齊料未生產"
@@ -381,8 +384,9 @@ if not prod_file or not short_file:
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🧪 試產工單</td><td style="padding:5px 10px;">工單號以 FF 開頭</td></tr>
       <tr><td style="padding:5px 10px;">✅ 已生產</td><td style="padding:5px 10px;">已完工 / 指定完工</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚙️ 生產中</td><td style="padding:5px 10px;">已領料 / 生產中</td></tr>
-      <tr><td style="padding:5px 10px;">📅 完工日未到</td><td style="padding:5px 10px;">未生產且完工日（預計交期）尚未到</td></tr>
-      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🟡 待扣帳</td><td style="padding:5px 10px;">製造倉庫存充足，倉庫尚未補發至生產線</td></tr>
+      <tr><td style="padding:5px 10px;">📅 完工日未到｜齊料</td><td style="padding:5px 10px;">完工日尚未到，料已齊全，正常排程中</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">📅 完工日未到｜缺料</td><td style="padding:5px 10px;">完工日尚未到，但目前已有缺料，需提前處理</td></tr>
+      <tr><td style="padding:5px 10px;">🟡 待扣帳</td><td style="padding:5px 10px;">製造倉庫存充足，倉庫尚未補發至生產線</td></tr>
       <tr><td style="padding:5px 10px;">🔀 待調撥</td><td style="padding:5px 10px;">製造倉無料，但全公司總庫存充足，需從其他倉調撥</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚠️ 缺料</td><td style="padding:5px 10px;">庫存不足 / IQC檢驗中 / 料沒進（真正缺料）</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔴 齊料未生產</td><td style="padding:5px 10px;">完工日已過，料齊但尚未開工</td></tr>
@@ -448,10 +452,12 @@ col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
 metrics = [
     (col1, "✅ 已生產",     v_counts.get("已生產", 0),     "#bbf7d0"),
     (col2, "⚙️ 生產中",    v_counts.get("生產中", 0),     "#bfdbfe"),
-    (col3, "📅 完工日未到", (df_view["狀態說明"] == "完工日未到").sum(), "#fef08a"),
+    (col3, "📅 完工日未到", v_counts.get("完工日未到", 0), "#fef08a"),
     (col4, "🟡 待扣帳",    v_counts.get("待扣帳", 0),     "#fde68a"),
     (col5, "🔀 待調撥",    v_counts.get("待調撥", 0),     "#ddd6fe"),
-    (col6, "⚠️ 缺料",      df_view["狀態說明"].str.contains("缺料", na=False).sum(), "#fed7aa"),
+    (col6, "⚠️ 缺料",
+        (df_view["狀態說明"].str.contains("缺料", na=False) &
+         (df_view["分類"] != "完工日未到")).sum(), "#fed7aa"),
     (col7, "🔴 齊料未生產", (df_view["狀態說明"] == "齊料未生產").sum(), "#fecaca"),
     (col8, "🧪 試產工單",  v_counts.get("試產工單", 0),   "#e5e7eb"),
 ]
