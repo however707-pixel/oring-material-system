@@ -222,6 +222,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             "已生產量":   r.get("已生產量", ""),
             "未生產量":   r.get("未生產量", ""),
             "生產方":     vendor if vendor else "廠內",
+            "生產庫別":   prod_wh,
             "ERP狀態":    status,
             "分類":       cat,
             "狀態說明":   label,
@@ -382,14 +383,23 @@ if sel_rows:
     wo_no   = sel_wo["製令編號"]
     wo_status = sel_wo["狀態說明"]
 
-    if "缺料" in str(wo_status):
+    if "缺料" in str(wo_status) or wo_status == "待發料":
         detail_rows = df_sht[df_sht["製令編號"] == wo_no].copy()
         if not detail_rows.empty:
+            # 取得此工單的生產庫別
+            wo_full = df[df["製令編號"] == wo_no]
+            prod_wh_sel = wo_full["生產庫別"].iloc[0] if not wo_full.empty else ""
+
+            banner_color = "#fff7ed" if "缺料" in str(wo_status) else "#fefce8"
+            border_color = "#fb923c" if "缺料" in str(wo_status) else "#facc15"
+            icon = "⚠️" if "缺料" in str(wo_status) else "🟡"
             st.markdown(f"""
-            <div style="background:#fff7ed;border:1.5px solid #fb923c;border-radius:10px;
+            <div style="background:{banner_color};border:1.5px solid {border_color};border-radius:10px;
                         padding:12px 18px;margin:8px 0 4px;">
-            <b style="color:#c2410c;">⚠️ 缺料明細｜工單：{wo_no}</b>
+            <b style="color:#c2410c;">{icon} 欠料明細｜工單：{wo_no}
+            {"｜製造倉：" + prod_wh_sel if prod_wh_sel else ""}</b>
             </div>""", unsafe_allow_html=True)
+
             detail_show_cols = [c for c in ["材料品號","品名","規格","欠料數量","現有庫存","逾期未入"] if c in detail_rows.columns]
             detail_display = detail_rows[detail_show_cols].reset_index(drop=True)
 
@@ -398,11 +408,34 @@ if sel_rows:
                 if nc in detail_display.columns:
                     detail_display[nc] = pd.to_numeric(detail_display[nc], errors="coerce").fillna(0)
 
-            # 無法補足（庫存 < 欠料量）→ 整列反紅
+            # 加入「製造倉庫存」欄（從供需表-分倉查詢）
+            def get_prod_wh_stock(mat_no):
+                mat_no = str(mat_no).strip()
+                if stock_by_wh and mat_no in stock_by_wh:
+                    wh_map = stock_by_wh[mat_no]
+                    qty = wh_map.get(prod_wh_sel, None)
+                    if qty is None and prod_wh_sel:
+                        for wh, q in wh_map.items():
+                            if prod_wh_sel in wh or wh in prod_wh_sel:
+                                qty = q
+                                break
+                    return float(qty) if qty is not None else 0.0
+                return None  # 無供需表資料
+
+            if "材料品號" in detail_display.columns:
+                detail_display.insert(
+                    detail_display.columns.get_loc("現有庫存"),
+                    "製造倉庫存",
+                    detail_display["材料品號"].apply(get_prod_wh_stock)
+                )
+
+            # 反紅邏輯：製造倉庫存 < 欠料數量（無供需表時退回用現有庫存）
             def highlight_insufficient(row):
-                inv   = float(row.get("現有庫存", 0) or 0)
-                short = float(row.get("欠料數量",  0) or 0)
-                if inv < short:
+                short      = float(row.get("欠料數量", 0) or 0)
+                prod_stock = row.get("製造倉庫存")
+                total_inv  = float(row.get("現有庫存",  0) or 0)
+                check_val  = float(prod_stock) if prod_stock is not None else total_inv
+                if check_val < short:
                     return ["background-color:#fecaca; color:#991b1b"] * len(row)
                 return [""] * len(row)
 
@@ -410,15 +443,16 @@ if sel_rows:
                 detail_display.style.apply(highlight_insufficient, axis=1),
                 use_container_width=True,
                 column_config={
-                    "材料品號": st.column_config.TextColumn(width="medium"),
-                    "品名":     st.column_config.TextColumn(width="large"),
-                    "規格":     st.column_config.TextColumn(width="large"),
-                    "欠料數量": st.column_config.NumberColumn(width="small"),
-                    "現有庫存": st.column_config.NumberColumn(width="small"),
-                    "逾期未入": st.column_config.NumberColumn(width="small"),
+                    "材料品號":   st.column_config.TextColumn(width="medium"),
+                    "品名":       st.column_config.TextColumn(width="large"),
+                    "規格":       st.column_config.TextColumn(width="large"),
+                    "欠料數量":   st.column_config.NumberColumn(width="small", format="%.0f"),
+                    "製造倉庫存": st.column_config.NumberColumn(width="small", format="%.0f"),
+                    "現有庫存":   st.column_config.NumberColumn(width="small", format="%.0f"),
+                    "逾期未入":   st.column_config.NumberColumn(width="small", format="%.0f"),
                 },
             )
-            st.caption("🔴 紅色列 = 現有庫存不足以補齊欠料量")
+            st.caption("🔴 紅色列 = 製造倉庫存不足欠料量｜現有庫存 = 全公司總庫存｜製造倉庫存來自供需表-分倉")
     else:
         st.info(f"工單 {wo_no} 無缺料明細（狀態：{wo_status}）")
 
