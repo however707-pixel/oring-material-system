@@ -61,8 +61,11 @@ STATUS_EMOJI = {
 # ── 生產方 → 供需表庫別名稱 對照表 ────────────────────────────────────────────
 VENDOR_WH_MAP = {
     "廠內": ["機構倉", "包材倉", "成品倉", "電子倉"],
-    "國智": ["修研倉", "華盈倉", "國智代工倉"],
+    "國智": ["修研/華盈/國智代工倉"],
     "唐佑": ["唐佑代工倉"],
+    "正文": ["正文代工倉"],
+    "秦宏": ["秦宏代工倉"],
+    "貫崑": ["貫崑代工倉"],
 }
 # 廠內倉別（向後相容用）
 INNER_WH_NAMES = VENDOR_WH_MAP["廠內"]
@@ -192,12 +195,12 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
         df_avail = df_stock[df_stock["日期"] == "庫存可用量:"].copy()
         df_avail["異動數量"] = pd.to_numeric(df_avail["異動數量"], errors="coerce").fillna(0)
         for _, sr in df_avail.iterrows():
-            pno     = str(sr.get("品號",     "") or "").strip()
-            wh_name = str(sr.get("庫別名稱", "") or "").strip()
-            qty     = float(sr["異動數量"])
-            if pno and wh_name:
-                stock_by_wh.setdefault(pno, {})[wh_name] = \
-                    stock_by_wh.get(pno, {}).get(wh_name, 0) + qty
+            pno = str(sr.get("品號", "") or "").strip()
+            wh  = str(sr.get("庫別", "") or "").strip()
+            qty = float(sr["異動數量"])
+            if pno and wh:
+                stock_by_wh.setdefault(pno, {})[wh] = \
+                    stock_by_wh.get(pno, {}).get(wh, 0) + qty
 
     # 建立欠料群組 {製令編號: DataFrame}
     shortage_groups = {str(k): g for k, g in df_sht.groupby("製令編號")}
@@ -416,7 +419,8 @@ if sel_rows:
             banner_color = "#fff7ed" if "缺料" in str(wo_status) else "#fefce8"
             border_color = "#fb923c" if "缺料" in str(wo_status) else "#facc15"
             icon = "⚠️" if "缺料" in str(wo_status) else "🟡"
-            wh_hint = "（機構倉+包材倉+成品倉+電子倉）" if vendor_sel == "廠內" else f"（{vendor_sel}倉）"
+            wh_names = VENDOR_WH_MAP.get(vendor_sel, [])
+            wh_hint  = f"（{' + '.join(wh_names)}）" if wh_names else ""
             st.markdown(f"""
             <div style="background:{banner_color};border:1.5px solid {border_color};border-radius:10px;
                         padding:12px 18px;margin:8px 0 4px;">
