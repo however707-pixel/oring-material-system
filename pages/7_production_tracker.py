@@ -233,7 +233,7 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### 📅 日期區間篩選")
-    date_field = st.radio("依哪個日期篩選", ["預計交期", "開工日"], horizontal=True)
+    date_field = st.radio("依哪個日期篩選", ["完工日", "開工日"], horizontal=True)
     date_start = st.date_input("起", value=None, format="YYYY/MM/DD", key="d_start")
     date_end   = st.date_input("迄", value=None, format="YYYY/MM/DD", key="d_end")
     if date_start and date_end and date_end < date_start:
@@ -306,7 +306,7 @@ if keyword:
 
 # 日期區間篩選
 if date_start or date_end:
-    col_name = "預計交期" if date_field == "預計交期" else "開工日"
+    col_name = "預計交期" if date_field == "完工日" else "開工日"
     dt_series = pd.to_datetime(df_view[col_name], errors="coerce")
     if date_start:
         df_view = df_view[dt_series >= pd.to_datetime(date_start)]
