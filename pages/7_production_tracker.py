@@ -136,7 +136,8 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
             r.get("開工日", ""), shortage_map, today
         )
         label = reason if reason else cat
-        vendor = str(r.get("廠商名稱", "") or "").strip()
+        vendor_raw = str(r.get("廠商名稱", "") or "").strip()
+        vendor = "" if vendor_raw.lower() in ("nan", "none", "") else vendor_raw
         rows.append({
             "製令編號":   r.get("製令編號", ""),
             "品號":       r.get("產品品號", ""),
