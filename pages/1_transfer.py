@@ -321,13 +321,29 @@ if uploaded_file is not None:
         st.success(t("no_shortage"))
 
 else:
+    st.info("👈 請在左側上傳「供需表」開始分析")
     st.markdown("""
-    <div style="text-align:center; padding:60px 0; color:#94a3b8;">
-        <div style="font-size:3rem; margin-bottom:16px;">📊</div>
-        <div style="font-size:1rem; font-weight:600; color:#64748b; margin-bottom:8px;">工單調撥決策看板</div>
-        <div style="font-size:0.85rem;">請從左側上傳供需表開始分析</div>
-    </div>""", unsafe_allow_html=True)
-
+    <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
+    <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側</li>
+      <li>設定<b>分析起始日</b>與<b>結束日</b>（預設為當月）</li>
+      <li>系統自動展開各工單 BOM，對應各倉庫存量並計算缺料</li>
+      <li>可點選任一料號列，查看各倉詳細調撥建議</li>
+      <li>點擊「⬇️ 下載調撥建議」匯出 Excel 供物管執行</li>
+    </ol>
+    <br>
+    <b style="color:#15803d;">🎯 分類邏輯</b>
+    <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🟢 充足</td><td style="padding:5px 10px;">預計結存 ≥ 0，庫存足夠應付本期需求</td></tr>
+      <tr><td style="padding:5px 10px;">🔴 缺料</td><td style="padding:5px 10px;">預計結存 &lt; 0，總需求超過可用庫存</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🟡 可調撥</td><td style="padding:5px 10px;">製造倉不足，但其他倉尚有庫存可轉撥</td></tr>
+      <tr><td style="padding:5px 10px;">⬜ 無資料</td><td style="padding:5px 10px;">供需表中未找到此料號，無法判斷庫存狀況</td></tr>
+    </table>
+    <br>
+    <span style="color:#6b7280;font-size:0.82rem;">💡 欄位顏色說明：紅底 = 缺料倉別；數字為預計結存量，負數表示缺料</span>
+    </div>
+    """, unsafe_allow_html=True)
     with st.expander(t("fmt_title")):
         st.markdown(t("fmt_body"))
         st.caption(t("fmt_support"))

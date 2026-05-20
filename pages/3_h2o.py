@@ -60,12 +60,27 @@ with st.sidebar:
 # 主畫面
 # =========================
 if not h2o_file or not sd_file:
+    st.info("👈 請在左側上傳「H2O 缺料明細」及「供需表」開始分析")
     st.markdown("""
-    <div style="text-align:center; padding:80px 0; color:#94a3b8;">
-        <div style="font-size:3.5rem; margin-bottom:16px;">💧</div>
-        <div style="font-size:1.1rem; font-weight:700; color:#64748b; margin-bottom:8px;">H2O 缺料試算表</div>
-        <div style="font-size:0.85rem;">請從左側上傳 <b>H2O 缺料明細</b> 及 <b>供需表</b> 開始分析</div>
-    </div>""", unsafe_allow_html=True)
+    <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
+    <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 品管/廠務系統 → <b>H2O 缺料明細表</b> → 匯出 Excel（含工作表 H2O），上傳至左側</li>
+      <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側</li>
+      <li>（選填）上傳<b>加工廠互調料彙整表</b>，可追蹤已調撥進度</li>
+      <li>設定<b>分析區間</b>（起始日 ～ 結束日）</li>
+      <li>系統自動試算唐佑 / 國智各廠預計領用量與缺料量</li>
+    </ol>
+    <br>
+    <b style="color:#15803d;">🎯 分類邏輯</b>
+    <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔵 唐佑</td><td style="padding:5px 10px;">供需表中 <code>唐佑代工倉</code> 的預計領用量與結存</td></tr>
+      <tr><td style="padding:5px 10px;">🟢 國智</td><td style="padding:5px 10px;">供需表中 <code>修研/華盈/國智代工倉</code> 的預計領用量與結存</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔴 缺料</td><td style="padding:5px 10px;">區間內預計結存 &lt; 0，需從廠內倉調撥補料</td></tr>
+      <tr><td style="padding:5px 10px;">🟡 已調撥</td><td style="padding:5px 10px;">互調料彙整表中已記錄調撥，扣除後結存充足</td></tr>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 with st.spinner("分析中，請稍候..."):

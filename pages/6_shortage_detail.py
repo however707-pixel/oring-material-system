@@ -330,15 +330,32 @@ with st.sidebar:
 
 # ── 檔案檢查 ──────────────────────────────────────────────────────────────────
 if not (f_supply and f_wo and f_qc and f_transfer):
-    st.info("👈 請先在左側上傳三個 Excel 檔案：供需表、工單表、QC表")
+    st.info("👈 請先在左側上傳四個 Excel 檔案：供需表、工單表、QC表、調撥表")
     st.markdown("""
-    | 檔案 | 用途 |
-    |------|------|
-    | **供需表（分倉）** | BOM 料號清單 + 各倉庫存量 |
-    | **工單表** | 工單資訊、開工日、生產庫別、廠商 |
-    | **QC表** | 料件是否在 IQC 待驗中 |
-    | **調撥表** | 料件調撥紀錄參考 |
-    """)
+    <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
+    <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側</li>
+      <li>ERP → 製令/託外管理系統 → <b>工單表（生產進度表）</b> → 匯出 Excel，上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 需含「開 工 日」、生產庫別、廠商名稱欄位</span></li>
+      <li>ERP → 品管系統 → <b>QC 待驗表</b> → 匯出 Excel，上傳至左側</li>
+      <li>人工整理的 <b>加工廠互調料彙整表</b> → 上傳至左側（調撥表）</li>
+      <li>在左側設定<b>分析日期區間</b>（依開工日篩選工單）</li>
+      <li>點擊「🚀 執行分析」，系統批次展開所有工單 BOM 料況</li>
+    </ol>
+    <br>
+    <b style="color:#15803d;">🎯 分類邏輯</b>
+    <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">✅ 充足</td><td style="padding:5px 10px;">生產區庫存 ≥ 需求量，無缺料</td></tr>
+      <tr><td style="padding:5px 10px;">🟡 待扣帳</td><td style="padding:5px 10px;">製造倉庫存充足，倉庫尚未發料至生產線</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔀 待調撥</td><td style="padding:5px 10px;">製造倉不足，但全公司其他倉有庫存可調</td></tr>
+      <tr><td style="padding:5px 10px;">⚠️ 缺料</td><td style="padding:5px 10px;">全公司庫存不足 / IQC 待驗中 / 料尚未到廠</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔬 IQC 待驗</td><td style="padding:5px 10px;">料在品管檢驗中（來自 QC 待驗表比對）</td></tr>
+    </table>
+    <br>
+    <span style="color:#6b7280;font-size:0.82rem;">💡 分析結果可依生產方（廠內/國智/唐佑）、缺料原因等欄位排序篩選</span>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # ── 載入資料 ──────────────────────────────────────────────────────────────────

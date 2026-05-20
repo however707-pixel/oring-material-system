@@ -52,9 +52,24 @@ with st.sidebar:
 if outsource_file and supply_file:
     st.info("🔧 功能開發中，敬請期待！")
 else:
+    st.info("👈 請在左側上傳「委外需求表」及「供需表」開始分析")
     st.markdown("""
-    <div style="text-align:center; padding:60px 0; color:#94a3b8;">
-        <div style="font-size:3rem; margin-bottom:16px;">🏭</div>
-        <div style="font-size:1rem; font-weight:600; color:#64748b; margin-bottom:8px;">委外調撥確認</div>
-        <div style="font-size:0.85rem;">請從左側上傳委外需求表及供需表開始分析</div>
-    </div>""", unsafe_allow_html=True)
+    <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
+    <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 製令/託外管理系統 → <b>委外需求表</b> → 匯出 Excel，上傳至左側</li>
+      <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側</li>
+      <li>設定<b>分析基準日</b>（用於判斷在途料是否計入）</li>
+      <li>設定<b>考慮未來天數</b>（預計幾天內需要發料）</li>
+      <li>系統自動比對委外缺料 vs 各倉庫存，產出調撥建議</li>
+    </ol>
+    <br>
+    <b style="color:#15803d;">🎯 分類邏輯</b>
+    <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🟢 可調撥</td><td style="padding:5px 10px;">廠內倉庫存充足，可直接發料至委外廠</td></tr>
+      <tr><td style="padding:5px 10px;">🟡 部分可調</td><td style="padding:5px 10px;">庫存不足全量，需配合在途料或分批發料</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔴 真缺料</td><td style="padding:5px 10px;">全公司庫存皆不足，需採購補料</td></tr>
+      <tr><td style="padding:5px 10px;">⚪ IQC 待驗</td><td style="padding:5px 10px;">料已到廠但在品管檢驗中，尚無法使用</td></tr>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)

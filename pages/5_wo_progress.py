@@ -418,13 +418,29 @@ all_uploaded = f_supply and f_wo and f_qc and f_transfer
 if not all_uploaded:
     st.info("👈 請先在左側上傳四個 Excel 檔案：供需表、工單表、QC表、調撥表")
     st.markdown("""
-    | 檔案 | 用途 |
-    |------|------|
-    | **供需表（分倉）** | BOM 料號清單 + 各倉庫存量 |
-    | **工單表** | 工單資訊、生產庫別、廠商 |
-    | **QC表** | 料件是否在 IQC 待驗中 |
-    | **調撥表** | 料件調撥紀錄參考 |
-    """)
+    <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
+    <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 包含 BOM 料號、各倉庫存量、預計結存</span></li>
+      <li>ERP → 製令/託外管理系統 → <b>工單表（生產進度表）</b> → 匯出 Excel，上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 包含製令編號、生產庫別、廠商名稱</span></li>
+      <li>ERP → 品管系統 → <b>QC 待驗表</b> → 匯出 Excel，上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 用於識別「IQC 檢驗中」缺料原因</span></li>
+      <li>人工整理的 <b>加工廠互調料彙整表</b> → 上傳至左側（調撥表）</li>
+      <li>在主畫面輸入<b>製令編號</b>，點選「查詢」即可查看該工單 BOM 料況</li>
+    </ol>
+    <br>
+    <b style="color:#15803d;">🎯 分類邏輯</b>
+    <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">✅ 充足</td><td style="padding:5px 10px;">生產區庫存 ≥ 需求量，無缺料疑慮</td></tr>
+      <tr><td style="padding:5px 10px;">🟡 可調撥</td><td style="padding:5px 10px;">生產區不足，但其他倉有料可轉撥</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚠️ 缺料</td><td style="padding:5px 10px;">全公司庫存不足需求量，需採購或協調</td></tr>
+      <tr><td style="padding:5px 10px;">🔬 IQC 待驗</td><td style="padding:5px 10px;">料在品管檢驗中，尚不可領用</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🚚 在途</td><td style="padding:5px 10px;">採購訂單尚未到貨，預計近期入庫</td></tr>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # ── 載入資料 ──────────────────────────────────────────────────────────────────
