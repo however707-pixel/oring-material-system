@@ -4,6 +4,8 @@ import io
 import sys
 import os
 from datetime import date
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar
@@ -525,6 +527,104 @@ for col, label, cnt, bg in metrics:
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
+
+# ── CEO 圖表 ──────────────────────────────────────────────────────────────────
+st.divider()
+st.markdown("### 📊 生產進度總覽")
+
+_status_labels  = ["已結案", "生產中", "待扣帳", "待調撥", "缺料", "試產工單", "齊料未生產", "完工日未到"]
+_status_values  = [cnt_done, cnt_wip, cnt_held, cnt_transfer, cnt_short, cnt_trial, cnt_ready, cnt_future]
+_status_colors  = ["#4ade80", "#60a5fa", "#fbbf24", "#a78bfa", "#fb923c", "#9ca3af", "#f87171", "#facc15"]
+_status_emojis  = ["✅", "⚙️", "🟡", "🔀", "⚠️", "🧪", "🔴", "📅"]
+
+# 過濾掉 0 值
+_nz = [(l, v, c, e) for l, v, c, e in zip(_status_labels, _status_values, _status_colors, _status_emojis) if v > 0]
+_lf, _vf, _cf, _ef = zip(*_nz) if _nz else ([], [], [], [])
+
+# 生產方 × 狀態 交叉表（供堆疊長條圖用）
+_vendor_order = ["廠內", "國智", "唐佑", "其他"]
+def _vendor_group(v):
+    if v in ("廠內", "國智", "唐佑"):
+        return v
+    return "其他"
+df_view["_vendor_g"] = df_view["生產方"].apply(_vendor_group)
+
+# 簡化狀態說明 → 對應主分類
+def _main_cat(row):
+    c = row["分類"]
+    s = str(row["狀態說明"])
+    if c in ("已結案","生產中","待扣帳","待調撥","試產工單","完工日未到"):
+        return c
+    if "缺料" in s:
+        return "缺料"
+    return "齊料未生產"
+df_view["_main_cat"] = df_view.apply(_main_cat, axis=1)
+
+_cross = df_view.groupby(["_vendor_g","_main_cat"]).size().unstack(fill_value=0)
+for _s in _status_labels:
+    if _s not in _cross.columns:
+        _cross[_s] = 0
+_cross = _cross.reindex(columns=_status_labels, fill_value=0)
+_cross = _cross.reindex([v for v in _vendor_order if v in _cross.index])
+
+# ── 建圖（左：甜甜圈；右：堆疊長條）────────────────────────────────────────
+fig = make_subplots(
+    rows=1, cols=2,
+    specs=[[{"type": "pie"}, {"type": "bar"}]],
+    subplot_titles=["工單狀態分布", "各生產方工單狀態"],
+    column_widths=[0.42, 0.58],
+)
+
+# 左：甜甜圈
+fig.add_trace(go.Pie(
+    labels=[f"{e} {l}" for l, e in zip(_lf, _ef)],
+    values=_vf,
+    hole=0.52,
+    marker_colors=_cf,
+    textinfo="label+value",
+    textfont_size=13,
+    hovertemplate="%{label}<br>%{value} 張 (%{percent})<extra></extra>",
+), row=1, col=1)
+
+# 中心文字
+fig.add_annotation(
+    text=f"<b>{cnt_total}</b><br><span style='font-size:11px'>工單總數</span>",
+    x=0.185, y=0.5, xref="paper", yref="paper",
+    showarrow=False, font_size=18, align="center",
+)
+
+# 右：堆疊水平長條
+for _s, _c in zip(_status_labels, _status_colors):
+    _vals = [int(_cross.loc[v, _s]) if v in _cross.index else 0 for v in _vendor_order if v in _cross.index]
+    _vens = [v for v in _vendor_order if v in _cross.index]
+    if sum(_vals) == 0:
+        continue
+    fig.add_trace(go.Bar(
+        name=_s,
+        x=_vals,
+        y=_vens,
+        orientation="h",
+        marker_color=_c,
+        text=[str(v) if v > 0 else "" for v in _vals],
+        textposition="inside",
+        insidetextanchor="middle",
+        hovertemplate=f"{_s}: %{{x}} 張<extra></extra>",
+    ), row=1, col=2)
+
+fig.update_layout(
+    barmode="stack",
+    height=420,
+    margin=dict(t=50, b=20, l=20, r=20),
+    legend=dict(orientation="h", y=-0.15, x=0.3),
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Arial, sans-serif", size=12),
+    showlegend=True,
+)
+fig.update_xaxes(showgrid=True, gridcolor="#e5e7eb", row=1, col=2)
+fig.update_yaxes(showgrid=False, row=1, col=2)
+
+st.plotly_chart(fig, use_container_width=True)
 
 # ── 資料表 ────────────────────────────────────────────────────────────────────
 display_cols = ["製令編號", "品號", "品名", "生產方", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
