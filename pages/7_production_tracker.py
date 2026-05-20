@@ -481,15 +481,15 @@ if sel_rows:
                     detail_display[nc] = pd.to_numeric(detail_display[nc], errors="coerce").fillna(0)
 
             # 加入「製造倉庫存」欄
-            # 委外：用 wo_supply 預計結存 + 欠料量 = 用前餘量
+            # 委外：用 wo_supply 預計結存 - 欠料量 = 供應鏈在本工單前的可用量
             # 廠內：用 stock_by_wh 庫存可用量
             def get_prod_wh_stock(mat_no):
                 mat_no = str(mat_no).strip()
                 if vendor_sel != "廠內" and wo_supply:
                     supply = wo_supply.get((mat_no, wo_no))
                     if supply is not None:
-                        # 預計結存(用後) + 欠料量 = 供應鏈在本工單前的可用量
-                        return supply[0] + supply[1]
+                        # 預計結存 - 欠料量 = 供應鏈在本工單前的可用量
+                        return supply[0] - supply[1]
                 return get_vendor_stock(mat_no, vendor_sel, stock_by_wh)
 
             if "材料品號" in detail_display.columns:
