@@ -611,7 +611,7 @@ st.markdown(f"""
 # ── CEO 簡化 5 大類 ───────────────────────────────────────────────────────────
 _tot_s = cnt_total if cnt_total > 0 else 1
 _C5L = ["已結案",   "生產中",            "齊料待生產",                "試產工單",  "需處理"]
-_C5V = [cnt_done,   cnt_wip + cnt_held,  cnt_ready + cnt_future,      cnt_trial,   cnt_short + cnt_transfer]
+_C5V = [cnt_done,   cnt_wip + cnt_held,  cnt_ready,      cnt_trial,   cnt_short + cnt_transfer]
 _C5C = ["#16a34a",  "#2563eb",           "#ea580c",                   "#6b7280",   "#dc2626"]
 _C5E = ["✅",       "⚙️",               "📦",                        "🧪",        "⚠️"]
 _C5P = [0.03,       0.03,                0.08,                        0.03,        0.22]   # 大 pull = 更立體
@@ -837,7 +837,7 @@ def _kpi(icon, color, val, pct, label, bg, border):
 _kpis = "".join([
     _kpi("✅","#16a34a", cnt_done,              cnt_done/             _tot_s*100, "完成率<br>已結案比例",   "#f0fdf4","#86efac"),
     _kpi("⚙️","#2563eb", cnt_wip+cnt_held,       (cnt_wip+cnt_held)/   _tot_s*100, "進行中<br>生產中工單",   "#eff6ff","#93c5fd"),
-    _kpi("📦","#ea580c", cnt_ready+cnt_future,   (cnt_ready+cnt_future)/_tot_s*100,"齊料待生產<br>未開工",   "#fff7ed","#fdba74"),
+    _kpi("📦","#ea580c", cnt_ready,   cnt_ready/_tot_s*100,"齊料待生產<br>未開工",   "#fff7ed","#fdba74"),
     _kpi("🧪","#6b7280", cnt_trial,              cnt_trial/            _tot_s*100, "試產工單<br>試產比例",   "#f8fafc","#cbd5e1"),
     _kpi("⚠️","#dc2626", cnt_short+cnt_transfer, (cnt_short+cnt_transfer)/_tot_s*100,"需處理<br>缺料工單", "#fef2f2","#fca5a5"),
 ])
