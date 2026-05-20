@@ -113,12 +113,47 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
         mat_no  = str(row.get("材料品號", "") or "")
 
         # ── 委外工單：用供需表「備註=工單號」的預計結存判斷 ─────────────────
-        if vendor != "廠內" and wo_no and (mat_no, wo_no) in wo_supply:
-            balance = wo_supply[(mat_no, wo_no)][0]   # 用完本工單後的預計結存
-            if balance >= 0:
-                reasons.add("需調撥")      # 供應鏈夠 → 待調撥
+        if vendor != "廠內" and wo_no:
+            if (mat_no, wo_no) in wo_supply:
+                balance = wo_supply[(mat_no, wo_no)][0]   # 用完本工單後的預計結存
+                if balance >= 0:
+                    reasons.add("需調撥")      # 供應鏈夠 → 待調撥
+                else:
+                    reasons.add("庫存不足")    # 供應鏈不足 → 真缺料
             else:
-                reasons.add("庫存不足")    # 供應鏈不足 → 真缺料
+                # 供需表找不到此工單的分配紀錄
+                # → 改查委外倉自身庫存（庫存可用量），再看廠內是否有料可轉
+                vendor_stock = get_vendor_stock(mat_no, vendor, stock_by_wh) or 0
+                if vendor_stock >= short and vendor_stock > 0:
+                    # 委外倉自己有料，ERP 欠料記錄可能是舊的或待沖帳
+                    reasons.add("倉庫未補料")
+                elif stock_by_wh and mat_no in stock_by_wh:
+                    wh_map      = stock_by_wh[mat_no]
+                    total_avail = sum(wh_map.values())
+                    if total_avail >= short and total_avail > 0:
+                        reasons.add("需調撥")   # 廠內有料，需發料到委外倉
+                    elif total_avail > 0:
+                        reasons.add("庫存不足")
+                    else:
+                        if mat_no in iqc_set:
+                            reasons.add("IQC 檢驗中")
+                        elif overdue > 0:
+                            reasons.add("料沒進（逾期）")
+                        else:
+                            reasons.add("料沒進")
+                else:
+                    inv = float(row.get("現有庫存", 0) or 0)
+                    if inv >= short and inv > 0:
+                        reasons.add("倉庫未補料")
+                    elif inv > 0:
+                        reasons.add("庫存不足")
+                    else:
+                        if mat_no in iqc_set:
+                            reasons.add("IQC 檢驗中")
+                        elif overdue > 0:
+                            reasons.add("料沒進（逾期）")
+                        else:
+                            reasons.add("料沒進")
             continue
 
         # ── 廠內：用供需表 庫存可用量 判斷 ─────────────────────────────────
