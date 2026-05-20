@@ -285,8 +285,23 @@ if sel_rows:
             <b style="color:#c2410c;">⚠️ 缺料明細｜工單：{wo_no}</b>
             </div>""", unsafe_allow_html=True)
             detail_show_cols = [c for c in ["材料品號","品名","規格","欠料數量","現有庫存","逾期未入"] if c in detail_rows.columns]
+            detail_display = detail_rows[detail_show_cols].reset_index(drop=True)
+
+            # 數值欄轉換
+            for nc in ["欠料數量", "現有庫存", "逾期未入"]:
+                if nc in detail_display.columns:
+                    detail_display[nc] = pd.to_numeric(detail_display[nc], errors="coerce").fillna(0)
+
+            # 無法補足（庫存 < 欠料量）→ 整列反紅
+            def highlight_insufficient(row):
+                inv   = float(row.get("現有庫存", 0) or 0)
+                short = float(row.get("欠料數量",  0) or 0)
+                if inv < short:
+                    return ["background-color:#fecaca; color:#991b1b"] * len(row)
+                return [""] * len(row)
+
             st.dataframe(
-                detail_rows[detail_show_cols].reset_index(drop=True),
+                detail_display.style.apply(highlight_insufficient, axis=1),
                 use_container_width=True,
                 column_config={
                     "材料品號": st.column_config.TextColumn(width="medium"),
@@ -297,6 +312,7 @@ if sel_rows:
                     "逾期未入": st.column_config.NumberColumn(width="small"),
                 },
             )
+            st.caption("🔴 紅色列 = 現有庫存不足以補齊欠料量")
     else:
         st.info(f"工單 {wo_no} 無缺料明細（狀態：{wo_status}）")
 
