@@ -299,37 +299,13 @@ def render_results(matrix, spq_map, analysis_date, end_date, days_range, wh_filt
 # =========================
 render_sidebar()
 
-with st.sidebar:
-    st.divider()
-    st.markdown(f"### {t('settings')}")
-
-    uploaded_file = st.file_uploader(t("upload_label"), type=["csv", "xlsx", "xls"])
-
-    analysis_date = st.date_input(t("date_start"), datetime(2026, 5, 1), format="YYYY/MM/DD")
-    end_date      = st.date_input(t("date_end"),   datetime(2026, 5, 31), format="YYYY/MM/DD")
-    if end_date < analysis_date:
-        st.error(t("date_err"))
-        end_date = analysis_date
-
-    days_range = (end_date - analysis_date).days + 1
-    st.caption(f"📆 {t('date_caption')} **{days_range}** {t('date_caption2')}（{analysis_date} ～ {end_date}）")
-
-    st.divider()
-
-    mode_all    = t("mode_all")
-    mode_filter = t("mode_filter")
-    wh_filter_mode = st.radio(t("mode_label"), [mode_all, mode_filter], index=0)
-    wh_filter_target = None
-    if wh_filter_mode == mode_filter:
-        wh_cols = st.session_state.get("wh_columns", [])
-        if wh_cols:
-            wh_filter_target = st.selectbox(t("wh_select"), wh_cols)
-        else:
-            st.caption(t("wh_hint"))
-
-    st.divider()
-    st.info(t("info_body"))
-    st.caption(t("fmt_support"))
+# 首頁不顯示上傳供需表與顯示模式，預設值供邏輯使用
+uploaded_file    = None
+wh_filter_mode   = t("mode_all")
+wh_filter_target = None
+analysis_date    = datetime(2026, 5, 1).date()
+end_date         = datetime(2026, 5, 31).date()
+days_range       = (end_date - analysis_date).days + 1
 
 # =========================
 # 5. 主畫面
