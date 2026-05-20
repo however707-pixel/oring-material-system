@@ -723,15 +723,12 @@ for _s in _C5L:
     _tc = _c5tc.get(_s, "white")
     _base = _run_base.copy()
 
-    # ① 前面板（正色，顯示數字）
+    # ① 前面板（正色，無內部文字—數字太擠改只顯示頂部總計）
     fig_d4.add_trace(go.Bar(
         name=_s,
         x=_xf, y=_vals, base=_base,
         width=_BW,
         marker=dict(color=_c, line=dict(color="rgba(255,255,255,0.55)", width=1.5)),
-        text=[f"<b>{int(v)}</b>" if v >= 1 else "" for v in _vals],
-        textposition="inside", insidetextanchor="middle",
-        textfont=dict(color=_tc, size=13, family="Arial Black"),
         hovertemplate=f"<b>{_s}</b>: %{{y:.0f}} 張<extra></extra>",
     ))
 
