@@ -452,11 +452,25 @@ if date_start or date_end:
 total = len(df)
 v_counts = df_view["分類"].value_counts()
 
+# 各分類計數（先算好，加總才準確）
+cnt_done     = int(v_counts.get("已結案",   0))
+cnt_wip      = int(v_counts.get("生產中",   0))
+cnt_held     = int(v_counts.get("待扣帳",   0))
+cnt_transfer = int(v_counts.get("待調撥",   0))
+cnt_short    = int((df_view["狀態說明"].str.contains("缺料", na=False) &
+                    (df_view["分類"] != "完工日未到")).sum())
+cnt_trial    = int(v_counts.get("試產工單", 0))
+cnt_ready    = int((df_view["狀態說明"] == "齊料未生產").sum())
+cnt_future   = int(v_counts.get("完工日未到", 0))
+
+# 總數 = 各分類加總
+cnt_total = cnt_done + cnt_wip + cnt_held + cnt_transfer + cnt_short + cnt_trial + cnt_ready + cnt_future
+
 # 生產方統計
-_n_inner   = (df_view["生產方"] == "廠內").sum()
-_n_guozhi  = (df_view["生產方"] == "國智").sum()
-_n_tangyou = (df_view["生產方"] == "唐佑").sum()
-_n_other   = len(df_view) - _n_inner - _n_guozhi - _n_tangyou
+_n_inner   = int((df_view["生產方"] == "廠內").sum())
+_n_guozhi  = int((df_view["生產方"] == "國智").sum())
+_n_tangyou = int((df_view["生產方"] == "唐佑").sum())
+_n_other   = cnt_total - _n_inner - _n_guozhi - _n_tangyou
 
 col_total, col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2,1,1,1,1,1,1,1,1])
 
@@ -465,7 +479,7 @@ col_total.markdown(
     f'<div style="background:#f1f5f9;border-radius:10px;padding:14px 16px;text-align:center;'
     f'border:1px solid rgba(0,0,0,0.09);box-shadow:0 2px 8px rgba(0,0,0,0.06);height:100%;">'
     f'<div style="font-size:0.78rem;color:#475569;font-weight:600;">📋 工單總數（篩選後）</div>'
-    f'<div style="font-size:2rem;font-weight:900;color:#1e293b;line-height:1.3;">{len(df_view):,}</div>'
+    f'<div style="font-size:2rem;font-weight:900;color:#1e293b;line-height:1.3;">{cnt_total:,}</div>'
     f'<div style="font-size:0.72rem;color:#64748b;margin-top:6px;line-height:2;">'
     f'廠內 <b>{_n_inner}</b> &nbsp;｜&nbsp; 國智 <b>{_n_guozhi}</b>'
     f'&nbsp;｜&nbsp; 唐佑 <b>{_n_tangyou}</b> &nbsp;｜&nbsp; 其他 <b>{_n_other}</b>'
@@ -474,16 +488,14 @@ col_total.markdown(
 )
 
 metrics = [
-    (col1, "✅ 已結案",     v_counts.get("已結案", 0),     "#bbf7d0"),
-    (col2, "⚙️ 生產中",    v_counts.get("生產中", 0),     "#bfdbfe"),
-    (col3, "🟡 待扣帳",    v_counts.get("待扣帳", 0),     "#fde68a"),
-    (col4, "🔀 待調撥",    v_counts.get("待調撥", 0),     "#ddd6fe"),
-    (col5, "⚠️ 缺料",
-        (df_view["狀態說明"].str.contains("缺料", na=False) &
-         (df_view["分類"] != "完工日未到")).sum(), "#fed7aa"),
-    (col6, "🧪 試產工單",  v_counts.get("試產工單", 0),   "#e5e7eb"),
-    (col7, "🔴 齊料未生產", (df_view["狀態說明"] == "齊料未生產").sum(), "#fecaca"),
-    (col8, "📅 完工日未到", v_counts.get("完工日未到", 0), "#fef08a"),
+    (col1, "✅ 已結案",     cnt_done,     "#bbf7d0"),
+    (col2, "⚙️ 生產中",    cnt_wip,      "#bfdbfe"),
+    (col3, "🟡 待扣帳",    cnt_held,     "#fde68a"),
+    (col4, "🔀 待調撥",    cnt_transfer, "#ddd6fe"),
+    (col5, "⚠️ 缺料",      cnt_short,    "#fed7aa"),
+    (col6, "🧪 試產工單",  cnt_trial,    "#e5e7eb"),
+    (col7, "🔴 齊料未生產", cnt_ready,   "#fecaca"),
+    (col8, "📅 完工日未到", cnt_future,  "#fef08a"),
 ]
 for col, label, cnt, bg in metrics:
     col.markdown(
