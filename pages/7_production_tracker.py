@@ -241,14 +241,8 @@ st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 # ── 資料表 ────────────────────────────────────────────────────────────────────
 display_cols = ["製令編號", "品號", "品名", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
 
-def color_status(val):
-    for key, color in STATUS_COLOR.items():
-        if key in str(val):
-            return f"background-color:{color}"
-    return ""
-
 st.dataframe(
-    df_view[display_cols].style.applymap(color_status, subset=["狀態說明"]),
+    df_view[display_cols],
     use_container_width=True,
     height=520,
 )
