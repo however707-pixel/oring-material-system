@@ -531,183 +531,237 @@ for col, label, cnt, bg in metrics:
 st.markdown("<br>", unsafe_allow_html=True)
 st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 
-# ── CEO 圖表 ──────────────────────────────────────────────────────────────────
+# ── CEO 5D 儀表板 ─────────────────────────────────────────────────────────────
 st.divider()
-st.markdown(
-    "<h3 style='margin-bottom:4px;'>📊 生產進度總覽</h3>"
-    f"<p style='color:#64748b;font-size:0.85rem;margin-top:0;'>"
-    f"資料日期：{date.today().strftime('%Y / %m / %d')}　｜　篩選後工單：{cnt_total} 張</p>",
-    unsafe_allow_html=True,
-)
 
-# 圖表容器陰影（立體感）
+# CSS：圖表容器卡片化
 st.markdown("""
 <style>
 [data-testid="stPlotlyChart"] > div {
-    border-radius: 18px !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.16), 0 2px 10px rgba(0,0,0,0.10) !important;
-    overflow: hidden !important;
-    background: #f8fafc !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+.ceo-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.10), 0 1px 6px rgba(0,0,0,0.06);
+    padding: 16px 20px 8px 20px;
+    margin-bottom: 12px;
+}
+.ceo-card-title {
+    font-size: 0.84rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+    letter-spacing: 0.02em;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 顏色、emoji、pull（立體感） ───────────────────────────────────────────────
-_SL   = ["已結案",  "生產中",  "待扣帳",  "待調撥",  "缺料",    "試產工單", "齊料未生產","完工日未到"]
-_SV   = [cnt_done,  cnt_wip,   cnt_held,  cnt_transfer, cnt_short, cnt_trial, cnt_ready,  cnt_future]
-_SC   = ["#16a34a", "#2563eb", "#d97706", "#7c3aed", "#dc2626",  "#6b7280",  "#ea580c",  "#ca8a04"]
-_SE   = ["✅",      "⚙️",      "🟡",      "🔀",      "⚠️",      "🧪",       "🔴",       "📅"]
-_PULL = [0.02,      0.02,      0.06,      0.06,      0.14,       0.02,       0.12,       0.05]
-# 棒形圖文字顏色：深色系背景 → 白字；淺色系背景 → 深字
-_BTXT = ["white",  "white",   "#1e293b", "white",   "white",   "#1e293b",  "white",    "#1e293b"]
+# ── 5D 標題列 ─────────────────────────────────────────────────────────────────
+def _dim_b(code, icon, title, desc, bg, tc):
+    return (
+        f'<div style="background:{bg};border-radius:10px;padding:9px 14px;'
+        f'border:1px solid rgba(0,0,0,0.07);min-width:100px;flex-shrink:0;">'
+        f'<div style="font-size:0.76rem;font-weight:800;color:{tc};">{icon} {code} {title}</div>'
+        f'<div style="font-size:0.65rem;color:#64748b;margin-top:3px;line-height:1.45;">{desc}</div>'
+        f'</div>'
+    )
 
-# 過濾 0 值
-_nz = [(l,v,c,e,p) for l,v,c,e,p in zip(_SL,_SV,_SC,_SE,_PULL) if v > 0]
-_lf,_vf,_cf,_ef,_pf = zip(*_nz) if _nz else ([],[],[],[],[])
+st.markdown(f"""
+<div style="background:white;border-radius:16px;padding:20px 28px;margin-bottom:14px;
+     box-shadow:0 4px 24px rgba(0,0,0,0.10);border:1px solid #e2e8f0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+    <div>
+      <div style="font-size:2rem;font-weight:900;color:#1e293b;line-height:1.15;">
+        工單&nbsp;<span style="color:#3b82f6;font-style:italic;">5D</span>&nbsp;總覽
+      </div>
+      <div style="color:#64748b;font-size:0.83rem;margin-top:6px;">
+        總工單數 <b style="color:#1e293b;">{cnt_total}</b>
+        &nbsp;｜&nbsp; 資料更新：{date.today().strftime('%Y/%m/%d %H:%M')}
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      {_dim_b("D1","📅","時間維度","掌握工單時間趨勢<br>與處理效率","#dbeafe","#1d4ed8")}
+      {_dim_b("D2","📍","空間維度","按廠內/國智/唐佑/<br>其他分析分布","#dcfce7","#15803d")}
+      {_dim_b("D3","✅","狀態維度","追蹤工單狀態分布<br>與轉換效率","#f0fdf4","#166534")}
+      {_dim_b("D4","🔖","類型維度","分析試產工單與缺料<br>佔比與影響","#fef9c3","#854d0e")}
+      {_dim_b("D5","💰","價值維度","統計完成率與未完成<br>之業務價值","#fee2e2","#991b1b")}
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-# 生產方分組
-_vendor_order = ["廠內", "國智", "唐佑", "其他"]
-df_view["_vendor_g"] = df_view["生產方"].apply(
-    lambda v: v if v in ("廠內","國智","唐佑") else "其他")
+# ── CEO 簡化 5 大類 ───────────────────────────────────────────────────────────
+_tot_s = cnt_total if cnt_total > 0 else 1
+_C5L = ["已結案",   "生產中",            "齊料待生產",                "試產工單",  "需處理"]
+_C5V = [cnt_done,   cnt_wip + cnt_held,  cnt_ready + cnt_future,      cnt_trial,   cnt_short + cnt_transfer]
+_C5C = ["#16a34a",  "#2563eb",           "#ea580c",                   "#6b7280",   "#dc2626"]
+_C5E = ["✅",       "⚙️",               "📦",                        "🧪",        "⚠️"]
+_C5P = [0.02,       0.02,                0.06,                        0.02,        0.14]
 
-def _main_cat(row):
-    c, s = row["分類"], str(row["狀態說明"])
-    if c in ("已結案","生產中","待扣帳","待調撥","試產工單","完工日未到"):
-        return c
-    return "缺料" if "缺料" in s else "齊料未生產"
-df_view["_main_cat"] = df_view.apply(_main_cat, axis=1)
+_c5nz = [(l,v,c,e,p) for l,v,c,e,p in zip(_C5L,_C5V,_C5C,_C5E,_C5P) if v > 0]
+_c5l,_c5v,_c5c,_c5e,_c5p = zip(*_c5nz) if _c5nz else ([],[],[],[],[])
 
-_cross = df_view.groupby(["_vendor_g","_main_cat"]).size().unstack(fill_value=0)
-for _s in _SL:
-    if _s not in _cross.columns: _cross[_s] = 0
-_cross = _cross.reindex(columns=_SL, fill_value=0)
-_cross = _cross.reindex([v for v in _vendor_order if v in _cross.index])
-_vens  = list(_cross.index)
+# 生產方 × 5 大類 cross table
+_cat5_map = {
+    "已結案":    "已結案",   "生產中":    "生產中",
+    "待扣帳":    "生產中",   "待調撥":    "需處理",
+    "試產工單":  "試產工單", "齊料未生產":"齊料待生產",
+    "完工日未到":"齊料待生產",
+}
+df_view["_c5cat"] = df_view["分類"].map(_cat5_map).fillna("需處理")
+df_view["_vg"]    = df_view["生產方"].apply(lambda v: v if v in ("廠內","國智","唐佑") else "其他")
 
-# ── 左圖：立體感甜甜圈（文字在外側，深色清晰）────────────────────────────────
-fig_donut = go.Figure()
+_vorder = ["廠內","國智","唐佑","其他"]
+_cross5 = df_view.groupby(["_vg","_c5cat"]).size().unstack(fill_value=0)
+for _s in _C5L:
+    if _s not in _cross5.columns: _cross5[_s] = 0
+_cross5 = _cross5.reindex(columns=_C5L, fill_value=0)
+_cross5 = _cross5.reindex([v for v in _vorder if v in _cross5.index])
+_vens5  = list(_cross5.index)
 
-# ① 陰影底層（稍大、深灰、不秀文字）
-fig_donut.add_trace(go.Pie(
-    labels=list(_lf),
-    values=list(_vf),
-    hole=0.54,
-    pull=[p + 0.015 for p in _pf],
-    marker=dict(
-        colors=["rgba(0,0,0,0.10)"] * len(_vf),
-        line=dict(color="rgba(0,0,0,0)", width=0),
-    ),
-    textinfo="none",
-    hoverinfo="skip",
-    showlegend=False,
-    direction="clockwise",
-    sort=True,
-    rotation=92,   # 稍微偏移，形成投影感
+# ── 左圖 D1：立體甜甜圈（外側 callout 標籤）──────────────────────────────────
+fig_d1 = go.Figure()
+
+# 陰影底層
+fig_d1.add_trace(go.Pie(
+    labels=list(_c5l), values=list(_c5v),
+    hole=0.54, pull=[p+0.015 for p in _c5p],
+    marker=dict(colors=["rgba(30,41,59,0.12)"]*len(_c5v),
+                line=dict(color="rgba(0,0,0,0)", width=0)),
+    textinfo="none", hoverinfo="skip", showlegend=False,
+    direction="clockwise", sort=True, rotation=93,
 ))
 
-# ② 主體甜甜圈（文字放外側→深色好讀）
-fig_donut.add_trace(go.Pie(
-    labels=[f"{e} {l}" for l, e in zip(_lf, _ef)],
-    values=list(_vf),
-    hole=0.58,
-    pull=list(_pf),
-    marker=dict(
-        colors=list(_cf),
-        line=dict(color="white", width=2.5),
-    ),
-    textinfo="label+value",
-    textposition="outside",
+# 主體
+fig_d1.add_trace(go.Pie(
+    labels=[f"{e} {l}\n{v} ({v/_tot_s*100:.1f}%)" for l,v,e in zip(_c5l,_c5v,_c5e)],
+    values=list(_c5v), hole=0.60, pull=list(_c5p),
+    marker=dict(colors=list(_c5c), line=dict(color="white", width=3)),
+    textinfo="label", textposition="outside",
     automargin=True,
-    outsidetextfont=dict(size=11.5, color="#1e293b", family="Arial"),
-    hovertemplate="<b>%{label}</b><br>%{value} 張　%{percent}<extra></extra>",
-    direction="clockwise",
-    sort=True,
-    rotation=90,
+    outsidetextfont=dict(size=12, color="#1e293b", family="Arial"),
+    hovertemplate="<b>%{label}</b><extra></extra>",
+    direction="clockwise", sort=True, rotation=90,
 ))
 
-fig_donut.update_layout(
+fig_d1.update_layout(
     annotations=[dict(
-        text=f"<b>{cnt_total}</b><br>工單總數",
+        text=f"<b>{cnt_total}</b><br><span style='font-size:13px'>工單總數</span>",
         x=0.5, y=0.5, xref="paper", yref="paper",
-        showarrow=False,
-        font=dict(size=28, color="#1e293b", family="Arial Black"),
+        showarrow=False, font=dict(size=30, color="#1e293b", family="Arial Black"),
         align="center",
     )],
     showlegend=False,
-    height=500,
-    margin=dict(t=50, b=50, l=70, r=70),
-    paper_bgcolor="rgba(248,250,252,1)",
+    height=420,
+    margin=dict(t=60, b=60, l=90, r=90),
+    paper_bgcolor="white",
     font=dict(family="Arial, sans-serif"),
 )
 
-# ── 右圖：3D 感堆疊橫條（文字依背景深淺切換）────────────────────────────────
-fig_bar = go.Figure()
-_color_map = dict(zip(_SL, _SC))
-_btext_map = dict(zip(_SL, _BTXT))
+# ── 右圖 D2~D4：堆疊橫條 + 行末總計標籤 ─────────────────────────────────────
+fig_d4 = go.Figure()
+_c5cm  = dict(zip(_C5L, _C5C))
+_c5tc  = {"已結案":"white","生產中":"white","齊料待生產":"white",
+           "試產工單":"#1e293b","需處理":"white"}
 
-for _s in _SL:
-    if _s not in _cross.columns: continue
-    _vals = [int(_cross.loc[v, _s]) if v in _cross.index else 0 for v in _vens]
+for _s in _C5L:
+    _vals = [int(_cross5.loc[v,_s]) if v in _cross5.index else 0 for v in _vens5]
     if sum(_vals) == 0: continue
-    _c  = _color_map[_s]
-    _tc = _btext_map.get(_s, "white")
-
-    # 主要 bar
-    fig_bar.add_trace(go.Bar(
-        name=_s,
-        x=_vals,
-        y=_vens,
-        orientation="h",
-        marker=dict(
-            color=_c,
-            line=dict(color="rgba(255,255,255,0.75)", width=2),
-            opacity=0.94,
-        ),
+    _c = _c5cm[_s]; _tc = _c5tc.get(_s,"white")
+    fig_d4.add_trace(go.Bar(
+        name=_s, x=_vals, y=_vens5, orientation="h",
+        marker=dict(color=_c, line=dict(color="rgba(255,255,255,0.7)", width=2), opacity=0.95),
         text=[f"<b>{v}</b>" if v > 0 else "" for v in _vals],
-        textposition="inside",
-        insidetextanchor="middle",
+        textposition="inside", insidetextanchor="middle",
         textfont=dict(color=_tc, size=13, family="Arial Black"),
         hovertemplate=f"<b>{_s}</b>: %{{x}} 張<extra></extra>",
     ))
 
-fig_bar.update_layout(
-    barmode="stack",
-    height=500,
-    margin=dict(t=20, b=90, l=70, r=20),
-    paper_bgcolor="rgba(248,250,252,1)",
-    plot_bgcolor="rgba(241,245,249,1)",
+# 行末總計
+for _ven in _vens5:
+    _tot = int(_cross5.loc[_ven].sum()) if _ven in _cross5.index else 0
+    if _tot > 0:
+        fig_d4.add_annotation(
+            x=_tot, y=_ven, text=f"  <b>{_tot}</b>",
+            showarrow=False, xanchor="left",
+            font=dict(size=14, color="#1e293b", family="Arial Black"),
+        )
+
+fig_d4.update_layout(
+    barmode="stack", height=420,
+    margin=dict(t=20, b=90, l=60, r=70),
+    paper_bgcolor="white",
+    plot_bgcolor="rgba(241,245,249,0.8)",
     font=dict(family="Arial, sans-serif", size=13),
     legend=dict(
-        orientation="h", x=0.5, y=-0.25, xanchor="center",
+        orientation="h", x=0.5, y=-0.28, xanchor="center",
         font=dict(size=12, color="#374151"),
         bgcolor="rgba(255,255,255,0.95)",
         bordercolor="#e2e8f0", borderwidth=1,
-        itemsizing="constant",
     ),
-    xaxis=dict(
-        showgrid=True, gridcolor="#cbd5e1", gridwidth=1,
-        zeroline=False, tickfont=dict(size=11, color="#475569"),
-    ),
-    yaxis=dict(
-        showgrid=False,
-        tickfont=dict(size=15, color="#1e293b", family="Arial Black"),
-    ),
+    xaxis=dict(showgrid=True, gridcolor="#cbd5e1", zeroline=False,
+               tickfont=dict(size=11, color="#475569")),
+    yaxis=dict(showgrid=False, tickfont=dict(size=15, color="#1e293b", family="Arial Black")),
     bargap=0.30,
 )
 
-_c1, _c2 = st.columns([1, 1])
-with _c1:
+# ── 兩欄佈局 ──────────────────────────────────────────────────────────────────
+_cL, _cR = st.columns([1, 1.15])
+
+with _cL:
     st.markdown(
-        "<p style='text-align:center;font-weight:700;color:#1e293b;"
-        "font-size:1.05rem;margin-bottom:6px;letter-spacing:0.03em;'>"
-        "工單狀態分布</p>", unsafe_allow_html=True)
-    st.plotly_chart(fig_donut, use_container_width=True)
-with _c2:
+        '<div class="ceo-card">'
+        '<div class="ceo-card-title" style="color:#1d4ed8;">📅 D1 時間維度 ｜ 工單狀態總覽</div>',
+        unsafe_allow_html=True)
+    st.plotly_chart(fig_d1, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with _cR:
     st.markdown(
-        "<p style='text-align:center;font-weight:700;color:#1e293b;"
-        "font-size:1.05rem;margin-bottom:6px;letter-spacing:0.03em;'>"
-        "各生產方工單狀態</p>", unsafe_allow_html=True)
-    st.plotly_chart(fig_bar, use_container_width=True)
+        '<div class="ceo-card">'
+        '<div class="ceo-card-title" style="color:#15803d;">'
+        '🗺️ D2~D4 空間 × 狀態 × 類型 分析（單位：工單數）</div>',
+        unsafe_allow_html=True)
+    st.plotly_chart(fig_d4, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── D5 績效 KPI 列 ────────────────────────────────────────────────────────────
+def _kpi(icon, color, val, pct, label, bg, border):
+    return (
+        f'<div style="background:{bg};border:2px solid {border};border-radius:14px;'
+        f'padding:16px 14px;text-align:center;flex:1;min-width:110px;">'
+        f'<div style="font-size:1.9rem;line-height:1;">{icon}</div>'
+        f'<div style="font-size:1.55rem;font-weight:900;color:{color};margin-top:6px;line-height:1.1;">'
+        f'{pct:.1f}%</div>'
+        f'<div style="font-size:0.72rem;color:#475569;margin-top:5px;font-weight:700;line-height:1.5;">'
+        f'{label}</div>'
+        f'</div>'
+    )
+
+_kpis = "".join([
+    _kpi("✅","#16a34a", cnt_done,              cnt_done/             _tot_s*100, "完成率<br>已結案比例",   "#f0fdf4","#86efac"),
+    _kpi("⚙️","#2563eb", cnt_wip+cnt_held,       (cnt_wip+cnt_held)/   _tot_s*100, "進行中<br>生產中工單",   "#eff6ff","#93c5fd"),
+    _kpi("📦","#ea580c", cnt_ready+cnt_future,   (cnt_ready+cnt_future)/_tot_s*100,"齊料待生產<br>未開工",   "#fff7ed","#fdba74"),
+    _kpi("🧪","#6b7280", cnt_trial,              cnt_trial/            _tot_s*100, "試產工單<br>試產比例",   "#f8fafc","#cbd5e1"),
+    _kpi("⚠️","#dc2626", cnt_short+cnt_transfer, (cnt_short+cnt_transfer)/_tot_s*100,"需處理<br>缺料工單", "#fef2f2","#fca5a5"),
+])
+
+st.markdown(f"""
+<div style="background:white;border-radius:16px;padding:18px 22px 16px;
+     box-shadow:0 6px 28px rgba(0,0,0,0.10);border:1px solid #e2e8f0;">
+  <div style="font-size:0.84rem;font-weight:800;color:#991b1b;margin-bottom:14px;letter-spacing:0.02em;">
+    💰 D5 價值維度 ｜ 績效指標
+  </div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    {_kpis}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # ── 資料表 ────────────────────────────────────────────────────────────────────
 display_cols = ["製令編號", "品號", "品名", "生產方", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
