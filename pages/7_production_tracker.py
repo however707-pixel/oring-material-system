@@ -644,6 +644,7 @@ fig_d1.add_trace(go.Pie(
                 line=dict(color="rgba(0,0,0,0)", width=0)),
     textinfo="none", hoverinfo="skip", showlegend=False,
     direction="clockwise", sort=True, rotation=96,
+    domain=dict(x=[0,1], y=[0,1]),
 ))
 
 # 第二層：中間高光（白色細環，增加厚度感）
@@ -654,13 +655,16 @@ fig_d1.add_trace(go.Pie(
                 line=dict(color="rgba(0,0,0,0)", width=0)),
     textinfo="none", hoverinfo="skip", showlegend=False,
     direction="clockwise", sort=True, rotation=91,
+    domain=dict(x=[0,1], y=[0,1]),
 ))
 
-# 第三層：主體（彩色 + 外側標籤）
+# 第三層：主體（彩色 + 外側標籤；標籤用換行分兩行，避免擁擠）
+_d1_labels = [f"{e} {l}<br>{v} ({v/_tot_s*100:.1f}%)" for l,v,e in zip(_c5l,_c5v,_c5e)]
+
 fig_d1.add_trace(go.Pie(
-    labels=[f"{e} {l}  {v} ({v/_tot_s*100:.1f}%)" for l,v,e in zip(_c5l,_c5v,_c5e)],
+    labels=_d1_labels,
     values=list(_c5v),
-    hole=0.60,
+    hole=0.62,
     pull=list(_c5p),
     marker=dict(
         colors=list(_c5c),
@@ -669,11 +673,12 @@ fig_d1.add_trace(go.Pie(
     textinfo="label",
     textposition="outside",
     automargin=True,
-    outsidetextfont=dict(size=13, color="#1e293b", family="Arial"),
+    outsidetextfont=dict(size=12.5, color="#1e293b", family="Arial"),
     hovertemplate="<b>%{label}</b><extra></extra>",
     direction="clockwise",
     sort=True,
     rotation=90,
+    domain=dict(x=[0,1], y=[0,1]),
 ))
 
 fig_d1.update_layout(
@@ -681,12 +686,13 @@ fig_d1.update_layout(
         text=f"<b>{cnt_total}</b><br>工單總數",
         x=0.5, y=0.5, xref="paper", yref="paper",
         showarrow=False,
-        font=dict(size=34, color="#0f172a", family="Arial Black"),
+        font=dict(size=30, color="#0f172a", family="Arial Black"),
         align="center",
     )],
     showlegend=False,
-    height=560,
-    margin=dict(t=90, b=90, l=110, r=110),
+    height=620,
+    # margin 儘量小，讓 automargin 自動為 callout 標籤留空間
+    margin=dict(t=16, b=16, l=16, r=16),
     paper_bgcolor="white",
     font=dict(family="Arial, sans-serif"),
 )
@@ -765,8 +771,8 @@ for i, _ven in enumerate(_vens5):
 _max_y = max(_run_base) if _run_base else 1
 fig_d4.update_layout(
     barmode="overlay",
-    height=560,
-    margin=dict(t=30, b=90, l=30, r=30),
+    height=620,
+    margin=dict(t=30, b=100, l=30, r=30),
     paper_bgcolor="white",
     plot_bgcolor="rgba(241,245,249,0.85)",
     font=dict(family="Arial, sans-serif", size=13),
