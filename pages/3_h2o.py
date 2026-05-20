@@ -430,8 +430,9 @@ with st.spinner("分析中，請稍候..."):
         pno_str = str(pno).strip()
         t_pending = int(tang_pending_map.get(pno_str, 0) or 0)
         k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
-        t_actual  = max(0, t_qty - t_pending) if t_qty > 0 else None
-        k_actual  = max(0, k_qty - k_pending) if k_qty > 0 else None
+        # 若待調撥量已 >= 原始缺料量（未SPQ進位），表示原缺已被覆蓋，實際應調撥=0
+        t_actual  = (0 if t_pending >= t_deficit else max(0, t_qty - t_pending)) if t_qty > 0 else None
+        k_actual  = (0 if k_pending >= k_deficit else max(0, k_qty - k_pending)) if k_qty > 0 else None
 
         rows.append({
             '料號':              pno,
