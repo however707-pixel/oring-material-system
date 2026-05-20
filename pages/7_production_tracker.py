@@ -93,22 +93,35 @@ def get_vendor_stock(mat_no, vendor, stock_by_wh):
         return sum(matched) if matched else None
 
 # ── 分類邏輯 ──────────────────────────────────────────────────────────────────
-def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None):
+def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
+                         wo_no=None, wo_supply=None):
     """
-    stock_by_wh : {品號: {庫別名稱: 可用量}}  來自供需表(分倉)
+    stock_by_wh : {品號: {庫別: 可用量}}  來自供需表 庫存可用量 列（廠內用）
     vendor      : 生產方（廠內 / 廠商名稱）
+    wo_no       : 製令編號
+    wo_supply   : {(品號, 製令編號): (預計結存, 欠料量)}  來自供需表 備註=工單號 列（委外用）
     """
     reasons = set()
     iqc_set     = iqc_set     or set()
     stock_by_wh = stock_by_wh or {}
     vendor      = vendor      or "廠內"
+    wo_supply   = wo_supply   or {}
 
     for _, row in group.iterrows():
         short   = float(row.get("欠料數量", 0) or 0)
         overdue = float(row.get("逾期未入", 0) or 0)
         mat_no  = str(row.get("材料品號", "") or "")
 
-        # ── 供需表(分倉) 有資料 → 用分倉庫存判斷 ──────────────────────────
+        # ── 委外工單：用供需表「備註=工單號」的預計結存判斷 ─────────────────
+        if vendor != "廠內" and wo_no and (mat_no, wo_no) in wo_supply:
+            balance = wo_supply[(mat_no, wo_no)][0]   # 用完本工單後的預計結存
+            if balance >= 0:
+                reasons.add("需調撥")      # 供應鏈夠 → 待調撥
+            else:
+                reasons.add("庫存不足")    # 供應鏈不足 → 真缺料
+            continue
+
+        # ── 廠內：用供需表 庫存可用量 判斷 ─────────────────────────────────
         if stock_by_wh and mat_no in stock_by_wh:
             wh_map      = stock_by_wh[mat_no]
             total_avail = sum(wh_map.values())
@@ -117,9 +130,9 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None):
             if prod_stock >= short and prod_stock > 0:
                 reasons.add("倉庫未補料")          # 製造倉就有，沒補料
             elif total_avail >= short and total_avail > 0:
-                reasons.add("需調撥")              # 其他倉有，需要調撥
+                reasons.add("需調撥")              # 其他倉有，需調撥
             elif total_avail > 0:
-                reasons.add("庫存不足")            # 有料但全倉加起來不夠
+                reasons.add("庫存不足")            # 有料但全倉不夠
             else:
                 if mat_no in iqc_set:
                     reasons.add("IQC 檢驗中")
@@ -128,7 +141,7 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None):
                 else:
                     reasons.add("料沒進")
 
-        # ── 沒有供需表 → 用欠料表現有庫存判斷（舊邏輯）────────────────────
+        # ── 無供需表 → 用欠料表現有庫存判斷（舊邏輯）──────────────────────
         else:
             inv = float(row.get("現有庫存", 0) or 0)
             if inv >= short and inv > 0:
@@ -189,11 +202,14 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
                 df_iqc[df_iqc["檢驗狀態"] == "待驗"]["品號"].dropna().tolist()
             )
 
-    # 讀取供需表(分倉) → {品號: {庫別名稱: 可用量}}
-    stock_by_wh = {}
+    # 讀取供需表(分倉)
+    stock_by_wh = {}   # {品號: {庫別: 可用量}}（廠內，來自庫存可用量列）
+    wo_supply   = {}   # {(品號, 製令編號): (預計結存, 欠料量)}（委外，來自備註=工單號列）
     if stock_bytes:
         df_stock = pd.read_excel(io.BytesIO(stock_bytes), dtype=str)
         df_stock.columns = df_stock.columns.str.strip()
+
+        # 廠內倉別現有庫存（庫存可用量列，用庫別欄）
         df_avail = df_stock[df_stock["日期"] == "庫存可用量:"].copy()
         df_avail["異動數量"] = pd.to_numeric(df_avail["異動數量"], errors="coerce").fillna(0)
         for _, sr in df_avail.iterrows():
@@ -203,6 +219,25 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             if pno and wh:
                 stock_by_wh.setdefault(pno, {})[wh] = \
                     stock_by_wh.get(pno, {}).get(wh, 0) + qty
+
+        # 委外工單供應鏈餘量（備註=工單號 + 庫別名稱=代工倉 + 預計領用）
+        mask = (
+            df_stock["異動別"].str.strip() == "預計領用"
+        ) & df_stock["備註"].notna() & (df_stock["備註"].str.strip() != "") \
+          & df_stock["庫別名稱"].notna() & (df_stock["庫別名稱"].str.strip() != "")
+        df_wo = df_stock[mask].copy()
+        df_wo["_bal"] = pd.to_numeric(df_wo["預計結存"], errors="coerce")
+        df_wo["_qty"] = pd.to_numeric(df_wo["異動數量"], errors="coerce").fillna(0)
+        for _, sr in df_wo.iterrows():
+            pno    = str(sr.get("品號", "") or "").strip()
+            wo_key = str(sr.get("備註", "") or "").strip()
+            bal    = sr["_bal"]
+            qty    = sr["_qty"]
+            if pno and wo_key and not pd.isna(bal):
+                key = (pno, wo_key)
+                # 保留最小餘量（最保守估計）
+                if key not in wo_supply or float(bal) < wo_supply[key][0]:
+                    wo_supply[key] = (float(bal), float(qty))
 
     # 建立欠料群組 {製令編號: DataFrame}
     shortage_groups = {str(k): g for k, g in df_sht.groupby("製令編號")}
@@ -224,10 +259,11 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
         vendor       = "" if vendor_raw.lower() in ("nan", "none", "") else vendor_raw
         vendor_label = vendor if vendor else "廠內"
 
-        # 計算缺料原因（以生產方對應倉別判斷）
+        # 計算缺料原因（廠內→庫存可用量判斷；委外→供需表備註=工單號的預計結存判斷）
         if wo_no in shortage_groups:
             reason_str = get_shortage_reason(
-                shortage_groups[wo_no], iqc_set, stock_by_wh, vendor_label
+                shortage_groups[wo_no], iqc_set, stock_by_wh, vendor_label,
+                wo_no=wo_no, wo_supply=wo_supply
             )
         else:
             reason_str = ""
@@ -259,7 +295,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             "分類":       cat,
             "狀態說明":   label,
         })
-    return pd.DataFrame(rows), stock_by_wh, df_sht
+    return pd.DataFrame(rows), stock_by_wh, df_sht, wo_supply
 
 # ── Sidebar 上傳區 ────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -309,7 +345,7 @@ if not prod_file or not short_file:
 
 # ── 資料處理 ──────────────────────────────────────────────────────────────────
 with st.spinner("分析中..."):
-    df, stock_by_wh, df_sht = process(
+    df, stock_by_wh, df_sht, wo_supply = process(
         prod_file.read(),
         short_file.read(),
         date.today().isoformat(),
@@ -444,9 +480,17 @@ if sel_rows:
                 if nc in detail_display.columns:
                     detail_display[nc] = pd.to_numeric(detail_display[nc], errors="coerce").fillna(0)
 
-            # 加入「製造倉庫存」欄（依生產方查詢對應倉別）
+            # 加入「製造倉庫存」欄
+            # 委外：用 wo_supply 預計結存 + 欠料量 = 用前餘量
+            # 廠內：用 stock_by_wh 庫存可用量
             def get_prod_wh_stock(mat_no):
-                return get_vendor_stock(str(mat_no).strip(), vendor_sel, stock_by_wh)
+                mat_no = str(mat_no).strip()
+                if vendor_sel != "廠內" and wo_supply:
+                    supply = wo_supply.get((mat_no, wo_no))
+                    if supply is not None:
+                        # 預計結存(用後) + 欠料量 = 供應鏈在本工單前的可用量
+                        return supply[0] + supply[1]
+                return get_vendor_stock(mat_no, vendor_sel, stock_by_wh)
 
             if "材料品號" in detail_display.columns:
                 detail_display.insert(
