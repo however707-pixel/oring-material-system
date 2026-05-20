@@ -386,10 +386,13 @@ if not prod_file or not short_file:
     st.markdown("""
     <div style="background:#f0fdf4;border:1.5px dashed #86efac;border-radius:12px;padding:20px 24px;margin-top:16px;">
     <b style="color:#15803d;font-size:1rem;">📋 操作步驟</b>
-    <ol style="color:#374151;margin-top:10px;line-height:2;">
-      <li>進入 ERP → 製令/託外管理系統 → <b>生產進度表</b>，匯出 Excel</li>
-      <li>進入 ERP → 製令/託外管理系統 → <b>*製令欠料狀況表</b>，匯出 Excel</li>
-      <li>將兩份檔案上傳至左側</li>
+    <ol style="color:#374151;margin-top:10px;line-height:2.2;">
+      <li>ERP → 製令/託外管理系統 → <b>生產進度表</b> → 匯出 Excel，上傳至左側</li>
+      <li>ERP → 製令/託外管理系統 → <b>*製令欠料狀況表</b> → 匯出 Excel，上傳至左側</li>
+      <li>（選填）ERP → 品管系統 → <b>IQC 待驗表</b> → 匯出 Excel，上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 上傳後可辨識「IQC 檢驗中」缺料原因</span></li>
+      <li>（選填）每日更新的 <b>供需表－分倉</b> → 上傳至左側<br>
+          <span style="color:#6b7280;font-size:0.85rem;">↳ 上傳後可顯示製造倉庫存、判斷待扣帳 / 待調撥 / 真缺料</span></li>
     </ol>
     <br>
     <b style="color:#15803d;">🎯 分類邏輯</b>
