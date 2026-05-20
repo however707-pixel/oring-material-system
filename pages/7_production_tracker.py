@@ -246,23 +246,59 @@ st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 # ── 資料表 ────────────────────────────────────────────────────────────────────
 display_cols = ["製令編號", "品號", "品名", "開工日", "預計交期", "預計產量", "已生產量", "未生產量", "ERP狀態", "狀態說明"]
 
-st.dataframe(
-    df_view[display_cols],
+col_cfg = {
+    "製令編號": st.column_config.TextColumn(width="medium"),
+    "品號":     st.column_config.TextColumn(width="medium"),
+    "品名":     st.column_config.TextColumn(width="large"),
+    "開工日":   st.column_config.TextColumn(width="small"),
+    "預計交期": st.column_config.TextColumn(width="small"),
+    "預計產量": st.column_config.TextColumn(width="small"),
+    "已生產量": st.column_config.TextColumn(width="small"),
+    "未生產量": st.column_config.TextColumn(width="small"),
+    "ERP狀態":  st.column_config.TextColumn(width="small"),
+    "狀態說明": st.column_config.TextColumn(width="medium"),
+}
+
+selected = st.dataframe(
+    df_view[display_cols].reset_index(drop=True),
     use_container_width=True,
     height=520,
-    column_config={
-        "製令編號": st.column_config.TextColumn(width="medium"),
-        "品號":     st.column_config.TextColumn(width="medium"),
-        "品名":     st.column_config.TextColumn(width="large"),
-        "開工日":   st.column_config.TextColumn(width="small"),
-        "預計交期": st.column_config.TextColumn(width="small"),
-        "預計產量": st.column_config.TextColumn(width="small"),
-        "已生產量": st.column_config.TextColumn(width="small"),
-        "未生產量": st.column_config.TextColumn(width="small"),
-        "ERP狀態":  st.column_config.TextColumn(width="small"),
-        "狀態說明": st.column_config.TextColumn(width="medium"),
-    },
+    column_config=col_cfg,
+    on_select="rerun",
+    selection_mode="single-row",
 )
+
+# ── 缺料明細展開 ──────────────────────────────────────────────────────────────
+sel_rows = selected.selection.rows if selected and selected.selection else []
+if sel_rows:
+    sel_idx = sel_rows[0]
+    sel_wo  = df_view[display_cols].reset_index(drop=True).iloc[sel_idx]
+    wo_no   = sel_wo["製令編號"]
+    wo_status = sel_wo["狀態說明"]
+
+    if "缺料" in str(wo_status):
+        detail_rows = df_sht[df_sht["製令編號"] == wo_no].copy()
+        if not detail_rows.empty:
+            st.markdown(f"""
+            <div style="background:#fff7ed;border:1.5px solid #fb923c;border-radius:10px;
+                        padding:12px 18px;margin:8px 0 4px;">
+            <b style="color:#c2410c;">⚠️ 缺料明細｜工單：{wo_no}</b>
+            </div>""", unsafe_allow_html=True)
+            detail_show_cols = [c for c in ["材料品號","品名","規格","欠料數量","現有庫存","逾期未入"] if c in detail_rows.columns]
+            st.dataframe(
+                detail_rows[detail_show_cols].reset_index(drop=True),
+                use_container_width=True,
+                column_config={
+                    "材料品號": st.column_config.TextColumn(width="medium"),
+                    "品名":     st.column_config.TextColumn(width="large"),
+                    "規格":     st.column_config.TextColumn(width="large"),
+                    "欠料數量": st.column_config.NumberColumn(width="small"),
+                    "現有庫存": st.column_config.NumberColumn(width="small"),
+                    "逾期未入": st.column_config.NumberColumn(width="small"),
+                },
+            )
+    else:
+        st.info(f"工單 {wo_no} 無缺料明細（狀態：{wo_status}）")
 
 # ── 下載 ──────────────────────────────────────────────────────────────────────
 st.divider()
