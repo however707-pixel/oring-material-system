@@ -58,22 +58,31 @@ STATUS_EMOJI = {
     "齊料未生產": "🔴",
 }
 
-# ── 廠內製造倉別（供需表 庫別名稱）────────────────────────────────────────────
-INNER_WH_NAMES = ["機構倉", "包材倉", "成品倉", "電子倉"]
+# ── 生產方 → 供需表庫別名稱 對照表 ────────────────────────────────────────────
+VENDOR_WH_MAP = {
+    "廠內": ["機構倉", "包材倉", "成品倉", "電子倉"],
+    "國智": ["修研倉", "華盈倉", "國智代工倉"],
+    "唐佑": ["唐佑代工倉"],
+}
+# 廠內倉別（向後相容用）
+INNER_WH_NAMES = VENDOR_WH_MAP["廠內"]
 
 def get_vendor_stock(mat_no, vendor, stock_by_wh):
     """
     依生產方查詢對應倉別庫存（stock_by_wh key = 庫別名稱）。
-    廠內 → 機構倉 + 包材倉 + 成品倉 + 電子倉 合計
-    委外 → 庫別名稱含廠商名稱的倉別合計
+    優先查 VENDOR_WH_MAP；未登記廠商則用庫別名稱包含廠商名稱做模糊比對。
     回傳 None 表示供需表中無此品號資料。
     """
     if not stock_by_wh or mat_no not in stock_by_wh:
         return None
-    wh_map = stock_by_wh[mat_no]           # {庫別名稱: qty}
-    if vendor == "廠內":
-        return sum(wh_map.get(wh, 0) for wh in INNER_WH_NAMES)
+    wh_map  = stock_by_wh[mat_no]          # {庫別名稱: qty}
+    wh_list = VENDOR_WH_MAP.get(vendor)    # 精確對照
+
+    if wh_list is not None:
+        # 有明確對照 → 加總指定倉別
+        return sum(wh_map.get(wh, 0) for wh in wh_list)
     else:
+        # 未登記廠商 → 模糊比對庫別名稱
         matched = [qty for wh, qty in wh_map.items()
                    if vendor and (vendor in wh or wh in vendor)]
         return sum(matched) if matched else None
