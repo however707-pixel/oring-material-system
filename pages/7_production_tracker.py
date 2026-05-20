@@ -58,15 +58,36 @@ STATUS_EMOJI = {
     "齊料未生產": "🔴",
 }
 
-# ── 分類邏輯 ──────────────────────────────────────────────────────────────────
-def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, prod_wh=None):
+# ── 廠內製造倉別（供需表 庫別名稱）────────────────────────────────────────────
+INNER_WH_NAMES = ["機構倉", "包材倉", "成品倉", "電子倉"]
+
+def get_vendor_stock(mat_no, vendor, stock_by_wh):
     """
-    stock_by_wh : {品號: {庫別: 可用量}}  來自供需表(分倉)
-    prod_wh     : 工單生產庫別代號（生產進度表 生產庫別 欄）
+    依生產方查詢對應倉別庫存（stock_by_wh key = 庫別名稱）。
+    廠內 → 機構倉 + 包材倉 + 成品倉 + 電子倉 合計
+    委外 → 庫別名稱含廠商名稱的倉別合計
+    回傳 None 表示供需表中無此品號資料。
+    """
+    if not stock_by_wh or mat_no not in stock_by_wh:
+        return None
+    wh_map = stock_by_wh[mat_no]           # {庫別名稱: qty}
+    if vendor == "廠內":
+        return sum(wh_map.get(wh, 0) for wh in INNER_WH_NAMES)
+    else:
+        matched = [qty for wh, qty in wh_map.items()
+                   if vendor and (vendor in wh or wh in vendor)]
+        return sum(matched) if matched else None
+
+# ── 分類邏輯 ──────────────────────────────────────────────────────────────────
+def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None):
+    """
+    stock_by_wh : {品號: {庫別名稱: 可用量}}  來自供需表(分倉)
+    vendor      : 生產方（廠內 / 廠商名稱）
     """
     reasons = set()
-    iqc_set    = iqc_set    or set()
+    iqc_set     = iqc_set     or set()
     stock_by_wh = stock_by_wh or {}
+    vendor      = vendor      or "廠內"
 
     for _, row in group.iterrows():
         short   = float(row.get("欠料數量", 0) or 0)
@@ -75,20 +96,12 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, prod_wh=None):
 
         # ── 供需表(分倉) 有資料 → 用分倉庫存判斷 ──────────────────────────
         if stock_by_wh and mat_no in stock_by_wh:
-            wh_map     = stock_by_wh[mat_no]          # {庫別: qty}
+            wh_map      = stock_by_wh[mat_no]
             total_avail = sum(wh_map.values())
-
-            # 找生產倉庫存（先精確比對，再包含比對）
-            prod_stock = wh_map.get(prod_wh, None)
-            if prod_stock is None and prod_wh:
-                for wh, qty in wh_map.items():
-                    if prod_wh in wh or wh in prod_wh:
-                        prod_stock = qty
-                        break
-            prod_stock = prod_stock or 0
+            prod_stock  = get_vendor_stock(mat_no, vendor, stock_by_wh) or 0
 
             if prod_stock >= short and prod_stock > 0:
-                reasons.add("倉庫未補料")          # 生產倉就有，沒補料
+                reasons.add("倉庫未補料")          # 製造倉就有，沒補料
             elif total_avail >= short and total_avail > 0:
                 reasons.add("需調撥")              # 其他倉有，需要調撥
             elif total_avail > 0:
@@ -162,7 +175,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
                 df_iqc[df_iqc["檢驗狀態"] == "待驗"]["品號"].dropna().tolist()
             )
 
-    # 讀取供需表(分倉) → {品號: {庫別: 可用量}}
+    # 讀取供需表(分倉) → {品號: {庫別名稱: 可用量}}
     stock_by_wh = {}
     if stock_bytes:
         df_stock = pd.read_excel(io.BytesIO(stock_bytes), dtype=str)
@@ -170,12 +183,12 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
         df_avail = df_stock[df_stock["日期"] == "庫存可用量:"].copy()
         df_avail["異動數量"] = pd.to_numeric(df_avail["異動數量"], errors="coerce").fillna(0)
         for _, sr in df_avail.iterrows():
-            pno = str(sr.get("品號", "") or "").strip()
-            wh  = str(sr.get("庫別", "") or "").strip()
-            qty = float(sr["異動數量"])
-            if pno and wh:
-                stock_by_wh.setdefault(pno, {})[wh] = \
-                    stock_by_wh.get(pno, {}).get(wh, 0) + qty
+            pno     = str(sr.get("品號",     "") or "").strip()
+            wh_name = str(sr.get("庫別名稱", "") or "").strip()
+            qty     = float(sr["異動數量"])
+            if pno and wh_name:
+                stock_by_wh.setdefault(pno, {})[wh_name] = \
+                    stock_by_wh.get(pno, {}).get(wh_name, 0) + qty
 
     # 建立欠料群組 {製令編號: DataFrame}
     shortage_groups = {str(k): g for k, g in df_sht.groupby("製令編號")}
@@ -191,12 +204,16 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
     for _, r in df_prod.iterrows():
         wo_no  = str(r.get("製令編號", "") or "")
         status = str(r.get("製令狀態", "") or "")
-        prod_wh = prod_wh_map.get(wo_no, "")
 
-        # 計算缺料原因（有供需表就用分倉，否則用欠料表現有庫存）
+        # 先算生產方（廠內 / 廠商名稱），供倉庫查詢使用
+        vendor_raw   = str(r.get("廠商名稱", "") or "").strip()
+        vendor       = "" if vendor_raw.lower() in ("nan", "none", "") else vendor_raw
+        vendor_label = vendor if vendor else "廠內"
+
+        # 計算缺料原因（以生產方對應倉別判斷）
         if wo_no in shortage_groups:
             reason_str = get_shortage_reason(
-                shortage_groups[wo_no], iqc_set, stock_by_wh, prod_wh
+                shortage_groups[wo_no], iqc_set, stock_by_wh, vendor_label
             )
         else:
             reason_str = ""
@@ -210,8 +227,6 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             cat   = "待扣帳"
             label = "待扣帳"
 
-        vendor_raw = str(r.get("廠商名稱", "") or "").strip()
-        vendor = "" if vendor_raw.lower() in ("nan", "none", "") else vendor_raw
         rows.append({
             "製令編號":   wo_no,
             "品號":       r.get("產品品號", ""),
@@ -221,8 +236,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             "預計產量":   r.get("預計產量", ""),
             "已生產量":   r.get("已生產量", ""),
             "未生產量":   r.get("未生產量", ""),
-            "生產方":     vendor if vendor else "廠內",
-            "生產庫別":   prod_wh,
+            "生產方":     vendor_label,
             "ERP狀態":    status,
             "分類":       cat,
             "狀態說明":   label,
@@ -386,18 +400,19 @@ if sel_rows:
     if "缺料" in str(wo_status) or wo_status == "待扣帳":
         detail_rows = df_sht[df_sht["製令編號"] == wo_no].copy()
         if not detail_rows.empty:
-            # 取得此工單的生產庫別
-            wo_full = df[df["製令編號"] == wo_no]
-            prod_wh_sel = wo_full["生產庫別"].iloc[0] if not wo_full.empty else ""
+            # 取得此工單的生產方
+            wo_full     = df[df["製令編號"] == wo_no]
+            vendor_sel  = wo_full["生產方"].iloc[0] if not wo_full.empty else "廠內"
 
             banner_color = "#fff7ed" if "缺料" in str(wo_status) else "#fefce8"
             border_color = "#fb923c" if "缺料" in str(wo_status) else "#facc15"
             icon = "⚠️" if "缺料" in str(wo_status) else "🟡"
+            wh_hint = "（機構倉+包材倉+成品倉+電子倉）" if vendor_sel == "廠內" else f"（{vendor_sel}倉）"
             st.markdown(f"""
             <div style="background:{banner_color};border:1.5px solid {border_color};border-radius:10px;
                         padding:12px 18px;margin:8px 0 4px;">
             <b style="color:#c2410c;">{icon} 欠料明細｜工單：{wo_no}
-            {"｜製造倉：" + prod_wh_sel if prod_wh_sel else ""}</b>
+            ｜生產方：{vendor_sel} {wh_hint}</b>
             </div>""", unsafe_allow_html=True)
 
             detail_show_cols = [c for c in ["材料品號","品名","規格","欠料數量","現有庫存","逾期未入"] if c in detail_rows.columns]
@@ -408,19 +423,9 @@ if sel_rows:
                 if nc in detail_display.columns:
                     detail_display[nc] = pd.to_numeric(detail_display[nc], errors="coerce").fillna(0)
 
-            # 加入「製造倉庫存」欄（從供需表-分倉查詢）
+            # 加入「製造倉庫存」欄（依生產方查詢對應倉別）
             def get_prod_wh_stock(mat_no):
-                mat_no = str(mat_no).strip()
-                if stock_by_wh and mat_no in stock_by_wh:
-                    wh_map = stock_by_wh[mat_no]
-                    qty = wh_map.get(prod_wh_sel, None)
-                    if qty is None and prod_wh_sel:
-                        for wh, q in wh_map.items():
-                            if prod_wh_sel in wh or wh in prod_wh_sel:
-                                qty = q
-                                break
-                    return float(qty) if qty is not None else 0.0
-                return None  # 無供需表資料
+                return get_vendor_stock(str(mat_no).strip(), vendor_sel, stock_by_wh)
 
             if "材料品號" in detail_display.columns:
                 detail_display.insert(
