@@ -216,10 +216,10 @@ def classify_wo(no, status, end_str, shortage_map, today):
         except Exception:
             end = None
         if end and end > today:
-            # 完工日未到 → 進一步分析是缺料還是齊料
+            # 完工日未到 → 直接依缺料狀況歸入齊料未生產或缺料
             if str(no) in shortage_map:
-                return "完工日未到", f"完工日未到｜缺料（{shortage_map[str(no)]}）"
-            return "完工日未到", "完工日未到｜齊料"
+                return "未生產", f"缺料（{shortage_map[str(no)]}）"
+            return "未生產", "齊料未生產"
         if str(no) in shortage_map:
             return "未生產", f"缺料（{shortage_map[str(no)]}）"
         return "未生產", "齊料未生產"
@@ -426,10 +426,17 @@ with st.spinner("分析中..."):
 df["分類"]   = df["分類"].replace("已生產", "已結案")
 df["狀態說明"] = df["狀態說明"].replace("已生產", "已結案")
 
-# 舊格式：分類="未生產" + 狀態說明="完工日未到" → 新格式：分類="完工日未到" + 狀態說明="完工日未到｜齊料"
-_old_future = (df["分類"] == "未生產") & (df["狀態說明"] == "完工日未到")
-df.loc[_old_future, "分類"]   = "完工日未到"
-df.loc[_old_future, "狀態說明"] = "完工日未到｜齊料"
+# 舊格式：分類="完工日未到" → 改歸入齊料未生產或缺料
+_old_future_short = (df["分類"] == "完工日未到") & df["狀態說明"].str.contains("缺料", na=False)
+_old_future_ok    = (df["分類"] == "完工日未到") & ~df["狀態說明"].str.contains("缺料", na=False)
+df.loc[_old_future_short, "分類"] = "未生產"
+# 狀態說明去掉前綴"完工日未到｜"
+df.loc[_old_future_short, "狀態說明"] = df.loc[_old_future_short, "狀態說明"].str.replace("完工日未到｜", "", regex=False)
+df.loc[_old_future_ok, "分類"]   = "未生產"
+df.loc[_old_future_ok, "狀態說明"] = "齊料未生產"
+# 舊格式：分類="未生產" + 狀態說明="完工日未到" → 齊料未生產
+_old_future2 = (df["分類"] == "未生產") & (df["狀態說明"] == "完工日未到")
+df.loc[_old_future2, "狀態說明"] = "齊料未生產"
 
 # ── 篩選列 ────────────────────────────────────────────────────────────────────
 fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 3])
@@ -479,11 +486,9 @@ cnt_done     = int(v_counts.get("已結案",   0))
 cnt_wip      = int(v_counts.get("生產中",   0))
 cnt_held     = int(v_counts.get("待扣帳",   0))
 cnt_transfer = int(v_counts.get("待調撥",   0))
-cnt_short    = int((df_view["狀態說明"].str.contains("缺料", na=False) &
-                    (df_view["分類"] != "完工日未到")).sum())
+cnt_short    = int(df_view["狀態說明"].str.contains("缺料", na=False).sum())
 cnt_trial    = int(v_counts.get("試產工單", 0))
 cnt_ready    = int((df_view["狀態說明"] == "齊料未生產").sum())
-cnt_future   = int(v_counts.get("完工日未到", 0))
 
 # 總數 = df_view 全部（含未分類到小格的工單）
 cnt_total  = len(df_view)
@@ -494,7 +499,7 @@ _n_guozhi  = int((df_view["生產方"] == "國智").sum())
 _n_tangyou = int((df_view["生產方"] == "唐佑").sum())
 _n_other   = cnt_total - _n_inner - _n_guozhi - _n_tangyou
 
-col_total, col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2,1,1,1,1,1,1,1,1])
+col_total, col1, col2, col3, col4, col5, col6, col7 = st.columns([2,1,1,1,1,1,1,1])
 
 # 總筆數大格
 col_total.markdown(
@@ -516,8 +521,7 @@ metrics = [
     (col4, "🔀 待調撥",    cnt_transfer, "#ddd6fe"),
     (col5, "🧪 試產工單",  cnt_trial,    "#e5e7eb"),
     (col6, "🔴 齊料未生產", cnt_ready,   "#fecaca"),
-    (col7, "📅 完工日未到", cnt_future,  "#fef08a"),
-    (col8, "⚠️ 缺料",      cnt_short,    "#fed7aa"),
+    (col7, "⚠️ 缺料",      cnt_short,    "#fed7aa"),
 ]
 for col, label, cnt, bg in metrics:
     col.markdown(
@@ -620,7 +624,6 @@ _cat5_map = {
     "已結案":    "已結案",   "生產中":    "生產中",
     "待扣帳":    "生產中",   "待調撥":    "需處理",
     "試產工單":  "試產工單", "齊料未生產":"齊料待生產",
-    "完工日未到":"齊料待生產",
 }
 df_view["_c5cat"] = df_view["分類"].map(_cat5_map).fillna("需處理")
 df_view["_vg"]    = df_view["生產方"].apply(lambda v: v if v in ("廠內","國智","唐佑") else "其他")
