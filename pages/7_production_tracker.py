@@ -60,12 +60,18 @@ STATUS_EMOJI = {
 def get_shortage_reason(group):
     reasons = set()
     for _, row in group.iterrows():
-        inv = float(row.get("現有庫存", 0) or 0)
+        inv     = float(row.get("現有庫存", 0) or 0)
+        short   = float(row.get("欠料數量", 0) or 0)
         overdue = float(row.get("逾期未入", 0) or 0)
         if inv == 0:
+            # 完全沒庫存
             reasons.add("料沒進（逾期）" if overdue > 0 else "料沒進")
-        else:
+        elif inv >= short:
+            # 庫存夠補這個缺口，但還沒發料
             reasons.add("倉庫未補料")
+        else:
+            # 庫存有，但不夠填滿缺口
+            reasons.add("庫存不足")
     return "、".join(sorted(reasons))
 
 def classify_wo(no, status, start_str, shortage_map, today):
