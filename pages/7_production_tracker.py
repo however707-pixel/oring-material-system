@@ -463,10 +463,10 @@ cnt_trial    = int(v_counts.get("試產工單", 0))
 cnt_ready    = int((df_view["狀態說明"] == "齊料未生產").sum())
 cnt_future   = int(v_counts.get("完工日未到", 0))
 
-# 總數 = 各分類加總
-cnt_total = cnt_done + cnt_wip + cnt_held + cnt_transfer + cnt_short + cnt_trial + cnt_ready + cnt_future
+# 總數 = df_view 全部（含未分類到小格的工單）
+cnt_total  = len(df_view)
 
-# 生產方統計
+# 生產方統計（從 df_view 算，其他 = 非廠內/國智/唐佑）
 _n_inner   = int((df_view["生產方"] == "廠內").sum())
 _n_guozhi  = int((df_view["生產方"] == "國智").sum())
 _n_tangyou = int((df_view["生產方"] == "唐佑").sum())
