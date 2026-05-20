@@ -514,10 +514,10 @@ metrics = [
     (col2, "⚙️ 生產中",    cnt_wip,      "#bfdbfe"),
     (col3, "🟡 待扣帳",    cnt_held,     "#fde68a"),
     (col4, "🔀 待調撥",    cnt_transfer, "#ddd6fe"),
-    (col5, "⚠️ 缺料",      cnt_short,    "#fed7aa"),
-    (col6, "🧪 試產工單",  cnt_trial,    "#e5e7eb"),
-    (col7, "🔴 齊料未生產", cnt_ready,   "#fecaca"),
-    (col8, "📅 完工日未到", cnt_future,  "#fef08a"),
+    (col5, "🧪 試產工單",  cnt_trial,    "#e5e7eb"),
+    (col6, "🔴 齊料未生產", cnt_ready,   "#fecaca"),
+    (col7, "📅 完工日未到", cnt_future,  "#fef08a"),
+    (col8, "⚠️ 缺料",      cnt_short,    "#fed7aa"),
 ]
 for col, label, cnt, bg in metrics:
     col.markdown(
