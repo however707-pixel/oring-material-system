@@ -57,26 +57,63 @@ STATUS_EMOJI = {
 }
 
 # ── 分類邏輯 ──────────────────────────────────────────────────────────────────
-def get_shortage_reason(group, iqc_set=None):
+def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, prod_wh=None):
+    """
+    stock_by_wh : {品號: {庫別: 可用量}}  來自供需表(分倉)
+    prod_wh     : 工單生產庫別代號（生產進度表 生產庫別 欄）
+    """
     reasons = set()
-    iqc_set = iqc_set or set()
+    iqc_set    = iqc_set    or set()
+    stock_by_wh = stock_by_wh or {}
+
     for _, row in group.iterrows():
-        inv     = float(row.get("現有庫存", 0) or 0)
         short   = float(row.get("欠料數量", 0) or 0)
         overdue = float(row.get("逾期未入", 0) or 0)
         mat_no  = str(row.get("材料品號", "") or "")
-        if inv >= short and inv > 0:
-            reasons.add("倉庫未補料")
-        elif inv > 0:
-            reasons.add("庫存不足")
-        else:
-            # 庫存為零：先查 IQC
-            if mat_no in iqc_set:
-                reasons.add("IQC 檢驗中")
-            elif overdue > 0:
-                reasons.add("料沒進（逾期）")
+
+        # ── 供需表(分倉) 有資料 → 用分倉庫存判斷 ──────────────────────────
+        if stock_by_wh and mat_no in stock_by_wh:
+            wh_map     = stock_by_wh[mat_no]          # {庫別: qty}
+            total_avail = sum(wh_map.values())
+
+            # 找生產倉庫存（先精確比對，再包含比對）
+            prod_stock = wh_map.get(prod_wh, None)
+            if prod_stock is None and prod_wh:
+                for wh, qty in wh_map.items():
+                    if prod_wh in wh or wh in prod_wh:
+                        prod_stock = qty
+                        break
+            prod_stock = prod_stock or 0
+
+            if prod_stock >= short and prod_stock > 0:
+                reasons.add("倉庫未補料")          # 生產倉就有，沒補料
+            elif total_avail >= short and total_avail > 0:
+                reasons.add("需調撥")              # 其他倉有，需要調撥
+            elif total_avail > 0:
+                reasons.add("庫存不足")            # 有料但全倉加起來不夠
             else:
-                reasons.add("料沒進")
+                if mat_no in iqc_set:
+                    reasons.add("IQC 檢驗中")
+                elif overdue > 0:
+                    reasons.add("料沒進（逾期）")
+                else:
+                    reasons.add("料沒進")
+
+        # ── 沒有供需表 → 用欠料表現有庫存判斷（舊邏輯）────────────────────
+        else:
+            inv = float(row.get("現有庫存", 0) or 0)
+            if inv >= short and inv > 0:
+                reasons.add("倉庫未補料")
+            elif inv > 0:
+                reasons.add("庫存不足")
+            else:
+                if mat_no in iqc_set:
+                    reasons.add("IQC 檢驗中")
+                elif overdue > 0:
+                    reasons.add("料沒進（逾期）")
+                else:
+                    reasons.add("料沒進")
+
     return "、".join(sorted(reasons))
 
 def classify_wo(no, status, start_str, shortage_map, today):
@@ -99,7 +136,7 @@ def classify_wo(no, status, start_str, shortage_map, today):
     return "其他", ""
 
 @st.cache_data(show_spinner=False)
-def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
+def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None):
     today = date.fromisoformat(today_str)
 
     # 讀取生產進度表
@@ -123,23 +160,53 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
                 df_iqc[df_iqc["檢驗狀態"] == "待驗"]["品號"].dropna().tolist()
             )
 
-    shortage_map = {
-        str(k): get_shortage_reason(g, iqc_set)
-        for k, g in df_sht.groupby("製令編號")
-    }
+    # 讀取供需表(分倉) → {品號: {庫別: 可用量}}
+    stock_by_wh = {}
+    if stock_bytes:
+        df_stock = pd.read_excel(io.BytesIO(stock_bytes), dtype=str)
+        df_stock.columns = df_stock.columns.str.strip()
+        df_avail = df_stock[df_stock["日期"] == "庫存可用量:"].copy()
+        df_avail["異動數量"] = pd.to_numeric(df_avail["異動數量"], errors="coerce").fillna(0)
+        for _, sr in df_avail.iterrows():
+            pno = str(sr.get("品號", "") or "").strip()
+            wh  = str(sr.get("庫別", "") or "").strip()
+            qty = float(sr["異動數量"])
+            if pno and wh:
+                stock_by_wh.setdefault(pno, {})[wh] = \
+                    stock_by_wh.get(pno, {}).get(wh, 0) + qty
+
+    # 建立欠料群組 {製令編號: DataFrame}
+    shortage_groups = {str(k): g for k, g in df_sht.groupby("製令編號")}
+
+    # 建立工單生產庫別對照 {製令編號: 生產庫別}
+    prod_wh_map = {}
+    if "生產庫別" in df_prod.columns:
+        for _, r in df_prod[["製令編號", "生產庫別"]].dropna().iterrows():
+            prod_wh_map[str(r["製令編號"])] = str(r["生產庫別"]).strip()
 
     # 分類
     rows = []
     for _, r in df_prod.iterrows():
-        cat, reason = classify_wo(
-            r.get("製令編號", ""), r.get("製令狀態", ""),
-            r.get("開工日", ""), shortage_map, today
-        )
+        wo_no  = str(r.get("製令編號", "") or "")
+        status = str(r.get("製令狀態", "") or "")
+        prod_wh = prod_wh_map.get(wo_no, "")
+
+        # 計算缺料原因（有供需表就用分倉，否則用欠料表現有庫存）
+        if wo_no in shortage_groups:
+            reason_str = get_shortage_reason(
+                shortage_groups[wo_no], iqc_set, stock_by_wh, prod_wh
+            )
+        else:
+            reason_str = ""
+
+        shortage_map_local = {wo_no: reason_str} if reason_str else {}
+        cat, reason = classify_wo(wo_no, status, r.get("開工日", ""), shortage_map_local, today)
         label = reason if reason else cat
+
         vendor_raw = str(r.get("廠商名稱", "") or "").strip()
         vendor = "" if vendor_raw.lower() in ("nan", "none", "") else vendor_raw
         rows.append({
-            "製令編號":   r.get("製令編號", ""),
+            "製令編號":   wo_no,
             "品號":       r.get("產品品號", ""),
             "品名":       r.get("品名", ""),
             "開工日":     r.get("開工日", ""),
@@ -148,11 +215,11 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
             "已生產量":   r.get("已生產量", ""),
             "未生產量":   r.get("未生產量", ""),
             "生產方":     vendor if vendor else "廠內",
-            "ERP狀態":    r.get("製令狀態", ""),
+            "ERP狀態":    status,
             "分類":       cat,
             "狀態說明":   label,
         })
-    return pd.DataFrame(rows), shortage_map, df_sht
+    return pd.DataFrame(rows), stock_by_wh, df_sht
 
 # ── Sidebar 上傳區 ────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -161,6 +228,7 @@ with st.sidebar:
     prod_file  = st.file_uploader("生產進度表（ERP匯出）", type=["xlsx", "xls"], key="prod")
     short_file = st.file_uploader("製令欠料表（ERP匯出）",  type=["xlsx", "xls"], key="short")
     iqc_file   = st.file_uploader("IQC 待驗表（ERP匯出）", type=["xlsx", "xls"], key="iqc")
+    stock_file = st.file_uploader("供需表-分倉（每日更新）", type=["xlsx", "xls"], key="stock")
     st.caption("從 ERP → 製令/託外管理系統 匯出後上傳")
 
     st.divider()
@@ -199,11 +267,12 @@ if not prod_file or not short_file:
 
 # ── 資料處理 ──────────────────────────────────────────────────────────────────
 with st.spinner("分析中..."):
-    df, shortage_map, df_sht = process(
+    df, stock_by_wh, df_sht = process(
         prod_file.read(),
         short_file.read(),
         date.today().isoformat(),
         iqc_file.read() if iqc_file else None,
+        stock_file.read() if stock_file else None,
     )
 
 # ── 篩選列 ────────────────────────────────────────────────────────────────────
