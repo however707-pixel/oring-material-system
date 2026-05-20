@@ -42,7 +42,7 @@ STATUS_COLOR = {
     "試產工單":   "#e5e7eb",
     "已生產":     "#bbf7d0",
     "生產中":     "#bfdbfe",
-    "開工日未到": "#fef08a",
+    "完工日未到": "#fef08a",
     "缺料":       "#fed7aa",
     "齊料未生產": "#fecaca",
 }
@@ -51,7 +51,7 @@ STATUS_EMOJI = {
     "試產工單":   "🧪",
     "已生產":     "✅",
     "生產中":     "⚙️",
-    "開工日未到": "📅",
+    "完工日未到": "📅",
     "缺料":       "⚠️",
     "齊料未生產": "🔴",
 }
@@ -116,7 +116,7 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, prod_wh=None):
 
     return "、".join(sorted(reasons))
 
-def classify_wo(no, status, start_str, shortage_map, today):
+def classify_wo(no, status, end_str, shortage_map, today):
     if str(no).startswith("FF"):
         return "試產工單", ""
     if status in ("已完工", "指定完工"):
@@ -125,11 +125,11 @@ def classify_wo(no, status, start_str, shortage_map, today):
         return "生產中", ""
     if status == "未生產":
         try:
-            start = pd.to_datetime(start_str).date()
+            end = pd.to_datetime(end_str).date()
         except Exception:
-            start = None
-        if start and start > today:
-            return "未生產", "開工日未到"
+            end = None
+        if end and end > today:
+            return "未生產", "完工日未到"
         if str(no) in shortage_map:
             return "未生產", f"缺料（{shortage_map[str(no)]}）"
         return "未生產", "齊料未生產"
@@ -200,7 +200,7 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
             reason_str = ""
 
         shortage_map_local = {wo_no: reason_str} if reason_str else {}
-        cat, reason = classify_wo(wo_no, status, r.get("開工日", ""), shortage_map_local, today)
+        cat, reason = classify_wo(wo_no, status, r.get("完工日", ""), shortage_map_local, today)
         label = reason if reason else cat
 
         vendor_raw = str(r.get("廠商名稱", "") or "").strip()
@@ -257,7 +257,7 @@ if not prod_file or not short_file:
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🧪 試產工單</td><td style="padding:5px 10px;">工單號以 FF 開頭</td></tr>
       <tr><td style="padding:5px 10px;">✅ 已生產</td><td style="padding:5px 10px;">已完工 / 指定完工</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚙️ 生產中</td><td style="padding:5px 10px;">已領料 / 生產中</td></tr>
-      <tr><td style="padding:5px 10px;">📅 開工日未到</td><td style="padding:5px 10px;">未生產且開工日尚未到</td></tr>
+      <tr><td style="padding:5px 10px;">📅 完工日未到</td><td style="padding:5px 10px;">未生產且完工日（預計交期）尚未到</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚠️ 缺料</td><td style="padding:5px 10px;">欠料表中有缺料記錄（含原因）</td></tr>
       <tr><td style="padding:5px 10px;">🔴 齊料未生產</td><td style="padding:5px 10px;">開工日已過，料齊但尚未開工</td></tr>
     </table>
@@ -322,7 +322,7 @@ col1, col2, col3, col4, col5, col6 = st.columns(6)
 metrics = [
     (col1, "✅ 已生產",     v_counts.get("已生產", 0),     "#bbf7d0"),
     (col2, "⚙️ 生產中",    v_counts.get("生產中", 0),     "#bfdbfe"),
-    (col3, "📅 開工日未到", (df_view["狀態說明"] == "開工日未到").sum(), "#fef08a"),
+    (col3, "📅 完工日未到", (df_view["狀態說明"] == "完工日未到").sum(), "#fef08a"),
     (col4, "⚠️ 缺料",      df_view["狀態說明"].str.contains("缺料", na=False).sum(), "#fed7aa"),
     (col5, "🔴 齊料未生產", (df_view["狀態說明"] == "齊料未生產").sum(), "#fecaca"),
     (col6, "🧪 試產工單",  v_counts.get("試產工單", 0),   "#e5e7eb"),
