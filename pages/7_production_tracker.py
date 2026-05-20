@@ -57,21 +57,26 @@ STATUS_EMOJI = {
 }
 
 # ── 分類邏輯 ──────────────────────────────────────────────────────────────────
-def get_shortage_reason(group):
+def get_shortage_reason(group, iqc_set=None):
     reasons = set()
+    iqc_set = iqc_set or set()
     for _, row in group.iterrows():
         inv     = float(row.get("現有庫存", 0) or 0)
         short   = float(row.get("欠料數量", 0) or 0)
         overdue = float(row.get("逾期未入", 0) or 0)
-        if inv == 0:
-            # 完全沒庫存
-            reasons.add("料沒進（逾期）" if overdue > 0 else "料沒進")
-        elif inv >= short:
-            # 庫存夠補這個缺口，但還沒發料
+        mat_no  = str(row.get("材料品號", "") or "")
+        if inv >= short and inv > 0:
             reasons.add("倉庫未補料")
-        else:
-            # 庫存有，但不夠填滿缺口
+        elif inv > 0:
             reasons.add("庫存不足")
+        else:
+            # 庫存為零：先查 IQC
+            if mat_no in iqc_set:
+                reasons.add("IQC 檢驗中")
+            elif overdue > 0:
+                reasons.add("料沒進（逾期）")
+            else:
+                reasons.add("料沒進")
     return "、".join(sorted(reasons))
 
 def classify_wo(no, status, start_str, shortage_map, today):
@@ -94,7 +99,7 @@ def classify_wo(no, status, start_str, shortage_map, today):
     return "其他", ""
 
 @st.cache_data(show_spinner=False)
-def process(prod_bytes, short_bytes, today_str):
+def process(prod_bytes, short_bytes, today_str, iqc_bytes=None):
     today = date.fromisoformat(today_str)
 
     # 讀取生產進度表
@@ -108,8 +113,18 @@ def process(prod_bytes, short_bytes, today_str):
     for col in ["欠料數量", "現有庫存", "逾期未入"]:
         df_sht[col] = pd.to_numeric(df_sht[col], errors="coerce").fillna(0)
 
+    # 讀取 IQC 待驗表
+    iqc_set = set()
+    if iqc_bytes:
+        df_iqc = pd.read_excel(io.BytesIO(iqc_bytes), dtype=str)
+        df_iqc.columns = df_iqc.columns.str.strip()
+        if "檢驗狀態" in df_iqc.columns and "品號" in df_iqc.columns:
+            iqc_set = set(
+                df_iqc[df_iqc["檢驗狀態"] == "待驗"]["品號"].dropna().tolist()
+            )
+
     shortage_map = {
-        str(k): get_shortage_reason(g)
+        str(k): get_shortage_reason(g, iqc_set)
         for k, g in df_sht.groupby("製令編號")
     }
 
@@ -142,6 +157,7 @@ with st.sidebar:
     st.markdown("### 📂 上傳資料")
     prod_file  = st.file_uploader("生產進度表（ERP匯出）", type=["xlsx", "xls"], key="prod")
     short_file = st.file_uploader("製令欠料表（ERP匯出）",  type=["xlsx", "xls"], key="short")
+    iqc_file   = st.file_uploader("IQC 待驗表（ERP匯出）", type=["xlsx", "xls"], key="iqc")
     st.caption("從 ERP → 製令/託外管理系統 匯出後上傳")
 
     st.divider()
@@ -181,7 +197,10 @@ if not prod_file or not short_file:
 # ── 資料處理 ──────────────────────────────────────────────────────────────────
 with st.spinner("分析中..."):
     df, shortage_map, df_sht = process(
-        prod_file.read(), short_file.read(), date.today().isoformat()
+        prod_file.read(),
+        short_file.read(),
+        date.today().isoformat(),
+        iqc_file.read() if iqc_file else None,
     )
 
 # ── 篩選列 ────────────────────────────────────────────────────────────────────
