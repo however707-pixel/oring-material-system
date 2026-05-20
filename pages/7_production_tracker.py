@@ -119,7 +119,7 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
                 qty_used = wo_supply[(mat_no, wo_no)][1]  # 異動數量（本工單用量）
                 avail_before = balance - qty_used          # 本工單分配前的可用量（= 製造倉庫存顯示值）
                 if avail_before >= short:
-                    reasons.add("倉庫未補料")  # 料已分配夠，等倉庫發料 → 待扣帳
+                    pass  # 料已分配足夠，不算缺料，此材料略過
                 elif balance >= 0:
                     reasons.add("需調撥")      # 分配量不足但源頭還有料 → 待調撥
                 else:
