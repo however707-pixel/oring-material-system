@@ -40,7 +40,7 @@ render_sidebar()
 # ── 分類色票 ──────────────────────────────────────────────────────────────────
 STATUS_COLOR = {
     "試產工單":   "#e5e7eb",
-    "已生產":     "#bbf7d0",
+    "已結案":     "#bbf7d0",
     "生產中":     "#bfdbfe",
     "完工日未到": "#fef08a",
     "待扣帳":     "#fde68a",
@@ -51,7 +51,7 @@ STATUS_COLOR = {
 
 STATUS_EMOJI = {
     "試產工單":   "🧪",
-    "已生產":     "✅",
+    "已結案":     "✅",
     "生產中":     "⚙️",
     "完工日未到": "📅",
     "待扣帳":     "🟡",
@@ -205,7 +205,7 @@ def classify_wo(no, status, end_str, shortage_map, today):
     if str(no).startswith("FF"):
         return "試產工單", ""
     if status in ("已完工", "指定完工"):
-        return "已生產", ""
+        return "已結案", ""
     if status in ("已領料", "生產中"):
         return "生產中", ""
     if status == "未生產":
@@ -382,7 +382,7 @@ if not prod_file or not short_file:
     <b style="color:#15803d;">🎯 分類邏輯</b>
     <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🧪 試產工單</td><td style="padding:5px 10px;">工單號以 FF 開頭</td></tr>
-      <tr><td style="padding:5px 10px;">✅ 已生產</td><td style="padding:5px 10px;">已完工 / 指定完工</td></tr>
+      <tr><td style="padding:5px 10px;">✅ 已結案</td><td style="padding:5px 10px;">已完工 / 指定完工</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">⚙️ 生產中</td><td style="padding:5px 10px;">已領料 / 生產中</td></tr>
       <tr><td style="padding:5px 10px;">📅 完工日未到｜齊料</td><td style="padding:5px 10px;">完工日尚未到，料已齊全，正常排程中</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">📅 完工日未到｜缺料</td><td style="padding:5px 10px;">完工日尚未到，但目前已有缺料，需提前處理</td></tr>
@@ -450,7 +450,7 @@ v_counts = df_view["分類"].value_counts()
 
 col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
 metrics = [
-    (col1, "✅ 已生產",     v_counts.get("已生產", 0),     "#bbf7d0"),
+    (col1, "✅ 已結案",     v_counts.get("已結案", 0),     "#bbf7d0"),
     (col2, "⚙️ 生產中",    v_counts.get("生產中", 0),     "#bfdbfe"),
     (col3, "📅 完工日未到", v_counts.get("完工日未到", 0), "#fef08a"),
     (col4, "🟡 待扣帳",    v_counts.get("待扣帳", 0),     "#fde68a"),
