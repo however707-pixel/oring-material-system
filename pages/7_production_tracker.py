@@ -255,13 +255,24 @@ def process(prod_bytes, short_bytes, today_str, iqc_bytes=None, stock_bytes=None
         df_stock = pd.read_excel(io.BytesIO(stock_bytes), dtype=str)
         df_stock.columns = df_stock.columns.str.strip()
 
-        # 廠內倉別現有庫存（庫存可用量列，用庫別欄）
+        # 建立 庫別代碼 → 庫別名稱 對照表（從有庫別名稱的列取得）
+        _has_name = df_stock["庫別名稱"].notna() & (df_stock["庫別名稱"].str.strip() != "")
+        code_to_name = {}
+        for _, _r in df_stock[_has_name].iterrows():
+            _code = str(_r.get("庫別", "") or "").strip()
+            _name = str(_r.get("庫別名稱", "") or "").strip()
+            if _code and _name:
+                code_to_name[_code] = _name
+
+        # 廠內倉別現有庫存（庫存可用量列）
+        # 庫存可用量列的庫別名稱欄為空，改從 code_to_name 轉換成名稱，與 VENDOR_WH_MAP 一致
         df_avail = df_stock[df_stock["日期"] == "庫存可用量:"].copy()
         df_avail["異動數量"] = pd.to_numeric(df_avail["異動數量"], errors="coerce").fillna(0)
         for _, sr in df_avail.iterrows():
-            pno = str(sr.get("品號", "") or "").strip()
-            wh  = str(sr.get("庫別", "") or "").strip()
-            qty = float(sr["異動數量"])
+            pno  = str(sr.get("品號", "") or "").strip()
+            code = str(sr.get("庫別", "") or "").strip()
+            qty  = float(sr["異動數量"])
+            wh   = code_to_name.get(code, code)   # 代碼轉名稱，找不到就用代碼
             if pno and wh:
                 stock_by_wh.setdefault(pno, {})[wh] = \
                     stock_by_wh.get(pno, {}).get(wh, 0) + qty
