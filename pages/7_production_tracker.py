@@ -250,6 +250,18 @@ st.dataframe(
     df_view[display_cols],
     use_container_width=True,
     height=520,
+    column_config={
+        "製令編號": st.column_config.TextColumn(width="medium"),
+        "品號":     st.column_config.TextColumn(width="medium"),
+        "品名":     st.column_config.TextColumn(width="large"),
+        "開工日":   st.column_config.TextColumn(width="small"),
+        "預計交期": st.column_config.TextColumn(width="small"),
+        "預計產量": st.column_config.TextColumn(width="small"),
+        "已生產量": st.column_config.TextColumn(width="small"),
+        "未生產量": st.column_config.TextColumn(width="small"),
+        "ERP狀態":  st.column_config.TextColumn(width="small"),
+        "狀態說明": st.column_config.TextColumn(width="medium"),
+    },
 )
 
 # ── 下載 ──────────────────────────────────────────────────────────────────────
