@@ -112,6 +112,10 @@ def get_shortage_reason(group, iqc_set=None, stock_by_wh=None, vendor=None,
         overdue = float(row.get("逾期未入", 0) or 0)
         mat_no  = str(row.get("材料品號", "") or "")
 
+        # 欠料量 <= 0 表示已無缺料，略過此列
+        if short <= 0:
+            continue
+
         # ── 委外工單：用供需表「備註=工單號」的預計結存判斷 ─────────────────
         if vendor != "廠內" and wo_no:
             if (mat_no, wo_no) in wo_supply:
@@ -345,6 +349,11 @@ with st.sidebar:
     iqc_file   = st.file_uploader("IQC 待驗表（ERP匯出）", type=["xlsx", "xls"], key="iqc")
     stock_file = st.file_uploader("供需表-分倉（每日更新）", type=["xlsx", "xls"], key="stock")
     st.caption("從 ERP → 製令/託外管理系統 匯出後上傳")
+
+    st.divider()
+    if st.button("🔄 清除快取・重新分析", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
 
     st.divider()
     st.markdown("### 📅 日期區間篩選")
