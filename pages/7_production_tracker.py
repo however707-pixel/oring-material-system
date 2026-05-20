@@ -534,6 +534,17 @@ st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 # ── CEO 5D 儀表板 ─────────────────────────────────────────────────────────────
 st.divider()
 
+# 顏色工具
+def _hex_darken(hx, f=0.60):
+    hx = hx.lstrip('#')
+    r,g,b = int(hx[0:2],16), int(hx[2:4],16), int(hx[4:6],16)
+    return f"#{max(0,int(r*f)):02x}{max(0,int(g*f)):02x}{max(0,int(b*f)):02x}"
+
+def _hex_lighten(hx, f=1.40):
+    hx = hx.lstrip('#')
+    r,g,b = int(hx[0:2],16), int(hx[2:4],16), int(hx[4:6],16)
+    return f"#{min(255,int(r*f)):02x}{min(255,int(g*f)):02x}{min(255,int(b*f)):02x}"
+
 # CSS：圖表容器卡片化
 st.markdown("""
 <style>
@@ -544,14 +555,14 @@ st.markdown("""
 }
 .ceo-card {
     background: white;
-    border-radius: 16px;
+    border-radius: 18px;
     border: 1px solid #e2e8f0;
-    box-shadow: 0 6px 28px rgba(0,0,0,0.10), 0 1px 6px rgba(0,0,0,0.06);
+    box-shadow: 0 8px 36px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07);
     padding: 16px 20px 8px 20px;
     margin-bottom: 12px;
 }
 .ceo-card-title {
-    font-size: 0.84rem;
+    font-size: 0.88rem;
     font-weight: 800;
     margin-bottom: 4px;
     letter-spacing: 0.02em;
@@ -599,7 +610,7 @@ _C5L = ["已結案",   "生產中",            "齊料待生產",               
 _C5V = [cnt_done,   cnt_wip + cnt_held,  cnt_ready + cnt_future,      cnt_trial,   cnt_short + cnt_transfer]
 _C5C = ["#16a34a",  "#2563eb",           "#ea580c",                   "#6b7280",   "#dc2626"]
 _C5E = ["✅",       "⚙️",               "📦",                        "🧪",        "⚠️"]
-_C5P = [0.02,       0.02,                0.06,                        0.02,        0.14]
+_C5P = [0.03,       0.03,                0.08,                        0.03,        0.22]   # 大 pull = 更立體
 
 _c5nz = [(l,v,c,e,p) for l,v,c,e,p in zip(_C5L,_C5V,_C5C,_C5E,_C5P) if v > 0]
 _c5l,_c5v,_c5c,_c5e,_c5p = zip(*_c5nz) if _c5nz else ([],[],[],[],[])
@@ -622,94 +633,170 @@ _cross5 = _cross5.reindex(columns=_C5L, fill_value=0)
 _cross5 = _cross5.reindex([v for v in _vorder if v in _cross5.index])
 _vens5  = list(_cross5.index)
 
-# ── 左圖 D1：立體甜甜圈（外側 callout 標籤）──────────────────────────────────
+# ── 左圖 D1：超大立體甜甜圈 ──────────────────────────────────────────────────
 fig_d1 = go.Figure()
 
-# 陰影底層
+# 第一層：底部陰影（深色偏移，製造厚度感）
 fig_d1.add_trace(go.Pie(
     labels=list(_c5l), values=list(_c5v),
-    hole=0.54, pull=[p+0.015 for p in _c5p],
-    marker=dict(colors=["rgba(30,41,59,0.12)"]*len(_c5v),
+    hole=0.50, pull=[p + 0.025 for p in _c5p],
+    marker=dict(colors=["rgba(15,23,42,0.18)"]*len(_c5v),
                 line=dict(color="rgba(0,0,0,0)", width=0)),
     textinfo="none", hoverinfo="skip", showlegend=False,
-    direction="clockwise", sort=True, rotation=93,
+    direction="clockwise", sort=True, rotation=96,
 ))
 
-# 主體
+# 第二層：中間高光（白色細環，增加厚度感）
 fig_d1.add_trace(go.Pie(
-    labels=[f"{e} {l}\n{v} ({v/_tot_s*100:.1f}%)" for l,v,e in zip(_c5l,_c5v,_c5e)],
-    values=list(_c5v), hole=0.60, pull=list(_c5p),
-    marker=dict(colors=list(_c5c), line=dict(color="white", width=3)),
-    textinfo="label", textposition="outside",
+    labels=list(_c5l), values=list(_c5v),
+    hole=0.55, pull=[p + 0.01 for p in _c5p],
+    marker=dict(colors=["rgba(255,255,255,0.35)"]*len(_c5v),
+                line=dict(color="rgba(0,0,0,0)", width=0)),
+    textinfo="none", hoverinfo="skip", showlegend=False,
+    direction="clockwise", sort=True, rotation=91,
+))
+
+# 第三層：主體（彩色 + 外側標籤）
+fig_d1.add_trace(go.Pie(
+    labels=[f"{e} {l}  {v} ({v/_tot_s*100:.1f}%)" for l,v,e in zip(_c5l,_c5v,_c5e)],
+    values=list(_c5v),
+    hole=0.60,
+    pull=list(_c5p),
+    marker=dict(
+        colors=list(_c5c),
+        line=dict(color="white", width=4),
+    ),
+    textinfo="label",
+    textposition="outside",
     automargin=True,
-    outsidetextfont=dict(size=12, color="#1e293b", family="Arial"),
+    outsidetextfont=dict(size=13, color="#1e293b", family="Arial"),
     hovertemplate="<b>%{label}</b><extra></extra>",
-    direction="clockwise", sort=True, rotation=90,
+    direction="clockwise",
+    sort=True,
+    rotation=90,
 ))
 
 fig_d1.update_layout(
     annotations=[dict(
-        text=f"<b>{cnt_total}</b><br><span style='font-size:13px'>工單總數</span>",
+        text=f"<b>{cnt_total}</b><br>工單總數",
         x=0.5, y=0.5, xref="paper", yref="paper",
-        showarrow=False, font=dict(size=30, color="#1e293b", family="Arial Black"),
+        showarrow=False,
+        font=dict(size=34, color="#0f172a", family="Arial Black"),
         align="center",
     )],
     showlegend=False,
-    height=420,
-    margin=dict(t=60, b=60, l=90, r=90),
+    height=560,
+    margin=dict(t=90, b=90, l=110, r=110),
     paper_bgcolor="white",
     font=dict(family="Arial, sans-serif"),
 )
 
-# ── 右圖 D2~D4：堆疊橫條 + 行末總計標籤 ─────────────────────────────────────
+# ── 右圖 D2~D4：3D 立體直條圖（前面板 + 右側面板模擬立體）─────────────────────
+# 說明：barmode="overlay"，手動計算堆疊 base
+# 每個類別 = 前面板（正常顏色）+ 右側面板（深色，模擬側面深度）
+_BW  = 0.45   # 主柱寬度
+_SW  = 0.12   # 側面板寬度
+_n_v = len(_vens5)
+_xf  = list(range(_n_v))                        # 前面板 x 座標（整數）
+_xs  = [i + _BW/2 + _SW/2 for i in range(_n_v)] # 側面板 x 座標（右偏）
+
+_c5cm = dict(zip(_C5L, _C5C))
+_c5tc = {"已結案":"white","生產中":"white","齊料待生產":"white",
+          "試產工單":"#1e293b","需處理":"white"}
+
 fig_d4 = go.Figure()
-_c5cm  = dict(zip(_C5L, _C5C))
-_c5tc  = {"已結案":"white","生產中":"white","齊料待生產":"white",
-           "試產工單":"#1e293b","需處理":"white"}
+_run_base = [0.0] * _n_v   # 手動記錄堆疊高度
 
 for _s in _C5L:
-    _vals = [int(_cross5.loc[v,_s]) if v in _cross5.index else 0 for v in _vens5]
-    if sum(_vals) == 0: continue
-    _c = _c5cm[_s]; _tc = _c5tc.get(_s,"white")
+    _vals = [float(_cross5.loc[v,_s]) if v in _cross5.index else 0.0 for v in _vens5]
+    if sum(_vals) == 0:
+        continue
+    _c  = _c5cm[_s]
+    _dc = _hex_darken(_c, 0.60)       # 深色 → 右側面板
+    _lc = _hex_lighten(_c, 1.35)      # 淺色 → 頂部高光
+    _tc = _c5tc.get(_s, "white")
+    _base = _run_base.copy()
+
+    # ① 前面板（正色，顯示數字）
     fig_d4.add_trace(go.Bar(
-        name=_s, x=_vals, y=_vens5, orientation="h",
-        marker=dict(color=_c, line=dict(color="rgba(255,255,255,0.7)", width=2), opacity=0.95),
-        text=[f"<b>{v}</b>" if v > 0 else "" for v in _vals],
+        name=_s,
+        x=_xf, y=_vals, base=_base,
+        width=_BW,
+        marker=dict(color=_c, line=dict(color="rgba(255,255,255,0.55)", width=1.5)),
+        text=[f"<b>{int(v)}</b>" if v >= 1 else "" for v in _vals],
         textposition="inside", insidetextanchor="middle",
         textfont=dict(color=_tc, size=13, family="Arial Black"),
-        hovertemplate=f"<b>{_s}</b>: %{{x}} 張<extra></extra>",
+        hovertemplate=f"<b>{_s}</b>: %{{y:.0f}} 張<extra></extra>",
     ))
 
-# 行末總計
-for _ven in _vens5:
-    _tot = int(_cross5.loc[_ven].sum()) if _ven in _cross5.index else 0
+    # ② 右側面板（深色，無 legend，無 hover）
+    fig_d4.add_trace(go.Bar(
+        name="", x=_xs, y=_vals, base=_base,
+        width=_SW,
+        marker=dict(color=_dc, opacity=0.88, line=dict(width=0)),
+        showlegend=False, hoverinfo="skip",
+    ))
+
+    # ③ 頂部高光薄板（淺色，增加厚度感）
+    _top_h = [max(v * 0.04, 0.8) if v >= 1 else 0.0 for v in _vals]
+    _top_x = [i + _SW / 2 for i in range(_n_v)]   # 覆蓋前 + 側
+    fig_d4.add_trace(go.Bar(
+        name="", x=_top_x, y=_top_h,
+        base=[b + v for b, v in zip(_base, _vals)],
+        width=_BW + _SW,
+        marker=dict(color=_lc, opacity=0.85, line=dict(width=0)),
+        showlegend=False, hoverinfo="skip",
+    ))
+
+    _run_base = [b + v for b, v in zip(_run_base, _vals)]
+
+# 柱頂總計標籤
+_ven_icons = {"廠內":"🏭","國智":"🏗️","唐佑":"🏢","其他":"🏬"}
+for i, _ven in enumerate(_vens5):
+    _tot = int(round(_run_base[i]))
     if _tot > 0:
         fig_d4.add_annotation(
-            x=_tot, y=_ven, text=f"  <b>{_tot}</b>",
-            showarrow=False, xanchor="left",
-            font=dict(size=14, color="#1e293b", family="Arial Black"),
+            x=i, y=_run_base[i] + max(_run_base) * 0.04,
+            text=f"<b>{_tot}</b>",
+            showarrow=False, yanchor="bottom",
+            font=dict(size=15, color="#0f172a", family="Arial Black"),
         )
 
+_max_y = max(_run_base) if _run_base else 1
 fig_d4.update_layout(
-    barmode="stack", height=420,
-    margin=dict(t=20, b=90, l=60, r=70),
+    barmode="overlay",
+    height=560,
+    margin=dict(t=30, b=90, l=30, r=30),
     paper_bgcolor="white",
-    plot_bgcolor="rgba(241,245,249,0.8)",
+    plot_bgcolor="rgba(241,245,249,0.85)",
     font=dict(family="Arial, sans-serif", size=13),
     legend=dict(
-        orientation="h", x=0.5, y=-0.28, xanchor="center",
-        font=dict(size=12, color="#374151"),
+        orientation="h", x=0.5, y=-0.20, xanchor="center",
+        font=dict(size=12.5, color="#374151"),
         bgcolor="rgba(255,255,255,0.95)",
         bordercolor="#e2e8f0", borderwidth=1,
+        itemsizing="constant",
     ),
-    xaxis=dict(showgrid=True, gridcolor="#cbd5e1", zeroline=False,
-               tickfont=dict(size=11, color="#475569")),
-    yaxis=dict(showgrid=False, tickfont=dict(size=15, color="#1e293b", family="Arial Black")),
-    bargap=0.30,
+    xaxis=dict(
+        tickmode="array",
+        tickvals=_xf,
+        ticktext=[f"{_ven_icons.get(v,'🏭')} {v}" for v in _vens5],
+        tickfont=dict(size=14, color="#1e293b", family="Arial Black"),
+        showgrid=False, zeroline=False,
+        range=[-0.55, _n_v - 0.45 + _SW + 0.2],
+    ),
+    yaxis=dict(
+        showgrid=True, gridcolor="#e2e8f0", gridwidth=1,
+        zeroline=True, zerolinecolor="#cbd5e1",
+        tickfont=dict(size=11, color="#64748b"),
+        range=[0, _max_y * 1.16],
+    ),
+    bargap=0.0,
+    bargroupgap=0.0,
 )
 
 # ── 兩欄佈局 ──────────────────────────────────────────────────────────────────
-_cL, _cR = st.columns([1, 1.15])
+_cL, _cR = st.columns([1, 1.1])
 
 with _cL:
     st.markdown(
