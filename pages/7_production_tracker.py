@@ -184,30 +184,6 @@ with st.spinner("分析中..."):
         prod_file.read(), short_file.read(), date.today().isoformat()
     )
 
-# ── 彙總指標 ──────────────────────────────────────────────────────────────────
-total = len(df)
-counts = df["分類"].value_counts()
-
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-metrics = [
-    (col1, "✅ 已生產",     counts.get("已生產", 0),     "#bbf7d0"),
-    (col2, "⚙️ 生產中",    counts.get("生產中", 0),     "#bfdbfe"),
-    (col3, "📅 開工日未到", counts.get("未生產", 0) - df[df["狀態說明"].str.contains("缺料|齊料", na=False)].shape[0] - df[df["狀態說明"]=="齊料未生產"].shape[0], "#fef08a"),
-    (col4, "⚠️ 缺料",      df["狀態說明"].str.contains("缺料", na=False).sum(), "#fed7aa"),
-    (col5, "🔴 齊料未生產", (df["狀態說明"] == "齊料未生產").sum(), "#fecaca"),
-    (col6, "🧪 試產工單",  counts.get("試產工單", 0),   "#e5e7eb"),
-]
-for col, label, cnt, bg in metrics:
-    col.markdown(
-        f'<div style="background:{bg};border-radius:10px;padding:14px 10px;text-align:center;'
-        f'border:1px solid rgba(0,0,0,0.07);box-shadow:0 2px 8px rgba(0,0,0,0.06);">'
-        f'<div style="font-size:0.78rem;color:#475569;font-weight:600;">{label}</div>'
-        f'<div style="font-size:1.8rem;font-weight:900;color:#1e293b;line-height:1.3;">{cnt}</div>'
-        f'</div>', unsafe_allow_html=True
-    )
-
-st.markdown("<br>", unsafe_allow_html=True)
-
 # ── 篩選列 ────────────────────────────────────────────────────────────────────
 fc1, fc2, fc3 = st.columns([2, 2, 3])
 with fc1:
@@ -242,6 +218,29 @@ if date_start or date_end:
     if date_end:
         df_view = df_view[dt_series <= pd.to_datetime(date_end)]
 
+# ── 彙總指標（依篩選後結果計算）────────────────────────────────────────────
+total = len(df)
+v_counts = df_view["分類"].value_counts()
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+metrics = [
+    (col1, "✅ 已生產",     v_counts.get("已生產", 0),     "#bbf7d0"),
+    (col2, "⚙️ 生產中",    v_counts.get("生產中", 0),     "#bfdbfe"),
+    (col3, "📅 開工日未到", (df_view["狀態說明"] == "開工日未到").sum(), "#fef08a"),
+    (col4, "⚠️ 缺料",      df_view["狀態說明"].str.contains("缺料", na=False).sum(), "#fed7aa"),
+    (col5, "🔴 齊料未生產", (df_view["狀態說明"] == "齊料未生產").sum(), "#fecaca"),
+    (col6, "🧪 試產工單",  v_counts.get("試產工單", 0),   "#e5e7eb"),
+]
+for col, label, cnt, bg in metrics:
+    col.markdown(
+        f'<div style="background:{bg};border-radius:10px;padding:14px 10px;text-align:center;'
+        f'border:1px solid rgba(0,0,0,0.07);box-shadow:0 2px 8px rgba(0,0,0,0.06);">'
+        f'<div style="font-size:0.78rem;color:#475569;font-weight:600;">{label}</div>'
+        f'<div style="font-size:1.8rem;font-weight:900;color:#1e293b;line-height:1.3;">{cnt}</div>'
+        f'</div>', unsafe_allow_html=True
+    )
+
+st.markdown("<br>", unsafe_allow_html=True)
 st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 
 # ── 資料表 ────────────────────────────────────────────────────────────────────
