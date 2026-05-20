@@ -138,6 +138,14 @@ with st.sidebar:
     short_file = st.file_uploader("製令欠料表（ERP匯出）",  type=["xlsx", "xls"], key="short")
     st.caption("從 ERP → 製令/託外管理系統 匯出後上傳")
 
+    st.divider()
+    st.markdown("### 📅 日期區間篩選")
+    date_field = st.radio("依哪個日期篩選", ["預計交期", "開工日"], horizontal=True)
+    date_start = st.date_input("起", value=None, format="YYYY/MM/DD", key="d_start")
+    date_end   = st.date_input("迄", value=None, format="YYYY/MM/DD", key="d_end")
+    if date_start and date_end and date_end < date_start:
+        st.error("⚠️ 結束日不可早於起始日")
+
 # ── 主畫面 ────────────────────────────────────────────────────────────────────
 if not prod_file or not short_file:
     st.info("👈 請在左側上傳「生產進度表」及「製令欠料表」兩份 Excel 檔案")
@@ -217,6 +225,16 @@ if keyword:
         df_view["品名"].str.contains(keyword, na=False)
     )
     df_view = df_view[mask]
+
+# 日期區間篩選
+if date_start or date_end:
+    col_name = "預計交期" if date_field == "預計交期" else "開工日"
+    dt_series = pd.to_datetime(df_view[col_name], errors="coerce")
+    if date_start:
+        df_view = df_view[dt_series >= pd.to_datetime(date_start)]
+        dt_series = pd.to_datetime(df_view[col_name], errors="coerce")
+    if date_end:
+        df_view = df_view[dt_series <= pd.to_datetime(date_end)]
 
 st.caption(f"顯示 {len(df_view):,} 筆 / 共 {total:,} 筆工單")
 
