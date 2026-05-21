@@ -168,11 +168,14 @@ def read_qiliao_dates(bytes_supply):
       J欄(index 9)  = 差異（負數 = 缺料）
       L欄(index 11) = 工單號碼
 
-    規則：
-      - 缺料（差異 < 0）+ 有到料日 → 取缺料行中最晚到料日
-      - 缺料（差異 < 0）+ 無到料日 → 顯示「缺料」
+    規則（以「今天」為基準）：
+      - 缺料（差異 < 0）+ 到料日 >= 今天 → 取「未來」缺料行中最晚到料日
+      - 缺料（差異 < 0）+ 到料日全部已過 or 無到料日 → 顯示「缺料」（逾期未到）
+      - 不缺料 → 不填（空白）
     """
     import datetime as _dt
+    today = _dt.date.today()
+
     df = pd.read_excel(io.BytesIO(bytes_supply), header=0)
 
     tmp = pd.DataFrame({
@@ -199,17 +202,23 @@ def read_qiliao_dates(bytes_supply):
 
     shortage["有到料日"] = shortage["到料日"].apply(is_date)
 
-    # ① 有到料日的缺料行：取最晚到料日
-    has_date = shortage[shortage["有到料日"]].copy()
-    has_date["到料日"] = pd.to_datetime(has_date["到料日"])
-    latest = has_date.groupby("工單")["到料日"].max()
-    mapping = {wo: dt.strftime("%Y-%m-%d") for wo, dt in latest.items()}
+    # 所有有缺料的工單（不分日期新舊）
+    all_shortage_wos = set(shortage["工單"].unique())
 
-    # ② 全部缺料行都沒到料日的工單 → 顯示「缺料」
-    all_shortage_wos  = set(shortage["工單"].unique())
-    has_date_wos      = set(latest.index)
-    no_date_wos       = all_shortage_wos - has_date_wos
-    for wo in no_date_wos:
+    # ① 只取「到料日 >= 今天」的缺料行
+    has_date = shortage[shortage["有到料日"]].copy()
+    has_date["到料日_dt"] = pd.to_datetime(has_date["到料日"]).dt.date
+    future_shortage = has_date[has_date["到料日_dt"] >= today]
+
+    mapping = {}
+    if not future_shortage.empty:
+        latest = future_shortage.groupby("工單")["到料日_dt"].max()
+        for wo, dt in latest.items():
+            mapping[wo] = dt.strftime("%Y-%m-%d")
+
+    # ② 缺料 但「無任何未來到料日」→ 顯示「缺料」（到料日已全過或根本沒有採購）
+    covered_wos = set(mapping.keys())
+    for wo in all_shortage_wos - covered_wos:
         mapping[wo] = "缺料"
 
     return mapping   # {製令編號: "YYYY-MM-DD" or "缺料"}
