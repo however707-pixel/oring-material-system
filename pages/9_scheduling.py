@@ -74,11 +74,12 @@ def parse_files(bytes_wo, bytes_prog):
     # G欄(index 6)=製程名稱  → 工序 mapping
     # H欄(index 7)=製令狀態  → 工序狀態
     # I欄(index 8)=批量狀態  → 直接保留顯示
-    prog["工序"]    = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # G欄
+    prog["工序"]    = prog.iloc[:, 6].astype(str).str.strip()              # G欄 原值不轉換
+    prog["工序_類"] = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # 僅供甘特圖配色用
     prog["工序狀態"] = prog.iloc[:, 7].map(STATUS_MAP).fillna("待開工")     # H欄
     prog["批量狀態"] = prog.iloc[:, 8].astype(str).str.strip() if len(prog.columns) > 8 else ""  # I欄
 
-    prog_keep = ["製令編號", "工序", "批量狀態", "工序狀態",
+    prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態",
                  "預計產量", "未完工數量", "已完工數量"]
     prog_base = prog[[c for c in prog_keep if c in prog.columns]].copy()
     prog_base = prog_base.rename(columns={
@@ -104,6 +105,7 @@ def parse_files(bytes_wo, bytes_prog):
     # ── 委外工單（只從工單明細取） ────────────────────────────────────────────
     ow = wo_base[wo_base["類型"] == "委外"].copy()
     ow["工序"]     = "委外"
+    ow["工序_類"]  = "委外"
     ow["批量狀態"] = ""
     ow["狀態"]     = ow["狀態_wo"]
     ow = ow.dropna(subset=["開工", "完工"])
@@ -111,10 +113,10 @@ def parse_files(bytes_wo, bytes_prog):
     ow["出貨日"] = ow["完工"].apply(add_workdays)           # 完工 + 5 工作天
 
     # ── 合併廠內 + 委外 ───────────────────────────────────────────────────────
-    cols = ["製令編號", "產品", "類型", "工序", "批量狀態",
+    cols = ["製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
             "數量", "已生產量", "未生產量", "開工", "完工", "出貨日", "狀態"]
 
-    for c in ["出貨日", "類型", "批量狀態"]:
+    for c in ["出貨日", "類型", "批量狀態", "工序_類"]:
         if c not in merged.columns:
             merged[c] = ""
 
@@ -150,21 +152,21 @@ if load_btn and f_wo and f_prog:
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
     )
 
-REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "批量狀態",
+REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
                  "數量", "UPH", "開工", "完工", "狀態", "優先順序"}
 
 if "wo_data" not in st.session_state or not REQUIRED_COLS.issubset(st.session_state.wo_data.columns):
     st.session_state.wo_data = pd.DataFrame([
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="組裝", 批量狀態="待進站",
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="組裝前製製程", 工序_類="組裝", 批量狀態="待進站",
              數量=100, 已生產量=60,  未生產量=40,  UPH=12,
              開工=date(2026,5,1),  完工=date(2026,5,4),  出貨日=date(2026,5,9),  狀態="生產中", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="測試", 批量狀態="待進站",
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="測試", 工序_類="測試", 批量狀態="待進站",
              數量=100, 已生產量=0,   未生產量=100, UPH=20,
              開工=date(2026,5,5),  完工=date(2026,5,6),  出貨日=date(2026,5,13), 狀態="待開工", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="包裝", 批量狀態="待進站",
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="包裝", 工序_類="包裝", 批量狀態="待進站",
              數量=100, 已生產量=0,   未生產量=100, UPH=30,
              開工=date(2026,5,7),  完工=date(2026,5,8),  出貨日=date(2026,5,15), 狀態="待開工", 優先順序=1),
-        dict(製令編號="MO02-20260501001", 產品="機殼-A型",  類型="委外", 工序="委外", 批量狀態="",
+        dict(製令編號="MO02-20260501001", 產品="機殼-A型",  類型="委外", 工序="委外", 工序_類="委外", 批量狀態="",
              數量=500, 已生產量=200, 未生產量=300, UPH=50,
              開工=date(2026,5,1),  完工=date(2026,5,10), 出貨日=date(2026,5,17), 狀態="生產中", 優先順序=2),
     ])
@@ -182,7 +184,8 @@ with fc1:
 with fc2:
     sel_type  = st.selectbox("類型", ["全部", "廠內", "委外"])
 with fc3:
-    sel_stage = st.selectbox("工序", ["全部"] + STAGE_ORDER)
+    stage_opts = ["全部"] + sorted(df["工序"].dropna().unique().tolist())
+    sel_stage = st.selectbox("工序", stage_opts)
 with fc4:
     sel_state = st.selectbox("狀態", ["全部", "待開工", "已發料", "生產中", "已完工"])
 
@@ -219,18 +222,19 @@ with tab1:
         with cr:
             color_by = st.radio("顏色", ["工序", "狀態"], horizontal=True)
 
-        cmap = COLOR_STAGE if color_by == "工序" else COLOR_STATUS
         hover_extra = {"產品": True, "類型": True, "工序": True, "數量": True,
                        "批量狀態": True, "狀態": True}
         if "出貨日" in gantt_df.columns:
             hover_extra["出貨日"] = True
 
+        # 甘特圖：Y軸用原始工序名稱，配色用 工序_類（組裝/測試/包裝/其他/委外）
+        color_col = "工序_類" if color_by == "工序" else "狀態"
+        cmap      = COLOR_STAGE if color_by == "工序" else COLOR_STATUS
         fig = px.timeline(
             gantt_df, x_start="開工_dt", x_end="完工_dt",
-            y="工序", color=color_by, color_discrete_map=cmap,
+            y="工序", color=color_col, color_discrete_map=cmap,
             text="製令編號",
             hover_data=hover_extra,
-            category_orders={"工序": STAGE_ORDER},
         )
         fig.update_traces(textposition="inside", insidetextanchor="middle",
                           textfont=dict(size=9, color="white"))
