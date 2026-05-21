@@ -210,7 +210,7 @@ with tab3:
     wo_view = (dff[dff["狀態"]!="已完工"]
                .drop_duplicates(subset=["工單號"])
                [_have]
-               .sort_values(["優先順序","開工_dt"] if "開工_dt" in dff.columns else ["優先順序"])
+               .sort_values("優先順序")
                .copy())
     edited = st.data_editor(
         wo_view,
