@@ -132,28 +132,65 @@ def parse_files(bytes_wo, bytes_prog):
     final = final.sort_values("開工").reset_index(drop=True)
     return final, wo_base, prog_raw   # 同時回傳工單明細+廠內進度原始資料
 
+
+def read_ship_dates(bytes_ship):
+    """
+    從出貨日.xlsx 的「彙總」工作表讀取出貨日資訊
+    C欄(index 2) = 製令編號，V欄(index 21) = 對應/出貨組（文字原封不動）
+    """
+    df = pd.read_excel(io.BytesIO(bytes_ship), sheet_name=1, header=2)
+    wo_col   = df.iloc[:, 2]    # C欄 = 工單號碼
+    ship_col = df.iloc[:, 21]   # V欄 = 對應/出貨組
+
+    mapping = {}
+    for wo, ship in zip(wo_col, ship_col):
+        wo_str = str(wo).strip()
+        if not wo_str or wo_str in ("nan", "None", ""):
+            continue
+        if pd.isna(ship):
+            continue
+        # datetime → 日期字串；其他文字原封不動
+        if hasattr(ship, "strftime"):
+            ship_str = ship.strftime("%Y-%m-%d")
+        else:
+            ship_str = str(ship).strip()
+        if ship_str:
+            mapping[wo_str] = ship_str
+    return mapping   # {製令編號: 出貨日文字}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 上傳區
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-u1, u2, u3 = st.columns([2, 2, 1])
+u1, u2, u3, u4 = st.columns([2, 2, 2, 1])
 with u1:
-    f_wo   = st.file_uploader("① 工單明細.xlsx", type=["xlsx"], key="f_wo")
+    f_wo   = st.file_uploader("① 工單明細.xlsx",  type=["xlsx"], key="f_wo")
 with u2:
-    f_prog = st.file_uploader("② 廠內進度.xlsx", type=["xlsx"], key="f_prog")
+    f_prog = st.file_uploader("② 廠內進度.xlsx",  type=["xlsx"], key="f_prog")
 with u3:
+    f_ship = st.file_uploader("③ 出貨日.xlsx（選填）", type=["xlsx"], key="f_ship")
+with u4:
     st.markdown("<br>", unsafe_allow_html=True)
     load_btn = st.button("載入", type="primary", disabled=not (f_wo and f_prog))
 
 if load_btn and f_wo and f_prog:
     with st.spinner("讀取並合併中..."):
         _result, _wo_all, _prog_raw = parse_files(f_wo.read(), f_prog.read())
+
+        # ── 出貨日.xlsx：V欄原文覆寫出貨日 ──────────────────────────────────
+        if f_ship:
+            ship_map = read_ship_dates(f_ship.read())
+            if ship_map:
+                mapped = _result["製令編號"].astype(str).str.strip().map(ship_map)
+                _result["出貨日"] = mapped.where(mapped.notna(), _result["出貨日"].astype(str))
+
         st.session_state.wo_data   = _result
-        st.session_state.wo_all    = _wo_all     # 工單明細完整清單（供搜尋）
-        st.session_state.prog_raw  = _prog_raw   # 廠內進度原始欄位（供工序明細展開）
+        st.session_state.wo_all    = _wo_all
+        st.session_state.prog_raw  = _prog_raw
     st.success(
         f"載入完成：{len(st.session_state.wo_data):,} 筆工序記錄，"
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
+        + ("（已套用出貨日）" if f_ship else "")
     )
 
 REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
