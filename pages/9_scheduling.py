@@ -70,10 +70,12 @@ def parse_files(bytes_wo, bytes_prog):
 
     # ── 廠內進度 ──────────────────────────────────────────────────────────────
     # A欄(index 0)=製令編號, G欄(index 6)=製程名稱, H欄(index 7)=製令狀態, I欄(index 8)=批量狀態
-    prog["工序"]    = prog.iloc[:, 6].astype(str).str.strip()              # G欄 原值顯示
+    prog["工序"]    = prog.iloc[:, 6].fillna("").astype(str).str.strip()   # G欄 原值顯示
     prog["工序_類"] = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # G欄 → 配色分類
     prog["工序狀態"] = prog.iloc[:, 7].map(STATUS_MAP).fillna("待開工")    # H欄
     prog["批量狀態"] = prog.iloc[:, 8].astype(str).str.strip() if len(prog.columns) > 8 else ""  # I欄
+    # G欄空白的列直接排除
+    prog = prog[prog["工序"].str.len() > 0]
 
     prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態",
                  "未完工數量", "已完工數量"]
