@@ -129,7 +129,7 @@ def parse_files(bytes_wo, bytes_prog):
     for col in ["預計產量", "已生產量", "已領套數", "未生產量"]:
         final[col] = pd.to_numeric(final.get(col, 0), errors="coerce").fillna(0)
     final = final.sort_values("開工").reset_index(drop=True)
-    return final
+    return final, wo_base   # 同時回傳完整工單明細供搜尋用
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 上傳區
@@ -146,7 +146,9 @@ with u3:
 
 if load_btn and f_wo and f_prog:
     with st.spinner("讀取並合併中..."):
-        st.session_state.wo_data = parse_files(f_wo.read(), f_prog.read())
+        _result, _wo_all = parse_files(f_wo.read(), f_prog.read())
+        st.session_state.wo_data = _result
+        st.session_state.wo_all  = _wo_all   # 工單明細完整清單（供搜尋）
     st.success(
         f"載入完成：{len(st.session_state.wo_data):,} 筆工序記錄，"
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
@@ -319,10 +321,11 @@ with tab3:
     if search_btn and search_input.strip():
         import re
         query_nos = [s.strip() for s in re.split(r"[,\n\r；，]+", search_input) if s.strip()]
-        hit = df[df["製令編號"].isin(query_nos)]
-        if hit.empty:
-            st.warning(f"查無符合的工單：{', '.join(query_nos)}")
-        else:
+
+        # ① 先查合併後的工序明細（廠內進度 JOIN 工單明細）
+        hit = df[df["製令編號"].isin(query_nos)].copy()
+
+        if not hit.empty:
             show_q = ["製令編號", "產品", "類型", "工序", "批量狀態",
                       "預計產量", "已生產量", "已領套數", "未生產量",
                       "開工", "完工", "出貨日", "狀態"]
@@ -331,6 +334,19 @@ with tab3:
             def _st(v): return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
             st.dataframe(hit.sort_values("開工_dt")[show_q].style.map(_st, subset=["類型"]),
                          use_container_width=True, hide_index=True)
+        else:
+            # ② 找不到時回查工單明細原始資料
+            wo_all = st.session_state.get("wo_all", pd.DataFrame())
+            hit2 = wo_all[wo_all["製令編號"].isin(query_nos)] if not wo_all.empty else pd.DataFrame()
+            if hit2.empty:
+                st.warning(f"查無符合的工單：{', '.join(query_nos)}")
+            else:
+                show_q2 = ["製令編號", "產品", "類型", "預計產量", "已生產量",
+                           "已領套數", "未生產量", "開工", "完工", "狀態_wo"]
+                show_q2 = [c for c in show_q2 if c in hit2.columns]
+                st.info(f"此工單不在廠內進度中，以下顯示工單明細原始資料")
+                st.dataframe(hit2[show_q2].rename(columns={"狀態_wo": "狀態"}),
+                             use_container_width=True, hide_index=True)
         st.markdown("---")
 
     st.caption("可直接修改優先順序（數字越小越優先）；勾選工單號碼可展開工序明細。按「套用」後更新。")
