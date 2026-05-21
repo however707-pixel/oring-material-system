@@ -68,6 +68,12 @@ def parse_files(bytes_wo, bytes_prog):
     wo_base = wo[[c for c in wo_keep if c in wo.columns]].copy()
     wo_base = wo_base.rename(columns={"品名": "產品"})
 
+    # ── 廠內進度原始欄位（供選取工單後展開用） ───────────────────────────────
+    _raw_cols = ["製令編號", "急料", "品號", "品名", "規格",
+                 "製程代號", "製程名稱", "製令狀態", "批量狀態", "工序",
+                 "預計產量", "數量", "包裝數量", "單位"]
+    prog_raw = prog[[c for c in _raw_cols if c in prog.columns]].copy()
+
     # ── 廠內進度 ──────────────────────────────────────────────────────────────
     # A欄(index 0)=製令編號, G欄(index 6)=製程名稱, H欄(index 7)=製令狀態, I欄(index 8)=批量狀態
     prog["工序"]    = prog.iloc[:, 6].fillna("").astype(str).str.strip()   # G欄 原值顯示
@@ -123,7 +129,7 @@ def parse_files(bytes_wo, bytes_prog):
     for col in ["預計產量", "已生產量", "已領套數", "未生產量"]:
         final[col] = pd.to_numeric(final.get(col, 0), errors="coerce").fillna(0)
     final = final.sort_values("開工").reset_index(drop=True)
-    return final, wo_base   # 同時回傳完整工單明細供搜尋用
+    return final, wo_base, prog_raw   # 同時回傳工單明細+廠內進度原始資料
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 上傳區
@@ -140,9 +146,10 @@ with u3:
 
 if load_btn and f_wo and f_prog:
     with st.spinner("讀取並合併中..."):
-        _result, _wo_all = parse_files(f_wo.read(), f_prog.read())
-        st.session_state.wo_data = _result
-        st.session_state.wo_all  = _wo_all   # 工單明細完整清單（供搜尋）
+        _result, _wo_all, _prog_raw = parse_files(f_wo.read(), f_prog.read())
+        st.session_state.wo_data   = _result
+        st.session_state.wo_all    = _wo_all     # 工單明細完整清單（供搜尋）
+        st.session_state.prog_raw  = _prog_raw   # 廠內進度原始欄位（供工序明細展開）
     st.success(
         f"載入完成：{len(st.session_state.wo_data):,} 筆工序記錄，"
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
@@ -378,21 +385,20 @@ with tab3:
         st.success("排序已更新！")
         st.rerun()
 
-    # ── 只有勾選的工單才顯示工序明細 ─────────────────────────────────────────
+    # ── 只有勾選的工單才顯示廠內進度工序明細 ────────────────────────────────
     selected_wos = edited[edited["選取"] == True]["製令編號"].tolist()
     if selected_wos:
         st.markdown(f"**工序明細 — {', '.join(selected_wos)}**")
-        show = ["製令編號", "產品", "類型", "工序", "批量狀態",
-                "預計產量", "已生產量", "已領套數", "未生產量",
-                "開工", "完工", "出貨日", "狀態"]
-        show = [c for c in show if c in dff.columns]
-        detail_df = dff[dff["製令編號"].isin(selected_wos)].sort_values("開工_dt")[show]
-
-        def st_type(v): return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
-        st.dataframe(
-            detail_df.style.map(st_type, subset=["類型"]),
-            use_container_width=True, hide_index=True
-        )
+        prog_raw = st.session_state.get("prog_raw", pd.DataFrame())
+        if not prog_raw.empty and "製令編號" in prog_raw.columns:
+            detail_df = prog_raw[prog_raw["製令編號"].isin(selected_wos)].reset_index(drop=True)
+        else:
+            # 若尚未載入真實資料，退回顯示處理後的資料
+            _show = ["製令編號", "產品", "工序", "批量狀態", "預計產量",
+                     "已生產量", "已領套數", "未生產量", "開工", "完工", "狀態"]
+            _show = [c for c in _show if c in dff.columns]
+            detail_df = dff[dff["製令編號"].isin(selected_wos)].sort_values("開工_dt")[_show].reset_index(drop=True)
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
 # ── Tab4 預計完工試算 ─────────────────────────────────────────────────────────
 with tab4:
