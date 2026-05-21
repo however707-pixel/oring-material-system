@@ -36,6 +36,16 @@ LINE_MAP = {
     "release-待發料":"待發料",
 }
 
+def add_workdays(start, n=5):
+    """完工日 + n 個工作天（跳過週六日）"""
+    cur = pd.Timestamp(start)
+    count = 0
+    while count < n:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5:
+            count += 1
+    return cur.date()
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 解析函數
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -77,10 +87,8 @@ def parse_files(bytes_wo, bytes_prog):
 
     prog["產線"]   = prog["生產線"].map(LINE_MAP).fillna(
         prog["生產線"].astype(str).str.strip()) if "生產線" in prog.columns else "未知"
-    prog["出貨日"] = pd.to_datetime(
-        prog["訂單預交日"], errors="coerce").dt.date if "訂單預交日" in prog.columns else None
 
-    prog_keep = ["製令編號", "工序", "批量狀態", "工序狀態", "產線", "出貨日",
+    prog_keep = ["製令編號", "工序", "批量狀態", "工序狀態", "產線",
                  "預計產量", "派工數量", "未完工數量", "已完工數量"]
     prog_base = prog[[c for c in prog_keep if c in prog.columns]].copy()
     prog_base = prog_base.rename(columns={
@@ -104,6 +112,8 @@ def parse_files(bytes_wo, bytes_prog):
 
     merged = merged.dropna(subset=["開工", "完工"])
     merged = merged[merged["開工"] <= merged["完工"]]
+    # 出貨日 = 完工 + 5 個工作天
+    merged["出貨日"] = merged["完工"].apply(add_workdays)
 
     # ── 委外工單（只從工單明細取） ────────────────────────────────────────────
     ow = wo_base[wo_base["類型"] == "委外"].copy()
@@ -112,9 +122,10 @@ def parse_files(bytes_wo, bytes_prog):
     ow["工序狀態"] = ow["狀態_wo"]
     ow["狀態"]     = ow["狀態_wo"]
     ow["產線"]     = ow["廠商名稱"].fillna("未知廠商").astype(str).str.strip()
-    ow["出貨日"]   = pd.NaT
     ow = ow.dropna(subset=["開工", "完工"])
     ow = ow[ow["開工"] <= ow["完工"]]
+    # 出貨日 = 完工 + 5 個工作天
+    ow["出貨日"] = ow["完工"].apply(add_workdays)
 
     # ── 合併廠內 + 委外 ───────────────────────────────────────────────────────
     cols = ["製令編號", "產品", "類型", "工序", "批量狀態", "產線",
@@ -263,27 +274,30 @@ with tab1:
 with tab2:
     c1, c2 = st.columns([1, 3])
     with c1:
-        daily_hours = st.number_input("每日可用工時（hr）", 1, 24, 8)
-        work_days   = max((dr[1] - dr[0]).days + 1, 1) if isinstance(dr, (list, tuple)) and len(dr) == 2 else 20
-        st.metric("區間天數",     f"{work_days} 天")
-        st.metric("每線可用工時", f"{daily_hours * work_days} hr")
+        daily_cap = st.number_input("每日產能（PCS/線）", min_value=1, max_value=99999,
+                                    value=200, step=10)
+        work_days = max((dr[1] - dr[0]).days + 1, 1) if isinstance(dr, (list, tuple)) and len(dr) == 2 else 20
+        avail     = daily_cap * work_days
+        st.metric("區間天數",   f"{work_days} 天")
+        st.metric("每線總產能", f"{avail:,} PCS")
     with c2:
         active = dff[~dff["狀態"].isin(["已完工"])].copy()
         if active.empty:
             st.info("無進行中工序。")
         else:
-            active["計畫工時"] = (active["數量"] / active["UPH"]).round(1)
-            load = active.groupby(["產線", "工序"])["計畫工時"].sum().reset_index()
-            lt   = active.groupby("產線")["計畫工時"].sum().reset_index()
-            avail = daily_hours * work_days
-            lt["稼動率%"] = (lt["計畫工時"] / avail * 100).round(1)
-            fig2 = px.bar(load, x="產線", y="計畫工時", color="工序",
-                          color_discrete_map=COLOR_STAGE, barmode="stack")
+            active["計畫產量"] = pd.to_numeric(active["數量"], errors="coerce").fillna(0)
+            load = active.groupby(["產線", "工序"])["計畫產量"].sum().reset_index()
+            lt   = active.groupby("產線")["計畫產量"].sum().reset_index()
+            lt["稼動率%"] = (lt["計畫產量"] / avail * 100).round(1)
+
+            fig2 = px.bar(load, x="產線", y="計畫產量", color="工序",
+                          color_discrete_map=COLOR_STAGE, barmode="stack",
+                          labels={"計畫產量": "計畫產量 (PCS)"})
             fig2.add_hline(y=avail, line_dash="dash", line_color="#ef4444",
-                           annotation_text="可用上限")
+                           annotation_text=f"可用上限 {avail:,} PCS")
             fig2.update_layout(height=300, margin=dict(l=10, r=10, t=20, b=10),
                                 paper_bgcolor="white", plot_bgcolor="#f8fafc",
-                                yaxis=dict(gridcolor="#e2e8f0"),
+                                yaxis=dict(gridcolor="#e2e8f0", title="PCS"),
                                 legend=dict(orientation="h", yanchor="bottom", y=1.02))
             st.plotly_chart(fig2, use_container_width=True)
 
@@ -291,8 +305,11 @@ with tab2:
                 if v >= 90: return "background-color:#fee2e2;color:#dc2626;font-weight:bold"
                 if v >= 70: return "background-color:#fef9c3;color:#92400e"
                 return "background-color:#dcfce7;color:#15803d"
-            st.dataframe(lt.style.map(cr, subset=["稼動率%"]),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                lt.rename(columns={"計畫產量": "計畫產量 (PCS)"})
+                  .style.map(cr, subset=["稼動率%"]),
+                use_container_width=True, hide_index=True
+            )
 
 # ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
 with tab3:
