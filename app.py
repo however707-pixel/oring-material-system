@@ -518,6 +518,14 @@ else:
       <div class="step-card"><div class="step-num">04 · 追蹤</div><div class="step-name">生產進度追蹤</div><div class="step-sub">Progress Monitoring</div></div>
       <div class="step-arrow">↓</div>
       <div class="step-card"><div class="step-num">05 · 完工</div><div class="step-name">完工確認回報</div><div class="step-sub">Completion Reporting</div></div>
+      <div class="step-arrow">↓</div>
+      <a href="./monthly_cost" target="_top" style="text-decoration:none;display:block">
+        <div class="step-card" style="border:2px solid #15803d;background:linear-gradient(135deg,#f0fdf4,#dcfce7);cursor:pointer;">
+          <div class="step-num" style="color:#15803d;">06 · 分析</div>
+          <div class="step-name">每月成本計算表</div>
+          <div class="step-sub">Monthly Cost Analysis</div>
+        </div>
+      </a>
     </div>
   </div>
 
