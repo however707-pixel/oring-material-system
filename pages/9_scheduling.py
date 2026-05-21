@@ -306,7 +306,7 @@ with tab2:
 
 # ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
 with tab3:
-    st.caption("可直接修改優先順序（數字越小越優先），按「套用」後更新。")
+    st.caption("可直接修改優先順序（數字越小越優先）；勾選工單號碼可展開工序明細。按「套用」後更新。")
     _want = ["製令編號", "產品", "類型", "預計產量", "已生產量", "已領套數", "未生產量",
              "開工", "完工", "出貨日", "狀態", "優先順序"]
     _have = [c for c in _want if c in dff.columns]
@@ -317,9 +317,12 @@ with tab3:
         .sort_values("優先順序")
         .copy()
     )
+    wo_view.insert(0, "選取", False)   # 最左欄加 checkbox
+
     edited = st.data_editor(
         wo_view,
         column_config={
+            "選取":   st.column_config.CheckboxColumn("選取", default=False),
             "優先順序": st.column_config.NumberColumn("優先順序", min_value=1, max_value=999, step=1),
             **{c: st.column_config.TextColumn(disabled=True)
                for c in ["製令編號", "產品", "類型", "狀態"] if c in _have},
@@ -338,23 +341,21 @@ with tab3:
         st.success("排序已更新！")
         st.rerun()
 
-    st.markdown("**依開工日排序 — 完整工序清單**")
-    show = ["製令編號", "產品", "類型", "工序", "批量狀態",
-            "預計產量", "已生產量", "已領套數", "未生產量",
-            "開工", "完工", "出貨日", "狀態"]
-    show = [c for c in show if c in dff.columns]
-    sorted_df = dff.sort_values("開工_dt")[show]
+    # ── 只有勾選的工單才顯示工序明細 ─────────────────────────────────────────
+    selected_wos = edited[edited["選取"] == True]["製令編號"].tolist()
+    if selected_wos:
+        st.markdown(f"**工序明細 — {', '.join(selected_wos)}**")
+        show = ["製令編號", "產品", "類型", "工序", "批量狀態",
+                "預計產量", "已生產量", "已領套數", "未生產量",
+                "開工", "完工", "出貨日", "狀態"]
+        show = [c for c in show if c in dff.columns]
+        detail_df = dff[dff["製令編號"].isin(selected_wos)].sort_values("開工_dt")[show]
 
-    def st_type(v):  return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
-    def st_stage(v):
-        c = {"組裝": "#dbeafe", "測試": "#ede9fe", "包裝": "#cffafe",
-             "委外": "#fef3c7", "其他": "#f1f5f9"}.get(v, "")
-        return f"background-color:{c}" if c else ""
-
-    st.dataframe(
-        sorted_df.style.map(st_type, subset=["類型"]),
-        use_container_width=True, hide_index=True
-    )
+        def st_type(v): return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
+        st.dataframe(
+            detail_df.style.map(st_type, subset=["類型"]),
+            use_container_width=True, hide_index=True
+        )
 
 # ── Tab4 預計完工試算 ─────────────────────────────────────────────────────────
 with tab4:
