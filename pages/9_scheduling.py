@@ -185,8 +185,8 @@ df["完工_dt"] = pd.to_datetime(df["完工"])
 fc1, fc2, fc3, fc4 = st.columns([3, 2, 2, 2])
 with fc1:
     min_d = df["開工_dt"].min().date() if not df.empty else date(2026, 1, 1)
-    max_d = df["完工_dt"].max().date() if not df.empty else date(2026, 12, 31)
-    dr = st.date_input("日期區間", value=(min_d, max_d))
+    max_d = df["開工_dt"].max().date() if not df.empty else date(2026, 12, 31)
+    dr = st.date_input("開工日區間", value=(min_d, max_d))
 with fc2:
     sel_type  = st.selectbox("類型", ["全部", "廠內", "委外"])
 with fc3:
@@ -197,7 +197,7 @@ with fc4:
 
 dff = df.copy()
 if isinstance(dr, (list, tuple)) and len(dr) == 2:
-    dff = dff[(dff["開工_dt"] >= pd.to_datetime(dr[0])) & (dff["完工_dt"] <= pd.to_datetime(dr[1]))]
+    dff = dff[(dff["開工_dt"] >= pd.to_datetime(dr[0])) & (dff["開工_dt"] <= pd.to_datetime(dr[1]))]
 if sel_type  != "全部": dff = dff[dff["類型"] == sel_type]
 if sel_stage != "全部": dff = dff[dff["工序"] == sel_stage]
 if sel_state != "全部": dff = dff[dff["狀態"] == sel_state]
