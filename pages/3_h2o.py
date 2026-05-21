@@ -23,8 +23,9 @@ render_header(
 )
 render_sidebar()
 
-TANG = '唐佑代工倉'
-KUO  = '修研/華盈/國智代工倉'
+TANG      = '唐佑代工倉'
+KUO       = '修研/華盈/國智代工倉'
+VALID_SRC = {'電子倉', '機構倉', '半成品倉', '成品倉'}  # 試算可用庫存只計這四個倉
 
 # =========================
 # Sidebar 設定
@@ -275,13 +276,11 @@ with st.spinner("分析中，請稍候..."):
         return sub.sort_values('日期').iloc[0]['日期']
 
     def get_incoming(pno):
-        """取得分析區間內所有預計進貨的日期（G欄）與數量（I欄，異動數量），每筆分開顯示"""
+        """取得所有預計進貨（不限分析區間），每筆格式：MM/DD 數量"""
         sub = sd[
             (sd['品號'] == pno) &
             (sd['異動別'] == '預計進貨') &
-            (sd['日期'].notna()) &
-            (sd['日期'] >= start) &
-            (sd['日期'] <= end)
+            (sd['日期'].notna())
         ].sort_values('日期')
         if sub.empty:
             return '', None
@@ -338,6 +337,55 @@ with st.spinner("分析中，請稍候..."):
 
         return int(total)
 
+    def avail_4wh(pno, excl_names):
+        """只計算 VALID_SRC（電子倉/機構倉/半成品倉/成品倉）的可用量。
+        使用與 src_avail_excl 相同的倉別識別邏輯，但只納入 VALID_SRC 倉名。
+        """
+        excl = set(excl_names)
+        part_sd = sd[sd['品號'] == pno]
+        total = 0.0
+
+        # ① 有日期交易的倉
+        dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
+        code_name = (dated_part[['庫別', '庫別名稱']]
+                     .drop_duplicates('庫別')
+                     .set_index('庫別')['庫別名稱']
+                     .to_dict())
+        code_name = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+        names_with_dated = set(code_name.values())
+        dated_codes      = set(code_name.keys())
+
+        for wh_code, wh_name in code_name.items():
+            if wh_name not in VALID_SRC: continue
+            if wh_name in excl: continue
+            total += get_avail(sd, pno, wh_code, excl)
+
+        # ② 只有初始列的倉（倉別代碼直接是倉名的情況）
+        init_rows = part_sd[part_sd['日期'].isna() & part_sd['庫別名稱'].isna()]
+        for wh_k in init_rows['庫別'].dropna().unique():
+            ws = str(wh_k)
+            if ws in dated_codes or ws in names_with_dated: continue
+            if ws not in VALID_SRC: continue
+            if ws in excl: continue
+            if len(ws) > 12: continue
+            qty = init_rows[init_rows['庫別'] == wh_k]['異動數量'].dropna()
+            if not qty.empty and float(qty.iloc[0]) > 0:
+                total += float(qty.iloc[0])
+
+        return int(total)
+
+    def fmt_deficit(qty, deficit, alloc=None, net=None):
+        """缺料量顯示（SPQ進位後）：
+        - alloc < net → 庫存不足：「⚠️ 實配量（需 X）」
+        - qty != deficit → SPQ進位：「qty (原缺 X)」
+        - 正常：直接顯示 qty
+        """
+        if not qty: return None
+        if alloc is not None and net is not None and int(alloc) < int(net):
+            return f"⚠️ {int(alloc):,}  （需 {int(net):,}）"
+        d = int(deficit)
+        return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
+
     parts = h2o['料號'].dropna().unique()
 
     rows = []
@@ -354,97 +402,96 @@ with st.spinner("分析中，請稍候..."):
         t_qty = apply_spq(t_deficit, spq)
         k_qty = apply_spq(k_deficit, spq)
 
-        # ── 來源可用量調整：若來源庫存已可覆蓋原始缺料量，不需強制SPQ進位 ──
-        # 邏輯：source_avail >= original_deficit → qty = min(source_avail, spq_qty)
-        #       source_avail <  original_deficit → 維持 spq_qty（需多倉或不足）
-        if t_deficit > 0 or k_deficit > 0:
-            _src_total = src_avail_excl(pno, {TANG, KUO})
-        else:
-            _src_total = 0
-        if t_deficit > 0 and _src_total >= t_deficit:
-            t_qty = min(_src_total, t_qty)
-        if k_deficit > 0 and _src_total >= k_deficit:
-            k_qty = min(_src_total, k_qty)
+        # ── 待調撥量（優先計算，用於推算淨需求）──
+        pno_str   = str(pno).strip()
+        t_pending = int(tang_pending_map.get(pno_str, 0) or 0)
+        k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
 
-        # 來源倉（電子倉優先，不夠再找其他倉）
-        # 不強制排除委外倉：get_avail 內部用 max(0,...) 自動過濾，有餘額才會顯示
-        total_need = t_qty + k_qty
-        src = source_wh(sd, pno, set(), total_need) if total_need > 0 else ''
+        # 淨需求 = 原始缺料量 - 已調撥量（不套 SPQ，反映實際還差多少）
+        t_net     = max(0, t_deficit - t_pending)
+        k_net     = max(0, k_deficit - k_pending)
+        total_net = t_net + k_net
 
-        # ── 庫存不足時：依最早缺料日期決定配料優先順序 ──
-        # t_alloc / k_alloc：實際可配量（可能小於 t_qty/k_qty）
-        t_alloc = t_qty
-        k_alloc = k_qty
+        # ── 可調撥庫存：只計算四個倉（電子倉/機構倉/半成品倉/成品倉）──
+        avail_4w = avail_4wh(pno, {TANG, KUO}) if total_net > 0 else 0
+
+        # ── 可調撥來源倉（顯示用，仍顯示所有倉的現有庫存）──
+        total_disp = t_qty + k_qty
+        src = source_wh(sd, pno, set(), total_disp) if total_disp > 0 else ''
+
+        # ── 配料分配邏輯（以淨需求為基準，庫存不足時不套 SPQ）──
+        t_alloc    = t_net
+        k_alloc    = k_net
         alloc_note = ''
-        if t_qty > 0 and k_qty > 0 and _src_total < total_need:
-            avail    = _src_total
-            t_date   = first_deficit_date(pno, TANG)
-            k_date   = first_deficit_date(pno, KUO)
-            td_str   = t_date.strftime('%m/%d') if t_date else '區間末'
-            kd_str   = k_date.strftime('%m/%d') if k_date else '區間末'
-            td       = t_date or pd.Timestamp('2099-12-31')
-            kd       = k_date or pd.Timestamp('2099-12-31')
-            spq_int  = int(spq) if spq and spq > 0 else 1
-            tang_first = td <= kd
-            if tang_first:
-                first_nm, first_def, first_ds  = '唐佑', t_qty, td_str
-                second_nm, second_def, second_ds = '國智', k_qty, kd_str
+        insufficient = (total_net > 0 and avail_4w < total_net)
+
+        if insufficient:
+            if t_net > 0 and k_net > 0:
+                # 依最早缺料日期決定優先順序
+                t_date = first_deficit_date(pno, TANG)
+                k_date = first_deficit_date(pno, KUO)
+                td_str = t_date.strftime('%m/%d') if t_date else '區間末'
+                kd_str = k_date.strftime('%m/%d') if k_date else '區間末'
+                td = t_date or pd.Timestamp('2099-12-31')
+                kd = k_date or pd.Timestamp('2099-12-31')
+                tang_first = (td <= kd)
+                if tang_first:
+                    first_nm,  first_net,  first_ds  = '唐佑', t_net, td_str
+                    second_nm, second_net, second_ds  = '國智', k_net, kd_str
+                else:
+                    first_nm,  first_net,  first_ds  = '國智', k_net, kd_str
+                    second_nm, second_net, second_ds  = '唐佑', t_net, td_str
+                first_alloc  = min(first_net,  avail_4w)
+                second_alloc = min(second_net, max(0, avail_4w - first_alloc))
+                if tang_first:
+                    t_alloc, k_alloc = first_alloc, second_alloc
+                else:
+                    k_alloc, t_alloc = first_alloc, second_alloc
+                alloc_note = (
+                    f"⚠️ 庫存不足（需 {total_net:,}，四倉可用 {avail_4w:,}，尚缺 {total_net - avail_4w:,}）\n"
+                    f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_alloc:,}\n"
+                    f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_alloc:,}，尚缺 {second_net - second_alloc:,}"
+                )
+            elif t_net > 0:
+                t_alloc = min(t_net, avail_4w)
+                k_alloc = 0
+                alloc_note = (
+                    f"⚠️ 庫存不足（唐佑需 {t_net:,}，四倉可用 {avail_4w:,}，尚缺 {t_net - t_alloc:,}）"
+                )
             else:
-                first_nm, first_def, first_ds  = '國智', k_qty, kd_str
-                second_nm, second_def, second_ds = '唐佑', t_qty, td_str
-            after_first  = max(0, avail - first_def)
-            second_can   = (after_first // spq_int) * spq_int
-            second_short = second_def - second_can
-            # 更新實際可配量
-            if tang_first:
-                t_alloc = first_def          # 唐佑優先，足額配
-                k_alloc = second_can         # 國智配剩餘
-            else:
-                k_alloc = first_def          # 國智優先，足額配
-                t_alloc = second_can         # 唐佑配剩餘
-            alloc_note = (
-                f"⚠️ 庫存不足（需 {total_need:,}，可用 {avail:,}）\n"
-                f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_def:,}\n"
-                f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_can:,}，尚缺 {second_short:,}"
-            )
+                k_alloc = min(k_net, avail_4w)
+                t_alloc = 0
+                alloc_note = (
+                    f"⚠️ 庫存不足（國智需 {k_net:,}，四倉可用 {avail_4w:,}，尚缺 {k_net - k_alloc:,}）"
+                )
+
+        # 實際應調撥量：待調撥 >= 原缺 → 0；庫存不足 → 分配量（無SPQ）；足夠 → 淨需求
+        t_actual = (0 if t_pending >= t_deficit else t_alloc) if t_deficit > 0 else None
+        k_actual = (0 if k_pending >= k_deficit else k_alloc) if k_deficit > 0 else None
 
         # I欄(index 8) = Material P/N（子件件號，ORing 內部料號）
         cust_pn = str(h_row.iloc[8]) if pd.notna(h_row.iloc[8]) else ''
 
-        # 預計進料日 & 預計數量（供需表 異動別=預計進貨）
+        # 預計進料日 & 預計數量（不限分析區間，有就全顯示）
         incoming_date, incoming_qty = get_incoming(pno)
-
-        def fmt_deficit(qty, deficit, alloc=None):
-            """缺料量顯示：
-            - 庫存不足（alloc < qty）：顯示「實配 (需 X)」
-            - 來源調整（qty != deficit）：顯示「qty (原缺 X)」
-            - 正常：直接顯示 qty
-            """
-            if not qty: return None
-            if alloc is not None and int(alloc) < int(qty):
-                return f"⚠️ {int(alloc):,}  （需 {int(qty):,}）"
-            d = int(deficit)
-            return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
-
-        # ── 待調撥量 & 實際應調撥量（需上傳互調料滙整表才有值）──
-        pno_str = str(pno).strip()
-        t_pending = int(tang_pending_map.get(pno_str, 0) or 0)
-        k_pending = int(kuo_pending_map.get(pno_str, 0) or 0)
-        # 若待調撥量已 >= 原始缺料量（未SPQ進位），表示原缺已被覆蓋，實際應調撥=0
-        t_actual  = (0 if t_pending >= t_deficit else max(0, t_qty - t_pending)) if t_qty > 0 else None
-        k_actual  = (0 if k_pending >= k_deficit else max(0, k_qty - k_pending)) if k_qty > 0 else None
 
         rows.append({
             '料號':              pno,
             'SPQ':               int(spq) if spq else 1,
             '缺料量':            int(shortage) if shortage > 0 else None,
-            '唐佑代工倉 缺料量':      fmt_deficit(t_qty, t_deficit, t_alloc if t_qty > 0 and k_qty > 0 else None),
-            '唐佑代工倉 待調撥量':    t_pending if (has_transfer and t_qty > 0) else None,
+            '唐佑代工倉 缺料量':
+                fmt_deficit(t_qty, t_deficit,
+                            t_alloc if insufficient and t_net > 0 else None,
+                            t_net   if insufficient and t_net > 0 else None),
+            '唐佑代工倉 待調撥量':    t_pending if (has_transfer and t_deficit > 0) else None,
             '唐佑代工倉 實際應調撥量': t_actual  if has_transfer else None,
-            '國智代工倉 缺料量':      fmt_deficit(k_qty, k_deficit, k_alloc if t_qty > 0 and k_qty > 0 else None),
-            '國智代工倉 待調撥量':    k_pending if (has_transfer and k_qty > 0) else None,
+            '國智代工倉 缺料量':
+                fmt_deficit(k_qty, k_deficit,
+                            k_alloc if insufficient and k_net > 0 else None,
+                            k_net   if insufficient and k_net > 0 else None),
+            '國智代工倉 待調撥量':    k_pending if (has_transfer and k_deficit > 0) else None,
             '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
-            '合計委外缺料':          int(t_qty + k_qty) if (t_qty+k_qty) else None,
+            '合計委外缺料':          int(t_qty + k_qty) if (t_qty + k_qty) else None,
             '預計進料日':            incoming_date or None,
             '預計數量':              incoming_qty,
             '_唐佑qty':              t_qty,
