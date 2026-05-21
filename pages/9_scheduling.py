@@ -306,6 +306,33 @@ with tab2:
 
 # ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
 with tab3:
+    # ── 快速查詢列 ───────────────────────────────────────────────────────────
+    sq1, sq2 = st.columns([4, 1])
+    with sq1:
+        search_input = st.text_input("貼上工單號碼查詢（可貼多筆，以逗號或換行分隔）",
+                                     placeholder="例：5142-20260417001, 5142-20260427002",
+                                     label_visibility="visible")
+    with sq2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        search_btn = st.button("🔍 查詢", type="primary")
+
+    if search_btn and search_input.strip():
+        import re
+        query_nos = [s.strip() for s in re.split(r"[,\n\r；，]+", search_input) if s.strip()]
+        hit = df[df["製令編號"].isin(query_nos)]
+        if hit.empty:
+            st.warning(f"查無符合的工單：{', '.join(query_nos)}")
+        else:
+            show_q = ["製令編號", "產品", "類型", "工序", "批量狀態",
+                      "預計產量", "已生產量", "已領套數", "未生產量",
+                      "開工", "完工", "出貨日", "狀態"]
+            show_q = [c for c in show_q if c in hit.columns]
+            st.success(f"找到 {hit['製令編號'].nunique()} 張工單，共 {len(hit)} 筆工序記錄")
+            def _st(v): return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
+            st.dataframe(hit.sort_values("開工_dt")[show_q].style.map(_st, subset=["類型"]),
+                         use_container_width=True, hide_index=True)
+        st.markdown("---")
+
     st.caption("可直接修改優先順序（數字越小越優先）；勾選工單號碼可展開工序明細。按「套用」後更新。")
     _want = ["製令編號", "產品", "類型", "預計產量", "已生產量", "已領套數", "未生產量",
              "開工", "完工", "出貨日", "狀態", "優先順序"]
