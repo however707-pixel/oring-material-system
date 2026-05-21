@@ -13,11 +13,10 @@ inject_css()
 render_header(title="排程系統", subtitle="Production Scheduling System", badge="生管 PC")
 render_sidebar()
 
-STAGE_ORDER  = ["組裝", "測試", "包裝", "其他", "委外"]
 COLOR_STAGE  = {"組裝":"#1d4ed8","測試":"#7c3aed","包裝":"#0891b2","其他":"#64748b","委外":"#d97706"}
 COLOR_STATUS = {"生產中":"#16a34a","待開工":"#f59e0b","已完工":"#94a3b8","已發料":"#0891b2"}
 
-# G欄(製程名稱) → 工序
+# G欄(製程名稱) → 大類（僅供甘特圖配色，不影響顯示）
 STAGE_MAP = {
     "組裝":"組裝","組裝前製製程":"組裝","組裝2":"組裝","代工前製製程":"組裝","代工":"組裝",
     "測試":"測試","SWTS":"測試",
@@ -25,7 +24,7 @@ STAGE_MAP = {
     "FW燒錄":"其他","點膠":"其他","其他":"其他",
 }
 
-# 「指定完工」不列入 STATUS_MAP → 工單明細讀取時直接整筆排除
+# 「指定完工」不列入 → 工單明細讀取時整筆排除
 STATUS_MAP = {
     "已完工":"已完工","生產中":"生產中","已生產":"生產中",
     "已發料":"已發料","未完工":"待開工","未完工前站":"待開工",
@@ -51,9 +50,9 @@ def parse_files(bytes_wo, bytes_prog):
     prog.columns = prog.columns.str.strip()
 
     # ── 工單明細 ──────────────────────────────────────────────────────────────
-    # H欄(index 7)=預計開工 → 開工
-    # I欄(index 8)=預計完工 → 完工
-    # M欄(index 12)=狀態碼  → 排除「指定完工」整筆
+    # D欄(index 3)=預計產量, E欄(index 4)=已生產量, F欄(index 5)=已領套數
+    # G欄(index 6)=未生產量, H欄(index 7)=預計開工, I欄(index 8)=預計完工
+    # M欄(index 12)=狀態碼 → 排除「指定完工」
     if "狀態碼" in wo.columns:
         wo = wo[wo["狀態碼"].astype(str).str.strip() != "指定完工"].copy()
 
@@ -64,39 +63,38 @@ def parse_files(bytes_wo, bytes_prog):
     )
     wo["狀態_wo"] = wo["狀態碼"].map(STATUS_MAP).fillna("待開工")
 
-    wo_keep = ["製令編號", "品名", "產品品號", "預計產量", "已生產量", "未生產量",
-               "開工", "完工", "類型", "狀態_wo", "廠商名稱"]
+    wo_keep = ["製令編號", "品名", "產品品號", "預計產量", "已生產量", "已領套數",
+               "未生產量", "開工", "完工", "類型", "狀態_wo", "廠商名稱"]
     wo_base = wo[[c for c in wo_keep if c in wo.columns]].copy()
-    wo_base = wo_base.rename(columns={"品名": "產品", "預計產量": "數量"})
+    wo_base = wo_base.rename(columns={"品名": "產品"})
 
     # ── 廠內進度 ──────────────────────────────────────────────────────────────
-    # A欄(index 0)=製令編號  → JOIN key
-    # G欄(index 6)=製程名稱  → 工序 mapping
-    # H欄(index 7)=製令狀態  → 工序狀態
-    # I欄(index 8)=批量狀態  → 直接保留顯示
-    prog["工序"]    = prog.iloc[:, 6].astype(str).str.strip()              # G欄 原值不轉換
-    prog["工序_類"] = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # 僅供甘特圖配色用
-    prog["工序狀態"] = prog.iloc[:, 7].map(STATUS_MAP).fillna("待開工")     # H欄
+    # A欄(index 0)=製令編號, G欄(index 6)=製程名稱, H欄(index 7)=製令狀態, I欄(index 8)=批量狀態
+    prog["工序"]    = prog.iloc[:, 6].astype(str).str.strip()              # G欄 原值顯示
+    prog["工序_類"] = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # G欄 → 配色分類
+    prog["工序狀態"] = prog.iloc[:, 7].map(STATUS_MAP).fillna("待開工")    # H欄
     prog["批量狀態"] = prog.iloc[:, 8].astype(str).str.strip() if len(prog.columns) > 8 else ""  # I欄
 
     prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態",
-                 "預計產量", "未完工數量", "已完工數量"]
+                 "未完工數量", "已完工數量"]
     prog_base = prog[[c for c in prog_keep if c in prog.columns]].copy()
     prog_base = prog_base.rename(columns={
         "未完工數量": "未生產量_prog",
         "已完工數量": "已生產量_prog",
-        "預計產量":   "數量_prog",
     })
 
     # ── JOIN：廠內進度（左表）← 工單明細（右表） ──────────────────────────
+    wo_join_cols = ["製令編號", "產品", "產品品號", "預計產量", "已生產量", "已領套數",
+                    "未生產量", "開工", "完工", "類型", "廠商名稱"]
     merged = prog_base.merge(
-        wo_base[["製令編號", "產品", "產品品號", "數量", "已生產量", "未生產量",
-                 "開工", "完工", "類型", "廠商名稱"]],
+        wo_base[[c for c in wo_join_cols if c in wo_base.columns]],
         on="製令編號", how="left"
     )
     merged["狀態"]     = merged["工序狀態"]
-    merged["已生產量"] = pd.to_numeric(merged.get("已生產量_prog", merged.get("已生產量", 0)), errors="coerce").fillna(0)
-    merged["未生產量"] = pd.to_numeric(merged.get("未生產量_prog", merged.get("未生產量", 0)), errors="coerce").fillna(0)
+    merged["已生產量"] = pd.to_numeric(
+        merged.get("已生產量_prog", merged.get("已生產量", 0)), errors="coerce").fillna(0)
+    merged["未生產量"] = pd.to_numeric(
+        merged.get("未生產量_prog", merged.get("未生產量", 0)), errors="coerce").fillna(0)
 
     merged = merged.dropna(subset=["開工", "完工"])
     merged = merged[merged["開工"] <= merged["完工"]]
@@ -110,13 +108,14 @@ def parse_files(bytes_wo, bytes_prog):
     ow["狀態"]     = ow["狀態_wo"]
     ow = ow.dropna(subset=["開工", "完工"])
     ow = ow[ow["開工"] <= ow["完工"]]
-    ow["出貨日"] = ow["完工"].apply(add_workdays)           # 完工 + 5 工作天
+    ow["出貨日"] = ow["完工"].apply(add_workdays)
 
     # ── 合併廠內 + 委外 ───────────────────────────────────────────────────────
     cols = ["製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
-            "數量", "已生產量", "未生產量", "開工", "完工", "出貨日", "狀態"]
+            "預計產量", "已生產量", "已領套數", "未生產量",
+            "開工", "完工", "出貨日", "狀態"]
 
-    for c in ["出貨日", "類型", "批量狀態", "工序_類"]:
+    for c in ["出貨日", "類型", "批量狀態", "工序_類", "已領套數"]:
         if c not in merged.columns:
             merged[c] = ""
 
@@ -125,9 +124,8 @@ def parse_files(bytes_wo, bytes_prog):
     final = pd.concat([final_inner, final_outer], ignore_index=True)
     final["UPH"]      = 10
     final["優先順序"] = 99
-    final["數量"]     = pd.to_numeric(final["數量"],     errors="coerce").fillna(0)
-    final["已生產量"] = pd.to_numeric(final["已生產量"], errors="coerce").fillna(0)
-    final["未生產量"] = pd.to_numeric(final["未生產量"], errors="coerce").fillna(0)
+    for col in ["預計產量", "已生產量", "已領套數", "未生產量"]:
+        final[col] = pd.to_numeric(final.get(col, 0), errors="coerce").fillna(0)
     final = final.sort_values("開工").reset_index(drop=True)
     return final
 
@@ -153,22 +151,30 @@ if load_btn and f_wo and f_prog:
     )
 
 REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
-                 "數量", "UPH", "開工", "完工", "狀態", "優先順序"}
+                 "預計產量", "已領套數", "UPH", "開工", "完工", "狀態", "優先順序"}
 
 if "wo_data" not in st.session_state or not REQUIRED_COLS.issubset(st.session_state.wo_data.columns):
     st.session_state.wo_data = pd.DataFrame([
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="組裝前製製程", 工序_類="組裝", 批量狀態="待進站",
-             數量=100, 已生產量=60,  未生產量=40,  UPH=12,
-             開工=date(2026,5,1),  完工=date(2026,5,4),  出貨日=date(2026,5,9),  狀態="生產中", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="測試", 工序_類="測試", 批量狀態="待進站",
-             數量=100, 已生產量=0,   未生產量=100, UPH=20,
-             開工=date(2026,5,5),  完工=date(2026,5,6),  出貨日=date(2026,5,13), 狀態="待開工", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="包裝", 工序_類="包裝", 批量狀態="待進站",
-             數量=100, 已生產量=0,   未生產量=100, UPH=30,
-             開工=date(2026,5,7),  完工=date(2026,5,8),  出貨日=date(2026,5,15), 狀態="待開工", 優先順序=1),
-        dict(製令編號="MO02-20260501001", 產品="機殼-A型",  類型="委外", 工序="委外", 工序_類="委外", 批量狀態="",
-             數量=500, 已生產量=200, 未生產量=300, UPH=50,
-             開工=date(2026,5,1),  完工=date(2026,5,10), 出貨日=date(2026,5,17), 狀態="生產中", 優先順序=2),
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
+             工序="組裝前製製程", 工序_類="組裝", 批量狀態="待進站",
+             預計產量=100, 已生產量=60, 已領套數=80, 未生產量=40, UPH=12,
+             開工=date(2026,5,1), 完工=date(2026,5,4), 出貨日=date(2026,5,9),
+             狀態="生產中", 優先順序=1),
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
+             工序="測試", 工序_類="測試", 批量狀態="待進站",
+             預計產量=100, 已生產量=0, 已領套數=0, 未生產量=100, UPH=20,
+             開工=date(2026,5,5), 完工=date(2026,5,6), 出貨日=date(2026,5,13),
+             狀態="待開工", 優先順序=1),
+        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
+             工序="包裝", 工序_類="包裝", 批量狀態="待進站",
+             預計產量=100, 已生產量=0, 已領套數=0, 未生產量=100, UPH=30,
+             開工=date(2026,5,7), 完工=date(2026,5,8), 出貨日=date(2026,5,15),
+             狀態="待開工", 優先順序=1),
+        dict(製令編號="MO02-20260501001", 產品="機殼-A型", 類型="委外",
+             工序="委外", 工序_類="委外", 批量狀態="",
+             預計產量=500, 已生產量=200, 已領套數=200, 未生產量=300, UPH=50,
+             開工=date(2026,5,1), 完工=date(2026,5,10), 出貨日=date(2026,5,17),
+             狀態="生產中", 優先順序=2),
     ])
 
 df = st.session_state.wo_data.copy()
@@ -185,7 +191,7 @@ with fc2:
     sel_type  = st.selectbox("類型", ["全部", "廠內", "委外"])
 with fc3:
     stage_opts = ["全部"] + sorted(df["工序"].dropna().unique().tolist())
-    sel_stage = st.selectbox("工序", stage_opts)
+    sel_stage  = st.selectbox("工序", stage_opts)
 with fc4:
     sel_state = st.selectbox("狀態", ["全部", "待開工", "已發料", "生產中", "已完工"])
 
@@ -222,19 +228,17 @@ with tab1:
         with cr:
             color_by = st.radio("顏色", ["工序", "狀態"], horizontal=True)
 
-        hover_extra = {"產品": True, "類型": True, "工序": True, "數量": True,
-                       "批量狀態": True, "狀態": True}
+        color_col = "工序_類" if color_by == "工序" else "狀態"
+        cmap      = COLOR_STAGE if color_by == "工序" else COLOR_STATUS
+        hover_extra = {"產品": True, "類型": True, "工序": True,
+                       "預計產量": True, "批量狀態": True, "狀態": True}
         if "出貨日" in gantt_df.columns:
             hover_extra["出貨日"] = True
 
-        # 甘特圖：Y軸用原始工序名稱，配色用 工序_類（組裝/測試/包裝/其他/委外）
-        color_col = "工序_類" if color_by == "工序" else "狀態"
-        cmap      = COLOR_STAGE if color_by == "工序" else COLOR_STATUS
         fig = px.timeline(
             gantt_df, x_start="開工_dt", x_end="完工_dt",
             y="工序", color=color_col, color_discrete_map=cmap,
-            text="製令編號",
-            hover_data=hover_extra,
+            text="製令編號", hover_data=hover_extra,
         )
         fig.update_traces(textposition="inside", insidetextanchor="middle",
                           textfont=dict(size=9, color="white"))
@@ -264,21 +268,20 @@ with tab2:
                                     value=200, step=10)
         work_days = max((dr[1] - dr[0]).days + 1, 1) if isinstance(dr, (list, tuple)) and len(dr) == 2 else 20
         avail     = daily_cap * work_days
-        st.metric("區間天數",   f"{work_days} 天")
+        st.metric("區間天數",     f"{work_days} 天")
         st.metric("每工序總產能", f"{avail:,} PCS")
     with c2:
         active = dff[~dff["狀態"].isin(["已完工"])].copy()
         if active.empty:
             st.info("無進行中工序。")
         else:
-            active["計畫產量"] = pd.to_numeric(active["數量"], errors="coerce").fillna(0)
+            active["計畫產量"] = pd.to_numeric(active["預計產量"], errors="coerce").fillna(0)
             load = active.groupby("工序")["計畫產量"].sum().reset_index()
             lt   = load.copy()
             lt["稼動率%"] = (lt["計畫產量"] / avail * 100).round(1)
 
             fig2 = px.bar(load, x="工序", y="計畫產量", color="工序",
                           color_discrete_map=COLOR_STAGE,
-                          category_orders={"工序": STAGE_ORDER},
                           labels={"計畫產量": "計畫產量 (PCS)"},
                           text_auto=True)
             fig2.add_hline(y=avail, line_dash="dash", line_color="#ef4444",
@@ -302,7 +305,7 @@ with tab2:
 # ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
 with tab3:
     st.caption("可直接修改優先順序（數字越小越優先），按「套用」後更新。")
-    _want = ["製令編號", "產品", "類型", "數量", "已生產量", "未生產量",
+    _want = ["製令編號", "產品", "類型", "預計產量", "已生產量", "已領套數", "未生產量",
              "開工", "完工", "出貨日", "狀態", "優先順序"]
     _have = [c for c in _want if c in dff.columns]
     wo_view = (
@@ -319,7 +322,7 @@ with tab3:
             **{c: st.column_config.TextColumn(disabled=True)
                for c in ["製令編號", "產品", "類型", "狀態"] if c in _have},
             **{c: st.column_config.NumberColumn(disabled=True)
-               for c in ["數量", "已生產量", "未生產量"] if c in _have},
+               for c in ["預計產量", "已生產量", "已領套數", "未生產量"] if c in _have},
             **{c: st.column_config.DateColumn(disabled=True)
                for c in ["開工", "完工", "出貨日"] if c in _have},
         },
@@ -335,7 +338,8 @@ with tab3:
 
     st.markdown("**依開工日排序 — 完整工序清單**")
     show = ["製令編號", "產品", "類型", "工序", "批量狀態",
-            "數量", "已生產量", "未生產量", "開工", "完工", "出貨日", "狀態"]
+            "預計產量", "已生產量", "已領套數", "未生產量",
+            "開工", "完工", "出貨日", "狀態"]
     show = [c for c in show if c in dff.columns]
     sorted_df = dff.sort_values("開工_dt")[show]
 
@@ -346,13 +350,13 @@ with tab3:
         return f"background-color:{c}" if c else ""
 
     st.dataframe(
-        sorted_df.style.map(st_type, subset=["類型"]).map(st_stage, subset=["工序"]),
+        sorted_df.style.map(st_type, subset=["類型"]),
         use_container_width=True, hide_index=True
     )
 
 # ── Tab4 預計完工試算 ─────────────────────────────────────────────────────────
 with tab4:
-    st.caption("依 數量 ÷ UPH 推算所需工時，自動計算試算完工日並標示是否延遲。")
+    st.caption("依 預計產量 ÷ UPH 推算所需工時，自動計算試算完工日並標示是否延遲。")
     c1, c2 = st.columns([1, 3])
     with c1:
         daily_h    = st.number_input("每日工作小時", 1, 24, 8, key="calc_h")
@@ -372,12 +376,12 @@ with tab4:
     else:
         rows = []
         for _, r in pending.iterrows():
-            hrs  = r["數量"] / max(r["UPH"], 1)
+            hrs  = r["預計產量"] / max(r["UPH"], 1)
             est  = add_wd(r["開工"], hrs, daily_h, skip_wkend)
             diff = (pd.Timestamp(est) - pd.Timestamp(r["完工"])).days
             row  = {
                 "製令編號": r["製令編號"], "產品": r["產品"], "類型": r["類型"],
-                "工序": r["工序"], "數量": r["數量"],
+                "工序": r["工序"], "預計產量": r["預計產量"],
                 "計畫工時(hr)": round(hrs, 1),
                 "計畫完工": r["完工"], "試算完工": est, "差異(天)": diff,
             }
