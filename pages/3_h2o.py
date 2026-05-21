@@ -414,13 +414,15 @@ with st.spinner("分析中，請稍候..."):
 
         # ── 可調撥庫存：只計算四個倉（電子倉/機構倉/半成品倉/成品倉）──
         avail_4w = avail_4wh(pno, {TANG, KUO}) if total_net > 0 else 0
+        # 待調撥量已佔用部分四倉庫存，扣除後才是真正剩餘可調撥量
+        net_avail_4w = max(0, avail_4w - t_pending - k_pending)
 
         # ── 可調撥來源倉（顯示用，仍顯示所有倉的現有庫存）──
         total_disp = t_qty + k_qty
         src = source_wh(sd, pno, set(), total_disp) if total_disp > 0 else ''
 
         # ── 配料分配邏輯 ──
-        # SPQ進位後的淨需求（判斷庫存是否足夠給整包SPQ量）
+        # SPQ進位後的淨需求（判斷剩餘庫存是否足夠給整包SPQ量）
         t_spq_net     = apply_spq(t_net, spq)
         k_spq_net     = apply_spq(k_net, spq)
         total_spq_net = t_spq_net + k_spq_net
@@ -428,7 +430,7 @@ with st.spinner("分析中，請稍候..."):
         t_alloc      = t_net
         k_alloc      = k_net
         alloc_note   = ''
-        insufficient = (total_net > 0 and avail_4w < total_net)
+        insufficient = (total_net > 0 and net_avail_4w < total_net)
 
         if insufficient:
             if t_net > 0 and k_net > 0:
@@ -446,34 +448,34 @@ with st.spinner("分析中，請稍候..."):
                 else:
                     first_nm,  first_net,  first_ds  = '國智', k_net, kd_str
                     second_nm, second_net, second_ds  = '唐佑', t_net, td_str
-                first_alloc  = min(first_net,  avail_4w)
-                second_alloc = min(second_net, max(0, avail_4w - first_alloc))
+                first_alloc  = min(first_net,  net_avail_4w)
+                second_alloc = min(second_net, max(0, net_avail_4w - first_alloc))
                 if tang_first:
                     t_alloc, k_alloc = first_alloc, second_alloc
                 else:
                     k_alloc, t_alloc = first_alloc, second_alloc
                 alloc_note = (
-                    f"⚠️ 庫存不足（需 {total_net:,}，四倉可用 {avail_4w:,}，尚缺 {total_net - avail_4w:,}）\n"
+                    f"⚠️ 庫存不足（需 {total_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {total_net - net_avail_4w:,}）\n"
                     f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_alloc:,}\n"
                     f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_alloc:,}，尚缺 {second_net - second_alloc:,}"
                 )
             elif t_net > 0:
-                t_alloc = min(t_net, avail_4w)
+                t_alloc = min(t_net, net_avail_4w)
                 k_alloc = 0
                 alloc_note = (
-                    f"⚠️ 庫存不足（唐佑需 {t_net:,}，四倉可用 {avail_4w:,}，尚缺 {t_net - t_alloc:,}）"
+                    f"⚠️ 庫存不足（唐佑需 {t_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {t_net - t_alloc:,}）"
                 )
             else:
-                k_alloc = min(k_net, avail_4w)
+                k_alloc = min(k_net, net_avail_4w)
                 t_alloc = 0
                 alloc_note = (
-                    f"⚠️ 庫存不足（國智需 {k_net:,}，四倉可用 {avail_4w:,}，尚缺 {k_net - k_alloc:,}）"
+                    f"⚠️ 庫存不足（國智需 {k_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {k_net - k_alloc:,}）"
                 )
-        elif avail_4w >= total_spq_net:
-            # 四倉庫存足夠 SPQ 進位量：給整包 SPQ 量
+        elif net_avail_4w >= total_spq_net:
+            # 剩餘庫存足夠 SPQ 進位量：給整包 SPQ 量
             t_alloc = t_spq_net
             k_alloc = k_spq_net
-        # else: 四倉庫存只夠淨需求但不夠SPQ進位 → 維持 t_net / k_net（已為預設值）
+        # else: 剩餘庫存只夠淨需求但不夠SPQ進位 → 維持 t_net / k_net（已為預設值）
 
         # 實際應調撥量：待調撥 >= 原缺 → 0；庫存不足 → 分配量（無SPQ）；足夠 → 分配量
         t_actual = (0 if t_pending >= t_deficit else t_alloc) if t_deficit > 0 else None
