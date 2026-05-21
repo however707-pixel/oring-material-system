@@ -419,10 +419,15 @@ with st.spinner("分析中，請稍候..."):
         total_disp = t_qty + k_qty
         src = source_wh(sd, pno, set(), total_disp) if total_disp > 0 else ''
 
-        # ── 配料分配邏輯（以淨需求為基準，庫存不足時不套 SPQ）──
-        t_alloc    = t_net
-        k_alloc    = k_net
-        alloc_note = ''
+        # ── 配料分配邏輯 ──
+        # SPQ進位後的淨需求（判斷庫存是否足夠給整包SPQ量）
+        t_spq_net     = apply_spq(t_net, spq)
+        k_spq_net     = apply_spq(k_net, spq)
+        total_spq_net = t_spq_net + k_spq_net
+
+        t_alloc      = t_net
+        k_alloc      = k_net
+        alloc_note   = ''
         insufficient = (total_net > 0 and avail_4w < total_net)
 
         if insufficient:
@@ -464,8 +469,13 @@ with st.spinner("分析中，請稍候..."):
                 alloc_note = (
                     f"⚠️ 庫存不足（國智需 {k_net:,}，四倉可用 {avail_4w:,}，尚缺 {k_net - k_alloc:,}）"
                 )
+        elif avail_4w >= total_spq_net:
+            # 四倉庫存足夠 SPQ 進位量：給整包 SPQ 量
+            t_alloc = t_spq_net
+            k_alloc = k_spq_net
+        # else: 四倉庫存只夠淨需求但不夠SPQ進位 → 維持 t_net / k_net（已為預設值）
 
-        # 實際應調撥量：待調撥 >= 原缺 → 0；庫存不足 → 分配量（無SPQ）；足夠 → 淨需求
+        # 實際應調撥量：待調撥 >= 原缺 → 0；庫存不足 → 分配量（無SPQ）；足夠 → 分配量
         t_actual = (0 if t_pending >= t_deficit else t_alloc) if t_deficit > 0 else None
         k_actual = (0 if k_pending >= k_deficit else k_alloc) if k_deficit > 0 else None
 
