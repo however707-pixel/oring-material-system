@@ -89,8 +89,12 @@ with tab1:
             xaxis=dict(gridcolor="#e2e8f0"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1, xanchor="right"),
         )
-        fig.add_vline(x=date.today().isoformat(), line_width=2, line_dash="dash",
-                      line_color="#ef4444", annotation_text="今天", annotation_position="top right")
+        today_str = date.today().isoformat()
+        fig.add_shape(type="line", x0=today_str, x1=today_str, y0=0, y1=1,
+                      yref="paper", line=dict(color="#ef4444", width=2, dash="dash"))
+        fig.add_annotation(x=today_str, y=1, yref="paper", text="今天",
+                           showarrow=False, font=dict(color="#ef4444", size=12),
+                           xanchor="left", yanchor="bottom")
         st.plotly_chart(fig, use_container_width=True)
 
 # ────────────────────────────────────────────────────────────────────────────
