@@ -89,7 +89,7 @@ with tab1:
             xaxis=dict(gridcolor="#e2e8f0"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1, xanchor="right"),
         )
-        fig.add_vline(x=pd.Timestamp(date.today()), line_width=2, line_dash="dash",
+        fig.add_vline(x=date.today().isoformat(), line_width=2, line_dash="dash",
                       line_color="#ef4444", annotation_text="今天", annotation_position="top right")
         st.plotly_chart(fig, use_container_width=True)
 
