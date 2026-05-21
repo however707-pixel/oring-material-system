@@ -77,15 +77,11 @@ def parse_files(bytes_wo, bytes_prog):
     # G欄空白的列直接排除
     prog = prog[prog["工序"].str.len() > 0]
 
-    prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態",
-                 "未完工數量", "已完工數量"]
+    prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態"]
     prog_base = prog[[c for c in prog_keep if c in prog.columns]].copy()
-    prog_base = prog_base.rename(columns={
-        "未完工數量": "未生產量_prog",
-        "已完工數量": "已生產量_prog",
-    })
 
     # ── JOIN：廠內進度（左表）← 工單明細（右表） ──────────────────────────
+    # 預計產量/已生產量/已領套數/未生產量 全部取工單明細（D/E/F/G欄）
     wo_join_cols = ["製令編號", "產品", "產品品號", "預計產量", "已生產量", "已領套數",
                     "未生產量", "開工", "完工", "類型", "廠商名稱"]
     merged = prog_base.merge(
@@ -93,10 +89,8 @@ def parse_files(bytes_wo, bytes_prog):
         on="製令編號", how="left"
     )
     merged["狀態"]     = merged["工序狀態"]
-    merged["已生產量"] = pd.to_numeric(
-        merged.get("已生產量_prog", merged.get("已生產量", 0)), errors="coerce").fillna(0)
-    merged["未生產量"] = pd.to_numeric(
-        merged.get("未生產量_prog", merged.get("未生產量", 0)), errors="coerce").fillna(0)
+    merged["已生產量"] = pd.to_numeric(merged["已生產量"], errors="coerce").fillna(0)
+    merged["未生產量"] = pd.to_numeric(merged["未生產量"], errors="coerce").fillna(0)
 
     merged = merged.dropna(subset=["開工", "完工"])
     merged = merged[merged["開工"] <= merged["完工"]]
