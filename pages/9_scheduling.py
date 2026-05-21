@@ -77,7 +77,7 @@ up_col, _ = st.columns([2, 3])
 with up_col:
     upload = st.file_uploader("上傳 ERP 生產進度表 (.xlsx)", type=["xlsx"], key="sched_upload")
 
-REQUIRED_COLS = {"工單號","產品","類型","工序","產線","數量","UPH","開工","完工","狀態","優先順序"}
+REQUIRED_COLS = {"工單號","產品","類型","工序","產線","數量","UPH","開工","完工","狀態","優先順序","已生產量","未生產量"}
 
 if upload:
     with st.spinner("讀取中..."):
@@ -205,17 +205,19 @@ with tab2:
 # ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
 with tab3:
     st.caption("可直接修改優先順序數字（越小越優先），按「套用」後甘特圖同步更新。")
+    _want = ["工單號","產品","類型","數量","已生產量","未生產量","狀態","優先順序"]
+    _have = [c for c in _want if c in dff.columns]
     wo_view = (dff[dff["狀態"]!="已完工"]
                .drop_duplicates(subset=["工單號"])
-               [["工單號","產品","類型","數量","已生產量","未生產量","狀態","優先順序"]]
+               [_have]
                .sort_values(["優先順序","開工_dt"] if "開工_dt" in dff.columns else ["優先順序"])
                .copy())
     edited = st.data_editor(
         wo_view,
         column_config={
             "優先順序": st.column_config.NumberColumn("優先順序",min_value=1,max_value=999,step=1),
-            **{c: st.column_config.TextColumn(disabled=True) for c in ["工單號","產品","類型","狀態"]},
-            **{c: st.column_config.NumberColumn(disabled=True) for c in ["數量","已生產量","未生產量"]},
+            **{c: st.column_config.TextColumn(disabled=True) for c in ["工單號","產品","類型","狀態"] if c in _have},
+            **{c: st.column_config.NumberColumn(disabled=True) for c in ["數量","已生產量","未生產量"] if c in _have},
         },
         hide_index=True,use_container_width=True,key="priority_editor"
     )
