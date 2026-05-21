@@ -73,6 +73,7 @@ def parse_files(bytes_wo, bytes_prog):
                  "製程代號", "製程名稱", "製令狀態", "批量狀態", "工序",
                  "預計產量", "數量", "包裝數量", "單位"]
     prog_raw = prog[[c for c in _raw_cols if c in prog.columns]].copy()
+    prog_raw["製令編號"] = prog_raw["製令編號"].astype(str).str.strip()  # 確保值無空白
 
     # ── 廠內進度 ──────────────────────────────────────────────────────────────
     # A欄(index 0)=製令編號, G欄(index 6)=製程名稱, H欄(index 7)=製令狀態, I欄(index 8)=批量狀態
@@ -323,8 +324,10 @@ with tab3:
         import re
         query_nos = [s.strip() for s in re.split(r"[,\n\r；，]+", search_input) if s.strip()]
 
-        # ① 先查合併後的工序明細（廠內進度 JOIN 工單明細）
-        hit = df[df["製令編號"].isin(query_nos)].copy()
+        # ① 先查合併後的工序明細（廠內進度 JOIN 工單明細，含 -rw01 衍生編號）
+        hit = df[df["製令編號"].apply(
+            lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in query_nos)
+        )].copy()
 
         if not hit.empty:
             show_q = ["製令編號", "產品", "類型", "工序", "批量狀態",
@@ -338,7 +341,9 @@ with tab3:
         else:
             # ② 找不到時回查工單明細原始資料
             wo_all = st.session_state.get("wo_all", pd.DataFrame())
-            hit2 = wo_all[wo_all["製令編號"].isin(query_nos)] if not wo_all.empty else pd.DataFrame()
+            hit2 = wo_all[wo_all["製令編號"].apply(
+                lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in query_nos)
+            )] if not wo_all.empty else pd.DataFrame()
             if hit2.empty:
                 st.warning(f"查無符合的工單：{', '.join(query_nos)}")
             else:
@@ -386,19 +391,41 @@ with tab3:
         st.rerun()
 
     # ── 只有勾選的工單才顯示廠內進度工序明細 ────────────────────────────────
-    selected_wos = edited[edited["選取"] == True]["製令編號"].tolist()
+    selected_wos = [str(s).strip() for s in edited[edited["選取"] == True]["製令編號"].tolist()]
+
+    def prefix_match(series, prefixes):
+        """比對完整編號，或以 prefix + '-' 開頭的衍生工單（如 -rw01）"""
+        return series.apply(
+            lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in prefixes)
+        )
+
     if selected_wos:
         st.markdown(f"**工序明細 — {', '.join(selected_wos)}**")
         prog_raw = st.session_state.get("prog_raw", pd.DataFrame())
+
+        # ① 優先從廠內進度原始資料取（含 -rw01 等衍生編號）
         if not prog_raw.empty and "製令編號" in prog_raw.columns:
-            detail_df = prog_raw[prog_raw["製令編號"].isin(selected_wos)].reset_index(drop=True)
+            detail_df = prog_raw[prefix_match(prog_raw["製令編號"], selected_wos)].reset_index(drop=True)
         else:
-            # 若尚未載入真實資料，退回顯示處理後的資料
-            _show = ["製令編號", "產品", "工序", "批量狀態", "預計產量",
-                     "已生產量", "已領套數", "未生產量", "開工", "完工", "狀態"]
-            _show = [c for c in _show if c in dff.columns]
-            detail_df = dff[dff["製令編號"].isin(selected_wos)].sort_values("開工_dt")[_show].reset_index(drop=True)
-        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+            detail_df = pd.DataFrame()
+
+        # ② 查不到 → 從工單明細取（委外工單或廠內進度無此工單）
+        if detail_df.empty:
+            wo_all = st.session_state.get("wo_all", pd.DataFrame())
+            if not wo_all.empty and "製令編號" in wo_all.columns:
+                _show = ["製令編號", "產品", "類型", "預計產量", "已生產量",
+                         "已領套數", "未生產量", "開工", "完工", "狀態_wo"]
+                _show = [c for c in _show if c in wo_all.columns]
+                detail_df = (wo_all[prefix_match(wo_all["製令編號"], selected_wos)][_show]
+                             .rename(columns={"狀態_wo": "狀態"})
+                             .reset_index(drop=True))
+                if not detail_df.empty:
+                    st.caption("此工單不在廠內進度中，顯示工單明細資料。")
+
+        if detail_df.empty:
+            st.info("查無此工單的工序資料。")
+        else:
+            st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
 # ── Tab4 預計完工試算 ─────────────────────────────────────────────────────────
 with tab4:
