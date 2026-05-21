@@ -244,15 +244,22 @@ if load_btn and f_wo and f_prog:
                 _result["出貨日"] = mapped.where(mapped.notna(), _result["出貨日"].astype(str))
 
         # ── 供需表.xlsx：計算齊料日（缺料物料中到料日最晚者） ──────────────
+        _qiliao_matched = 0
+        qiliao_map = {}
         if f_qiliao:
             qiliao_map = read_qiliao_dates(f_qiliao.read())
             if qiliao_map:
-                mapped_q = _result["製令編號"].astype(str).str.strip().map(qiliao_map)
+                wo_keys = _result["製令編號"].astype(str).str.strip()
+                mapped_q = wo_keys.map(qiliao_map)
+                _qiliao_matched = int(mapped_q.notna().sum())
                 _result["齊料日"] = mapped_q.where(mapped_q.notna(), _result["齊料日"])
 
-        st.session_state.wo_data   = _result
-        st.session_state.wo_all    = _wo_all
-        st.session_state.prog_raw  = _prog_raw
+        st.session_state.wo_data      = _result
+        st.session_state.wo_all       = _wo_all
+        st.session_state.prog_raw     = _prog_raw
+        st.session_state._qiliao_map  = qiliao_map if f_qiliao else {}
+        st.session_state._result_wos  = _result["製令編號"].astype(str).str.strip().unique().tolist()
+
     _tags = []
     if f_ship:   _tags.append("出貨日")
     if f_qiliao: _tags.append("齊料日")
@@ -261,6 +268,17 @@ if load_btn and f_wo and f_prog:
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
         + (f"（已套用：{'、'.join(_tags)}）" if _tags else "")
     )
+    # 齊料日診斷
+    if f_qiliao:
+        _qmap = st.session_state.get("_qiliao_map", {})
+        _rwos = st.session_state.get("_result_wos", [])
+        _matched_wos = [w for w in _rwos if w in _qmap]
+        st.info(
+            f"供需表共 {len(_qmap):,} 張缺料工單｜"
+            f"排程有 {len(set(_rwos)):,} 張工單｜"
+            f"對到 {len(_matched_wos):,} 張"
+            + (f"（範例：{', '.join(_matched_wos[:3])}）" if _matched_wos else "（⚠️ 完全沒有對到，請確認工單號碼格式是否相同）")
+        )
 
 REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
                  "預計產量", "已領套數", "UPH", "開工", "完工", "狀態", "優先順序"}
