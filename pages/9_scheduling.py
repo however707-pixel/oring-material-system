@@ -22,7 +22,8 @@ STAGE_ORDER = ["組裝", "測試", "包裝", "委外"]
 COLOR_STAGE = {"組裝": "#1d4ed8", "測試": "#7c3aed", "包裝": "#0891b2", "委外": "#d97706"}
 COLOR_STATUS = {"生產中": "#16a34a", "待開工": "#f59e0b", "已完工": "#94a3b8"}
 
-if "wo_data" not in st.session_state:
+REQUIRED_COLS = {"工單號","產品","類型","工序","產線","數量","UPH","開工","完工","狀態","優先順序"}
+if "wo_data" not in st.session_state or not REQUIRED_COLS.issubset(st.session_state.wo_data.columns):
     st.session_state.wo_data = pd.DataFrame([
         # 廠內 工單 A
         dict(工單號="5220-20260501001", 產品="IGS-9122GP", 類型="廠內", 工序="組裝", 產線="宣-1線", 數量=100, UPH=12, 開工=date(2026,5,1),  完工=date(2026,5,4),  狀態="已完工", 優先順序=1),
