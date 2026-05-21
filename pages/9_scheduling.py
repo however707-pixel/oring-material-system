@@ -69,7 +69,7 @@ def parse_files(bytes_wo, bytes_prog):
     wo_base = wo_base.rename(columns={"品名": "產品"})
 
     # ── 廠內進度原始欄位（供選取工單後展開用） ───────────────────────────────
-    _raw_cols = ["製令編號", "急料", "品號", "品名", "規格",
+    _raw_cols = ["製令編號", "急料", "品號",
                  "製程代號", "製程名稱", "製令狀態", "批量狀態", "工序",
                  "預計產量", "數量", "包裝數量", "單位"]
     prog_raw = prog[[c for c in _raw_cols if c in prog.columns]].copy()
