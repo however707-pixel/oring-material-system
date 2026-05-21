@@ -160,11 +160,48 @@ def read_ship_dates(bytes_ship):
             mapping[wo_str] = ship_str
     return mapping   # {製令編號: 出貨日文字}
 
+
+def read_qiliao_dates(bytes_supply):
+    """
+    從供需表(分倉).xlsx 計算齊料日
+      G欄(index 6)  = 到料日（datetime）
+      J欄(index 9)  = 差異（負數 = 缺料）
+      L欄(index 11) = 工單號碼
+
+    對每張工單，取所有缺料物料（差異 < 0）中到料日最晚的日期 → 齊料日
+    """
+    import datetime as _dt
+    df = pd.read_excel(io.BytesIO(bytes_supply), header=0)
+
+    tmp = pd.DataFrame({
+        "工單":  df.iloc[:, 11],   # L欄 = 工單號碼
+        "到料日": df.iloc[:, 6],   # G欄 = 到料日
+        "差異":  df.iloc[:, 9],    # J欄 = 差異（負 = 缺料）
+    })
+
+    # 篩選條件：工單欄有值 + G欄是日期型別 + 差異 < 0
+    tmp = tmp[tmp["工單"].notna()]
+    tmp["工單"] = tmp["工單"].astype(str).str.strip()
+    tmp = tmp[~tmp["工單"].isin(["", "nan", "None"])]
+    tmp = tmp[tmp["到料日"].apply(
+        lambda v: isinstance(v, (_dt.datetime, _dt.date, pd.Timestamp))
+    )]
+    tmp["差異"] = pd.to_numeric(tmp["差異"], errors="coerce").fillna(0)
+    tmp = tmp[tmp["差異"] < 0]
+
+    if tmp.empty:
+        return {}
+
+    tmp["到料日"] = pd.to_datetime(tmp["到料日"])
+    latest = tmp.groupby("工單")["到料日"].max()
+    return {wo: dt.strftime("%Y-%m-%d") for wo, dt in latest.items()}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 上傳區
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-u1, u2, u3, u4 = st.columns([2, 2, 2, 1])
+u1, u2, u3, u4, u5 = st.columns([2, 2, 2, 2, 1])
 with u1:
     f_wo   = st.file_uploader("① 工單明細.xlsx",  type=["xlsx"], key="f_wo")
 with u2:
@@ -172,6 +209,8 @@ with u2:
 with u3:
     f_ship = st.file_uploader("③ 出貨日.xlsx（選填）", type=["xlsx"], key="f_ship")
 with u4:
+    f_qiliao = st.file_uploader("④ 供需表.xlsx（齊料日）", type=["xlsx"], key="f_qiliao")
+with u5:
     st.markdown("<br>", unsafe_allow_html=True)
     load_btn = st.button("載入", type="primary", disabled=not (f_wo and f_prog))
 
@@ -186,13 +225,23 @@ if load_btn and f_wo and f_prog:
                 mapped = _result["製令編號"].astype(str).str.strip().map(ship_map)
                 _result["出貨日"] = mapped.where(mapped.notna(), _result["出貨日"].astype(str))
 
+        # ── 供需表.xlsx：計算齊料日（缺料物料中到料日最晚者） ──────────────
+        if f_qiliao:
+            qiliao_map = read_qiliao_dates(f_qiliao.read())
+            if qiliao_map:
+                mapped_q = _result["製令編號"].astype(str).str.strip().map(qiliao_map)
+                _result["齊料日"] = mapped_q.where(mapped_q.notna(), _result["齊料日"])
+
         st.session_state.wo_data   = _result
         st.session_state.wo_all    = _wo_all
         st.session_state.prog_raw  = _prog_raw
+    _tags = []
+    if f_ship:   _tags.append("出貨日")
+    if f_qiliao: _tags.append("齊料日")
     st.success(
         f"載入完成：{len(st.session_state.wo_data):,} 筆工序記錄，"
         f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
-        + ("（已套用出貨日）" if f_ship else "")
+        + (f"（已套用：{'、'.join(_tags)}）" if _tags else "")
     )
 
 REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
