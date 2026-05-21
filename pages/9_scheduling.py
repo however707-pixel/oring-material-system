@@ -259,6 +259,8 @@ if load_btn and f_wo and f_prog:
         st.session_state.prog_raw     = _prog_raw
         st.session_state._qiliao_map  = qiliao_map if f_qiliao else {}
         st.session_state._result_wos  = _result["製令編號"].astype(str).str.strip().unique().tolist()
+        # 強制清除 data_editor 快取，避免舊值蓋掉新資料
+        st.session_state.pop("priority_editor", None)
 
     _tags = []
     if f_ship:   _tags.append("出貨日")
@@ -502,8 +504,9 @@ with tab3:
             **{c: st.column_config.NumberColumn(disabled=True)
                for c in ["預計產量", "已生產量", "已領套數", "未生產量"] if c in _have},
             **{c: st.column_config.DateColumn(disabled=True)
-               for c in ["開工", "完工", "出貨日"] if c in _have},
-            "齊料日": st.column_config.TextColumn("齊料日", disabled=True),
+               for c in ["開工", "完工"] if c in _have},
+            **{c: st.column_config.TextColumn(disabled=True)
+               for c in ["出貨日", "齊料日"] if c in _have},
         },
         hide_index=True, use_container_width=True, key="priority_editor"
     )
