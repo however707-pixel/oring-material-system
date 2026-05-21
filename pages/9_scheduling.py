@@ -168,7 +168,9 @@ def read_qiliao_dates(bytes_supply):
       J欄(index 9)  = 差異（負數 = 缺料）
       L欄(index 11) = 工單號碼
 
-    對每張工單，取所有缺料物料（差異 < 0）中到料日最晚的日期 → 齊料日
+    規則：
+      - 缺料（差異 < 0）+ 有到料日 → 取缺料行中最晚到料日
+      - 缺料（差異 < 0）+ 無到料日 → 顯示「缺料」
     """
     import datetime as _dt
     df = pd.read_excel(io.BytesIO(bytes_supply), header=0)
@@ -179,22 +181,38 @@ def read_qiliao_dates(bytes_supply):
         "差異":  df.iloc[:, 9],    # J欄 = 差異（負 = 缺料）
     })
 
-    # 篩選條件：工單欄有值 + G欄是日期型別 + 差異 < 0
+    # 基本篩選：有工單號碼
     tmp = tmp[tmp["工單"].notna()]
     tmp["工單"] = tmp["工單"].astype(str).str.strip()
     tmp = tmp[~tmp["工單"].isin(["", "nan", "None"])]
-    tmp = tmp[tmp["到料日"].apply(
-        lambda v: isinstance(v, (_dt.datetime, _dt.date, pd.Timestamp))
-    )]
-    tmp["差異"] = pd.to_numeric(tmp["差異"], errors="coerce").fillna(0)
-    tmp = tmp[tmp["差異"] < 0]
 
-    if tmp.empty:
+    # 差異數值化，只留缺料行
+    tmp["差異"] = pd.to_numeric(tmp["差異"], errors="coerce").fillna(0)
+    shortage = tmp[tmp["差異"] < 0].copy()
+
+    if shortage.empty:
         return {}
 
-    tmp["到料日"] = pd.to_datetime(tmp["到料日"])
-    latest = tmp.groupby("工單")["到料日"].max()
-    return {wo: dt.strftime("%Y-%m-%d") for wo, dt in latest.items()}
+    # 判斷 G欄是否為日期
+    def is_date(v):
+        return isinstance(v, (_dt.datetime, _dt.date, pd.Timestamp))
+
+    shortage["有到料日"] = shortage["到料日"].apply(is_date)
+
+    # ① 有到料日的缺料行：取最晚到料日
+    has_date = shortage[shortage["有到料日"]].copy()
+    has_date["到料日"] = pd.to_datetime(has_date["到料日"])
+    latest = has_date.groupby("工單")["到料日"].max()
+    mapping = {wo: dt.strftime("%Y-%m-%d") for wo, dt in latest.items()}
+
+    # ② 全部缺料行都沒到料日的工單 → 顯示「缺料」
+    all_shortage_wos  = set(shortage["工單"].unique())
+    has_date_wos      = set(latest.index)
+    no_date_wos       = all_shortage_wos - has_date_wos
+    for wo in no_date_wos:
+        mapping[wo] = "缺料"
+
+    return mapping   # {製令編號: "YYYY-MM-DD" or "缺料"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
