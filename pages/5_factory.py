@@ -23,7 +23,7 @@ render_header(
 )
 render_sidebar()
 
-VALID_SRC = {'電子倉', '機構倉', '半成品倉', '成品倉'}
+VALID_SRC = {'電子倉', '機構倉', '半成品倉', '成品倉', '生產加工倉'}
 
 # 廠內排程.xlsx 欄位位置（0-indexed，第1列為欄名，跳過）
 #   A(0)=料號  B(1)=品名  F(5)=工單單號  H(7)=需求數量
@@ -56,8 +56,9 @@ with st.sidebar:
     st.info(
         "💡 **配料邏輯**\n\n"
         "1️⃣ 從廠內排程表取得工單需求量（H欄）\n\n"
-        "2️⃣ 從供需表計算四個倉庫存：\n"
-        "　　電子倉／機構倉／半成品倉／成品倉\n\n"
+        "2️⃣ 從供需表計算五個倉庫存：\n"
+        "　　電子倉／機構倉／半成品倉／成品倉\n"
+        "　　／生產加工倉\n\n"
         "3️⃣ 四倉庫存 ≥ 需求量 → **✅ 齊料**\n\n"
         "4️⃣ 四倉庫存 < 需求量 → 缺料，顯示\n"
         "　　供需表中的**預計進貨日＋數量**"
@@ -81,7 +82,7 @@ if not shortage_file or not sd_file:
     <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
       <tr style="background:#dcfce7;">
         <td style="padding:6px 10px;">✅ 齊料</td>
-        <td style="padding:6px 10px;">電子倉＋機構倉＋半成品倉＋成品倉 的庫存 ≥ 工單需求量</td>
+        <td style="padding:6px 10px;">電子倉＋機構倉＋半成品倉＋成品倉＋生產加工倉 的庫存 ≥ 工單需求量</td>
       </tr>
       <tr>
         <td style="padding:6px 10px;">🔴 缺料</td>
