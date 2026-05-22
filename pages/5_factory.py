@@ -23,7 +23,7 @@ render_header(
 )
 render_sidebar()
 
-VALID_SRC = {'電子倉', '機構倉', '半成品倉', '成品倉', '生產加工倉'}
+VALID_SRC = {'電子倉', '機構倉', '半成品倉', '成品倉', '生產加工倉', '包材倉'}
 
 # 廠內排程.xlsx 欄位位置（0-indexed，第1列為欄名，跳過）
 #   A(0)=料號  B(1)=品名  F(5)=工單單號  H(7)=需求數量
@@ -58,9 +58,9 @@ with st.sidebar:
     st.info(
         "💡 **配料邏輯**\n\n"
         "1️⃣ 從廠內排程表取得工單需求量（H欄）\n\n"
-        "2️⃣ 從供需表計算五個倉庫存：\n"
+        "2️⃣ 從供需表計算六個倉庫存：\n"
         "　　電子倉／機構倉／半成品倉／成品倉\n"
-        "　　／生產加工倉\n\n"
+        "　　／生產加工倉／包材倉\n\n"
         "3️⃣ 四倉庫存 ≥ 需求量 → **✅ 齊料**\n\n"
         "4️⃣ 四倉庫存 < 需求量 → 缺料，顯示\n"
         "　　供需表中的**預計進貨日＋數量**"
@@ -84,7 +84,7 @@ if not shortage_file or not sd_file:
     <table style="margin-top:8px;width:100%;border-collapse:collapse;font-size:0.88rem;">
       <tr style="background:#dcfce7;">
         <td style="padding:6px 10px;">✅ 齊料</td>
-        <td style="padding:6px 10px;">電子倉＋機構倉＋半成品倉＋成品倉＋生產加工倉 的庫存 ≥ 工單需求量</td>
+        <td style="padding:6px 10px;">電子倉＋機構倉＋半成品倉＋成品倉＋生產加工倉＋包材倉 的庫存 ≥ 工單需求量</td>
       </tr>
       <tr>
         <td style="padding:6px 10px;">🔴 缺料</td>
@@ -281,7 +281,7 @@ with st.spinner("分析中，請稍候..."):
         if demand <= 0:
             continue
 
-        # 五倉可用庫存（同一料號只查一次）
+        # 六倉可用庫存（同一料號只查一次）
         if pno_str not in avail_cache:
             avail_cache[pno_str] = avail_4wh(pno_str)
         avail = avail_cache[pno_str]
@@ -296,7 +296,7 @@ with st.spinner("分析中，請稍候..."):
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
-                '五倉可用庫存':         avail,
+                '六倉可用庫存':         avail,
                 '缺料量':               0,
                 '狀態':                 '✅ 齊料',
                 '預計進貨日（含數量）': '',
@@ -319,7 +319,7 @@ with st.spinner("分析中，請稍候..."):
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
-                '五倉可用庫存':         avail,
+                '六倉可用庫存':         avail,
                 '缺料量':               shortage,
                 '狀態':                 f'🔴 缺料 {shortage:,}',
                 '預計進貨日（含數量）': incoming or '—（供需表無預計進貨）',
@@ -351,7 +351,7 @@ if df_out.empty:
 else:
 
     display_cols = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                    '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
+                    '六倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
     # 明細表只顯示缺料項目
     df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
     df_display = df_short[[c for c in display_cols if c in df_short.columns]].copy()
@@ -382,7 +382,7 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         headers    = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                      '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
+                      '六倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
         col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 40, 36]
         hdr_colors = ['FFF2F2F2', 'FFFFF0CC', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
                       'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD', 'FFF5E6FF']
