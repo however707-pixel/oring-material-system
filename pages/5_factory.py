@@ -308,6 +308,7 @@ with st.spinner("分析中，請稍候..."):
     avail_cache      = {}    # 一般工單：六倉合計
     avail_cache_5142 = {}    # 5142 工單：只算生產加工倉
     other_wh_cache   = {}    # 5142 工單：其餘五倉庫存字串（顯示於預計進料欄）
+    incoming_cache   = {}    # 預計進貨/生產原始字串 cache（避免重複取用已合併的顯示值）
 
     for _, row_sf in sf.iterrows():
         pno_str  = str(row_sf['_pno']).strip()
@@ -360,14 +361,10 @@ with st.spinner("分析中，請稍候..."):
             })
         else:
             shortage = demand - avail
-            if pno_str not in [r['料號'] for r in rows if r['_is_short']]:
-                incoming = get_incoming(pno_str)
-            else:
-                incoming = next(
-                    (r['預計進料日（含數量）'] for r in reversed(rows)
-                     if r['料號'] == pno_str and r['_is_short']),
-                    get_incoming(pno_str)
-                )
+            # 永遠從 cache 取原始 get_incoming 結果，不從顯示欄位重複取（避免 other_wh_str 重複疊加）
+            if pno_str not in incoming_cache:
+                incoming_cache[pno_str] = get_incoming(pno_str)
+            incoming = incoming_cache[pno_str]
             # 5142：其餘五倉庫存字串加在最前面，再接預計進貨/生產
             incoming_full = incoming or ''
             if other_wh_str:
