@@ -304,9 +304,6 @@ st.markdown(f"#### 🏭 廠內配料表　{date_start} ～ {date_end}")
 if df_out.empty:
     st.success("✅ 沒有工單需求資料，請確認廠內排程表內容。")
 else:
-    if n_short > 0:
-        pno_list = '、'.join(df_out[df_out['_is_short']==True]['料號'].tolist())
-        st.warning(f"**🔴 以下 {n_short} 個料號庫存不足：** {pno_list}", icon="⚠️")
 
     display_cols = ['工單單號', '料號', '品名', '工單需求量',
                     '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
