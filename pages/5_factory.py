@@ -197,20 +197,39 @@ with st.spinner("分析中，請稍候..."):
         return int(total)
 
     def avail_prod_wh(pno):
-        """5142 工單：只算生産/生產加工倉（關鍵字比對，相容簡繁體）"""
-        part_sd  = sd[sd['品號'] == pno]
-        prod     = part_sd[part_sd['庫別名稱'].astype(str).str.contains('加工倉', na=False)]
+        """5142 工單：只算生産/生產加工倉，取分析期初庫存（+ 期內預計進貨）
+        ─ 期初庫存 = 分析起始日前最後一筆預計結存
+        ─ 不扣期內的預計領用，因為那是工單自己的用量（已含在 demand 裡）"""
+        part_sd = sd[sd['品號'] == pno]
+        prod    = part_sd[part_sd['庫別名稱'].astype(str).str.contains('加工倉', na=False)]
         if prod.empty: return 0
-        dated    = prod[prod['日期'].notna() & prod['預計結存'].notna()]
-        in_range = dated[dated['日期'] <= end]
-        if not in_range.empty:
-            last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
-            return max(0, int(last_bal))
-        init_r = prod[prod['日期'].isna()]
-        if not init_r.empty:
-            qty = init_r['異動數量'].dropna()
-            if not qty.empty: return max(0, int(float(qty.iloc[0])))
-        return 0
+
+        dated = prod[prod['日期'].notna() & prod['預計結存'].notna()]
+        start = pd.Timestamp(date_start)
+
+        # ① 期初庫存：分析起始日「之前」最後一筆預計結存
+        before_start = dated[dated['日期'] < start]
+        if not before_start.empty:
+            opening = int(before_start.sort_values('日期').iloc[-1]['預計結存'])
+        else:
+            # 沒有期前資料 → 從期間第一筆的「結存 + 異動數量」往前推算
+            in_range_all = dated[dated['日期'] <= end]
+            if in_range_all.empty:
+                init_r = prod[prod['日期'].isna()]
+                if not init_r.empty:
+                    qty = init_r['異動數量'].dropna()
+                    if not qty.empty: return max(0, int(float(qty.iloc[0])))
+                return 0
+            first   = in_range_all.sort_values('日期').iloc[0]
+            opening = int(first['預計結存']) + int(first['異動數量'])
+
+        # ② 期內若有預計進貨/生產，加計進來
+        in_period  = dated[(dated['日期'] >= start) & (dated['日期'] <= end)]
+        planned_in = int(in_period[
+            in_period['異動別'].isin(['預計進貨', '預計生產'])
+        ]['異動數量'].sum())
+
+        return max(0, opening + planned_in)
 
     def get_other_wh_stocks(pno):
         """5142 工單：除加工倉外其餘 VALID_SRC 倉的庫存字串"""
