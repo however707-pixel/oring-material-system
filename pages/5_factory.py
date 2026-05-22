@@ -96,11 +96,20 @@ with st.spinner("分析中，請稍候..."):
     if sf.shape[1] <= COL_DEMAND:
         st.error(f"廠內排程表欄位數不足（需至少 {COL_DEMAND+1} 欄，偵測到 {sf.shape[1]} 欄）"); st.stop()
 
+    def _fmt_date_cell(val):
+        """將 Excel 日期儲存格統一轉成 YYYY/MM/DD 字串"""
+        s = str(val).strip()
+        if s in ('', 'nan', 'None', 'NaT'): return ''
+        try:
+            return pd.to_datetime(s).strftime('%Y/%m/%d')
+        except Exception:
+            return s
+
     sf['_pno']    = sf.iloc[:, COL_PNO].astype(str).str.strip()
     sf['_name']   = sf.iloc[:, COL_NAME].astype(str).str.strip() if sf.shape[1] > COL_NAME   else ''
     sf['_wo']     = sf.iloc[:, COL_WO].astype(str).str.strip()   if sf.shape[1] > COL_WO     else ''
     sf['_demand'] = pd.to_numeric(sf.iloc[:, COL_DEMAND], errors='coerce').fillna(0)
-    sf['_wodate'] = sf.iloc[:, COL_WODATE].astype(str).str.strip() if sf.shape[1] > COL_WODATE else ''
+    sf['_wodate'] = sf.iloc[:, COL_WODATE].apply(_fmt_date_cell) if sf.shape[1] > COL_WODATE else ''
     sf = sf[sf['_pno'].notna() & (sf['_pno'] != '') & (sf['_pno'] != 'nan')].copy()
 
     # ── 讀供需表 ──────────────────────────────────────────────────────────────
@@ -125,7 +134,7 @@ with st.spinner("分析中，請稍候..."):
     except Exception as e:
         st.error(f"供需表讀取失敗：{e}"); st.stop()
 
-    for col in ['品號', '庫別名稱', '日期', '異動別', '異動數量']:
+    for col in ['品號', '庫別', '庫別名稱', '日期', '異動別', '異動數量', '預計結存']:
         if col not in sd.columns:
             st.error(f"供需表找不到「{col}」欄位，請確認檔案格式。"); st.stop()
 
