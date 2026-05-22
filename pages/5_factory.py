@@ -269,7 +269,7 @@ with st.spinner("分析中，請稍候..."):
     def get_other_wh_stocks(pno):
         """5142 工單：取得除加工倉外其餘 VALID_SRC 倉的庫存字串，格式：'電子倉(100)、機構倉(50)'"""
         part_sd    = sd[sd['品號'] == pno]
-        # 排除生産/生產加工倉（用關鍵字，相容簡繁體）
+        # ① 有日期列：排除生産/生產加工倉（關鍵字比對，相容簡繁體）
         dated_part = part_sd[
             part_sd['日期'].notna() &
             part_sd['庫別名稱'].notna() &
@@ -279,12 +279,28 @@ with st.spinner("分析中，請稍候..."):
                       .drop_duplicates('庫別')
                       .set_index('庫別')['庫別名稱']
                       .to_dict())
+        code_name  = {c: n for c, n in code_name.items() if len(str(c)) <= 12}
+        names_with_dated = set(code_name.values())
+        dated_codes      = set(code_name.keys())
+
         parts = []
         for wh_code, wh_name in code_name.items():
             if wh_name not in VALID_SRC: continue
             qty = int(get_avail(pno, wh_code))
             if qty > 0:
                 parts.append(f'{wh_name}({qty:,})')
+
+        # ② 無日期 init 列（如機構倉庫存可用量列）：與 avail_4wh 相同邏輯補上
+        init_rows = part_sd[part_sd['日期'].isna() & part_sd['庫別名稱'].isna()]
+        for wh_k in init_rows['庫別'].dropna().unique():
+            ws = str(wh_k)
+            if ws in dated_codes or ws in names_with_dated: continue
+            if ws not in VALID_SRC or len(ws) > 12: continue
+            if '加工倉' in ws: continue                          # 排除加工倉
+            qty_raw = init_rows[init_rows['庫別'] == wh_k]['異動數量'].dropna()
+            if not qty_raw.empty and float(qty_raw.iloc[0]) > 0:
+                parts.append(f'{ws}({int(float(qty_raw.iloc[0])):,})')
+
         return '、'.join(parts) if parts else ''
 
     def get_incoming(pno):
