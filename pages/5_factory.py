@@ -31,6 +31,7 @@ COL_PNO    = 0   # A: 料號
 COL_NAME   = 1   # B: 品名
 COL_WO     = 5   # F: 工單單號
 COL_DEMAND = 7   # H: 需求數量
+COL_WODATE = 13  # N: 工單開工日
 
 # =========================
 # Sidebar 設定
@@ -126,9 +127,10 @@ with st.spinner("分析中，請稍候..."):
         st.stop()
 
     sf['_pno']    = sf.iloc[:, COL_PNO].astype(str).str.strip()
-    sf['_name']   = sf.iloc[:, COL_NAME].astype(str).str.strip() if sf.shape[1] > COL_NAME else ''
-    sf['_wo']     = sf.iloc[:, COL_WO].astype(str).str.strip()   if sf.shape[1] > COL_WO   else ''
+    sf['_name']   = sf.iloc[:, COL_NAME].astype(str).str.strip() if sf.shape[1] > COL_NAME   else ''
+    sf['_wo']     = sf.iloc[:, COL_WO].astype(str).str.strip()   if sf.shape[1] > COL_WO     else ''
     sf['_demand'] = pd.to_numeric(sf.iloc[:, COL_DEMAND], errors='coerce').fillna(0)
+    sf['_wodate'] = sf.iloc[:, COL_WODATE].astype(str).str.strip() if sf.shape[1] > COL_WODATE else ''
 
     sf = sf[sf['_pno'].notna() & (sf['_pno'] != '') & (sf['_pno'] != 'nan')].copy()
 
@@ -230,10 +232,12 @@ with st.spinner("分析中，請稍候..."):
     avail_cache = {}
 
     for _, row_sf in sf.iterrows():
-        pno_str = str(row_sf['_pno']).strip()
-        demand  = int(row_sf['_demand'])
-        wo      = str(row_sf['_wo'])
-        wo      = '' if wo in ('nan', 'None') else wo
+        pno_str  = str(row_sf['_pno']).strip()
+        demand   = int(row_sf['_demand'])
+        wo       = str(row_sf['_wo'])
+        wo       = '' if wo in ('nan', 'None') else wo
+        wo_date  = str(row_sf['_wodate'])
+        wo_date  = '' if wo_date in ('nan', 'None', 'NaT') else wo_date
 
         part_name = str(row_sf['_name'])
         if part_name in ('', 'nan', 'None'): part_name = ''
@@ -250,6 +254,7 @@ with st.spinner("分析中，請稍候..."):
         if avail >= demand:
             rows.append({
                 '工單單號':             wo,
+                '開工日':               wo_date,
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
@@ -262,7 +267,6 @@ with st.spinner("分析中，請稍候..."):
         else:
             shortage = demand - avail
             if pno_str not in [r['料號'] for r in rows if r['_is_short']]:
-                # 同一料號只查一次預計進貨
                 incoming = get_incoming(pno_str)
             else:
                 incoming = next(
@@ -272,6 +276,7 @@ with st.spinner("分析中，請稍候..."):
                 )
             rows.append({
                 '工單單號':             wo,
+                '開工日':               wo_date,
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
@@ -305,7 +310,7 @@ if df_out.empty:
     st.success("✅ 沒有工單需求資料，請確認廠內排程表內容。")
 else:
 
-    display_cols = ['工單單號', '料號', '品名', '工單需求量',
+    display_cols = ['工單單號', '開工日', '料號', '品名', '工單需求量',
                     '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
     # 明細表只顯示缺料項目
     df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
@@ -335,12 +340,12 @@ else:
         thin   = Side(style='thin', color='FFCCCCCC')
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        headers    = ['工單單號', '料號', '品名', '工單需求量',
+        headers    = ['工單單號', '開工日', '料號', '品名', '工單需求量',
                       '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
-        col_widths = [28, 32, 28, 12, 14, 12, 14, 40]
-        hdr_colors = ['FFF2F2F2', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
+        col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 40]
+        hdr_colors = ['FFF2F2F2', 'FFFFF0CC', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
                       'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD']
-        left_cols  = {1, 2, 3, 8}
+        left_cols  = {1, 2, 3, 4, 9}
 
         total_cols = len(headers)
         merge_end  = chr(64 + total_cols)
