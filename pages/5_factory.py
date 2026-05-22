@@ -171,13 +171,31 @@ with st.spinner("分析中，請稍候..."):
     shipdate_map = {}   # { 工單號: V欄文字 }
     if shipdate_file is not None:
         try:
-            sd_raw = pd.read_excel(shipdate_file, sheet_name=0, header=None, engine='openpyxl')
-            # 從第4列（index 3）起為資料
-            data_rows = sd_raw.iloc[3:].copy()
-            wo_col_v  = data_rows.iloc[:, 2].astype(str).str.strip()   # C欄（index 2）= 工單號
-            txt_col_v = data_rows.iloc[:, 21].astype(str).str.strip()  # V欄（index 21）= 備註
-            for wo, txt in zip(wo_col_v, txt_col_v):
-                if wo and wo not in ('', 'nan', 'None') and txt not in ('', 'nan', 'None'):
+            # 出貨日.xlsx 的工單資料在第二張工作表（index 1）
+            sh_raw = pd.read_excel(shipdate_file, sheet_name=1, header=None, engine='openpyxl')
+            # 第3列（index 2）為欄名列，從第4列（index 3）起為資料
+            sh_data = sh_raw.iloc[3:].reset_index(drop=True)
+            n_cols  = sh_data.shape[1]
+            # C欄 = index 2, V欄 = index 21
+            if n_cols > 2:
+                wo_col_v = sh_data.iloc[:, 2].astype(str).str.strip()
+            else:
+                wo_col_v = pd.Series([''] * len(sh_data))
+            if n_cols > 21:
+                txt_col_v = sh_data.iloc[:, 21].astype(str).str.strip()
+            else:
+                txt_col_v = pd.Series([''] * len(sh_data))
+                st.warning(f"出貨日欄位數不足（偵測到 {n_cols} 欄，V欄需第22欄），出貨備註將為空白。")
+            raw_txt = sh_data.iloc[:, 21]  # 原始值（含 datetime）
+            for wo, raw in zip(wo_col_v, raw_txt):
+                if wo in ('', 'nan', 'None'): continue
+                if pd.isna(raw): continue
+                # datetime → 格式化為 YYYY/MM/DD
+                if hasattr(raw, 'strftime'):
+                    txt = raw.strftime('%Y/%m/%d')
+                else:
+                    txt = str(raw).strip()
+                if txt not in ('', 'nan', 'None', 'NaT'):
                     shipdate_map[wo] = txt
         except Exception as e:
             st.warning(f"出貨日讀取失敗（略過）：{e}")
