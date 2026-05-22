@@ -665,3 +665,44 @@ st.download_button(
     file_name=f"料況_{mo_input}_{datetime.today().strftime('%Y%m%d')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
+# ── 單料診斷 ───────────────────────────────────────────────────────────────────
+with st.expander("🔎 單料診斷（輸入料號查看原始數值）", expanded=False):
+    diag_pno = st.text_input("輸入要診斷的料號（完整或部分）", key="diag_pno_input")
+    if diag_pno:
+        # 從 bom_entries 取得對應條目
+        matched_entries = [e for e in bom_entries if diag_pno in e.get("品號", "")]
+        st.markdown(f"**BOM 條目（共 {len(matched_entries)} 筆）**")
+        if matched_entries:
+            st.dataframe(
+                pd.DataFrame(matched_entries)[["品號", "需求數量", "庫別代號", "庫別名稱", "結存", "來源訂單", "日期"]],
+                use_container_width=True, hide_index=True,
+            )
+        else:
+            st.warning(f"在本工單的 BOM 條目中找不到料號關鍵字「{diag_pno}」")
+
+        # 從 stocks 取得初始庫存
+        st.markdown("**期初庫存（stocks）**")
+        stock_rows = []
+        for (pno, wh_code), qty in stocks.items():
+            if diag_pno in pno:
+                stock_rows.append({
+                    "品號": pno,
+                    "庫別代號": wh_code,
+                    "庫別名稱": wh_map.get(wh_code, wh_code),
+                    "期初庫存": qty,
+                })
+        if stock_rows:
+            st.dataframe(pd.DataFrame(stock_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info(f"stocks 中無料號「{diag_pno}」的庫存記錄")
+
+        # 從 df_result 取得分析結果
+        st.markdown("**分析結果（df_result）**")
+        matched_result = df_result[df_result["品號"].str.contains(diag_pno, na=False)]
+        if not matched_result.empty:
+            st.dataframe(matched_result, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"df_result 中無料號「{diag_pno}」的分析結果")
+
+        st.markdown(f"**模板模式：** `{'是' if _is_template else '否'}`")
