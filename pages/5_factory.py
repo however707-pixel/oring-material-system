@@ -248,17 +248,18 @@ with st.spinner("分析中，請稍候..."):
         return int(total)
 
     def get_incoming(pno):
-        """從供需表抓預計進貨：不限分析區間，格式 MM/DD(數量)"""
+        """從供需表抓預計進貨＋預計生產：不限分析區間，依日期排序，格式 [類型]MM/DD(數量)"""
         sub = sd[
             (sd['品號'] == pno) &
-            (sd['異動別'] == '預計進貨') &
+            (sd['異動別'].isin(['預計進貨', '預計生產'])) &
             (sd['日期'].notna())
         ].sort_values('日期')
         if sub.empty: return None
-        return '、'.join(
-            f"{row['日期'].strftime('%m/%d')}({int(row['異動數量'])})"
-            for _, row in sub.iterrows()
-        )
+        parts = []
+        for _, row in sub.iterrows():
+            tag = '進貨' if row['異動別'] == '預計進貨' else '生產'
+            parts.append(f"[{tag}]{row['日期'].strftime('%m/%d')}({int(row['異動數量'])})")
+        return '、'.join(parts)
 
     # ── 主分析 ────────────────────────────────────────────────────────────────
     # 逐列處理：每張工單每個料號各自一行
