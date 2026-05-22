@@ -224,56 +224,62 @@ with st.spinner("分析中，請稍候..."):
         )
 
     # ── 主分析 ────────────────────────────────────────────────────────────────
-    # 同一料號可能出現在多張工單 → 合計需求，庫存只扣一次
-    rows = []
+    # 逐列處理：每張工單每個料號各自一行
+    # avail_4wh 以料號為單位，同一料號只計算一次（用 cache 加速）
+    rows      = []
+    avail_cache = {}
 
-    for pno, grp in sf.groupby('_pno'):
-        pno_str      = str(pno).strip()
-        total_demand = int(grp['_demand'].sum())
+    for _, row_sf in sf.iterrows():
+        pno_str = str(row_sf['_pno']).strip()
+        demand  = int(row_sf['_demand'])
+        wo      = str(row_sf['_wo'])
+        wo      = '' if wo in ('nan', 'None') else wo
 
-        if total_demand <= 0:
-            continue
-
-        # 品名
-        part_name = str(grp['_name'].iloc[0])
+        part_name = str(row_sf['_name'])
         if part_name in ('', 'nan', 'None'): part_name = ''
 
-        # 涉及的工單（最多顯示5筆）
-        wos = [w for w in grp['_wo'].dropna().unique()
-               if w not in ('', 'nan', 'None')]
-        wo_str = '、'.join(wos[:5]) + ('…' if len(wos) > 5 else '')
+        if demand <= 0:
+            continue
 
-        # 四倉可用庫存（供需表）
-        avail = avail_4wh(pno_str)
+        # 五倉可用庫存（同一料號只查一次）
+        if pno_str not in avail_cache:
+            avail_cache[pno_str] = avail_4wh(pno_str)
+        avail = avail_cache[pno_str]
 
         # 判斷齊料 / 缺料
-        if avail >= total_demand:
-            # ✅ 齊料
+        if avail >= demand:
             rows.append({
-                '工單單號':           wo_str,
-                '料號':               pno,
-                '品名':               part_name,
-                '工單需求量':         total_demand,
-                '四倉可用庫存':       avail,
-                '缺料量':             0,
-                '狀態':               '✅ 齊料',
+                '工單單號':             wo,
+                '料號':                 pno_str,
+                '品名':                 part_name,
+                '工單需求量':           demand,
+                '五倉可用庫存':         avail,
+                '缺料量':               0,
+                '狀態':                 '✅ 齊料',
                 '預計進貨日（含數量）': '',
-                '_is_short':          False,
+                '_is_short':            False,
             })
         else:
-            # 🔴 缺料 → 抓預計進貨
-            shortage   = total_demand - avail
-            incoming   = get_incoming(pno_str)
+            shortage = demand - avail
+            if pno_str not in [r['料號'] for r in rows if r['_is_short']]:
+                # 同一料號只查一次預計進貨
+                incoming = get_incoming(pno_str)
+            else:
+                incoming = next(
+                    (r['預計進貨日（含數量）'] for r in reversed(rows)
+                     if r['料號'] == pno_str and r['_is_short']),
+                    get_incoming(pno_str)
+                )
             rows.append({
-                '工單單號':           wo_str,
-                '料號':               pno,
-                '品名':               part_name,
-                '工單需求量':         total_demand,
-                '四倉可用庫存':       avail,
-                '缺料量':             shortage,
-                '狀態':               f'🔴 缺料 {shortage:,}',
+                '工單單號':             wo,
+                '料號':                 pno_str,
+                '品名':                 part_name,
+                '工單需求量':           demand,
+                '五倉可用庫存':         avail,
+                '缺料量':               shortage,
+                '狀態':                 f'🔴 缺料 {shortage:,}',
                 '預計進貨日（含數量）': incoming or '—（供需表無預計進貨）',
-                '_is_short':          True,
+                '_is_short':            True,
             })
 
     df_out = pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -303,22 +309,13 @@ else:
         st.warning(f"**🔴 以下 {n_short} 個料號庫存不足：** {pno_list}", icon="⚠️")
 
     display_cols = ['工單單號', '料號', '品名', '工單需求量',
-                    '四倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
-    df_display = df_out[[c for c in display_cols if c in df_out.columns]].copy()
-
-    def _row_style(row):
-        if row.get('_is_short', False) if '_is_short' in row.index else False:
-            return ['background-color:#fef2f2; color:#991b1b; font-weight:600;'] * len(row)
-        return ['background-color:#f0fdf4;'] * len(row)
-
-    # 用 df_out 的 _is_short 對應樣式
-    _short_mask = df_out['_is_short'].values
+                    '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
+    # 明細表只顯示缺料項目
+    df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
+    df_display = df_short[[c for c in display_cols if c in df_short.columns]].copy()
 
     def _row_style2(row):
-        idx = row.name
-        if idx < len(_short_mask) and _short_mask[idx]:
-            return ['background-color:#fef2f2; color:#991b1b; font-weight:600;'] * len(row)
-        return ['background-color:#f0fdf4;'] * len(row)
+        return ['background-color:#fef2f2; color:#991b1b; font-weight:600;'] * len(row)
 
     st.dataframe(
         df_display.style.apply(_row_style2, axis=1),
@@ -342,7 +339,7 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         headers    = ['工單單號', '料號', '品名', '工單需求量',
-                      '四倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
+                      '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
         col_widths = [28, 32, 28, 12, 14, 12, 14, 40]
         hdr_colors = ['FFF2F2F2', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
                       'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD']
@@ -395,7 +392,7 @@ else:
         buf.seek(0)
         return buf
 
-    buf = build_excel(df_display, df_out, date_start, date_end)
+    buf = build_excel(df_display, df_short, date_start, date_end)
     st.download_button(
         label="⬇️ 匯出廠內配料表（Excel）",
         data=buf,
