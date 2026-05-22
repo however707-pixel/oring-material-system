@@ -589,7 +589,7 @@ else:
       <div class="step-arrow">↓</div>
       <div class="step-card"><div class="step-num">05 · 出貨</div><div class="step-name">出貨確認 / 交運</div><div class="step-sub">Shipment Confirmation</div></div>
       <div class="step-arrow">↓</div>
-      <a href="#" target="_top" style="text-decoration:none;display:block">
+      <a href="./daily_inbound" target="_top" style="text-decoration:none;display:block">
         <div class="step-card" style="border:2px solid #6d28d9;background:linear-gradient(135deg,#faf5ff,#ede9fe);cursor:pointer;">
           <div class="step-num" style="color:#6d28d9;">06 · 統計</div>
           <div class="step-name">每日入庫筆數</div>
