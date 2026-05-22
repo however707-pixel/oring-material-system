@@ -597,7 +597,7 @@ else:
         </div>
       </a>
       <div class="step-arrow">↓</div>
-      <a href="#" target="_top" style="text-decoration:none;display:block">
+      <a href="./daily_picking" target="_top" style="text-decoration:none;display:block">
         <div class="step-card" style="border:2px solid #6d28d9;background:linear-gradient(135deg,#faf5ff,#ede9fe);cursor:pointer;">
           <div class="step-num" style="color:#6d28d9;">07 · 統計</div>
           <div class="step-name">每日備料筆數</div>
