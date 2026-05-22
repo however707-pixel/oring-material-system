@@ -40,8 +40,9 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
-    shortage_file = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
-    sd_file       = st.file_uploader("📂 上傳供需表",                  type=["xlsx", "xls", "csv"])
+    shortage_file  = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
+    sd_file        = st.file_uploader("📂 上傳供需表",                  type=["xlsx", "xls", "csv"])
+    shipdate_file  = st.file_uploader("📂 上傳出貨日（選填）",          type=["xlsx", "xls"])
 
     st.markdown("**📅 分析區間**")
     date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")
@@ -165,6 +166,22 @@ with st.spinner("分析中，請稍候..."):
 
     end = pd.Timestamp(date_end)
 
+    # ── 讀出貨日（選填）：C欄=工單號, V欄=備註文字 ──────────────────────────
+    # 出貨日.xlsx 前3列為說明列，第3列（row index 2）為欄名，第4列起為資料
+    shipdate_map = {}   # { 工單號: V欄文字 }
+    if shipdate_file is not None:
+        try:
+            sd_raw = pd.read_excel(shipdate_file, sheet_name=0, header=None, engine='openpyxl')
+            # 從第4列（index 3）起為資料
+            data_rows = sd_raw.iloc[3:].copy()
+            wo_col_v  = data_rows.iloc[:, 2].astype(str).str.strip()   # C欄（index 2）= 工單號
+            txt_col_v = data_rows.iloc[:, 21].astype(str).str.strip()  # V欄（index 21）= 備註
+            for wo, txt in zip(wo_col_v, txt_col_v):
+                if wo and wo not in ('', 'nan', 'None') and txt not in ('', 'nan', 'None'):
+                    shipdate_map[wo] = txt
+        except Exception as e:
+            st.warning(f"出貨日讀取失敗（略過）：{e}")
+
     # ── Helper 函數 ──────────────────────────────────────────────────────────
 
     def get_avail(pno, wh_code):
@@ -251,6 +268,8 @@ with st.spinner("分析中，請稍候..."):
         avail = avail_cache[pno_str]
 
         # 判斷齊料 / 缺料
+        ship_note = shipdate_map.get(wo, '')
+
         if avail >= demand:
             rows.append({
                 '工單單號':             wo,
@@ -262,6 +281,7 @@ with st.spinner("分析中，請稍候..."):
                 '缺料量':               0,
                 '狀態':                 '✅ 齊料',
                 '預計進貨日（含數量）': '',
+                '出貨備註':             ship_note,
                 '_is_short':            False,
             })
         else:
@@ -284,6 +304,7 @@ with st.spinner("分析中，請稍候..."):
                 '缺料量':               shortage,
                 '狀態':                 f'🔴 缺料 {shortage:,}',
                 '預計進貨日（含數量）': incoming or '—（供需表無預計進貨）',
+                '出貨備註':             ship_note,
                 '_is_short':            True,
             })
 
@@ -311,7 +332,7 @@ if df_out.empty:
 else:
 
     display_cols = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                    '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
+                    '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
     # 明細表只顯示缺料項目
     df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
     df_display = df_short[[c for c in display_cols if c in df_short.columns]].copy()
@@ -326,6 +347,7 @@ else:
         hide_index=True,
         column_config={
             '預計進貨日（含數量）': st.column_config.TextColumn(width='large'),
+            '出貨備註':           st.column_config.TextColumn(width='large'),
             '品名':               st.column_config.TextColumn(width='medium'),
             '工單單號':           st.column_config.TextColumn(width='medium'),
             '狀態':               st.column_config.TextColumn(width='small'),
@@ -341,11 +363,11 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         headers    = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                      '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）']
-        col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 40]
+                      '五倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
+        col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 40, 36]
         hdr_colors = ['FFF2F2F2', 'FFFFF0CC', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
-                      'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD']
-        left_cols  = {1, 2, 3, 4, 9}
+                      'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD', 'FFF5E6FF']
+        left_cols  = {1, 2, 3, 4, 9, 10}
 
         total_cols = len(headers)
         merge_end  = chr(64 + total_cols)
