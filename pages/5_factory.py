@@ -222,7 +222,7 @@ with st.spinner("分析中，請稍候..."):
         return 0
 
     def avail_4wh(pno):
-        """只計算四個有效倉別（電子倉/機構倉/半成品倉/成品倉）的可用量合計"""
+        """計算 VALID_SRC 六倉的可用量合計（一般工單用）"""
         part_sd    = sd[sd['品號'] == pno]
         dated_part = part_sd[part_sd['日期'].notna() & part_sd['庫別名稱'].notna()]
         code_name  = (dated_part[['庫別', '庫別名稱']]
@@ -236,7 +236,6 @@ with st.spinner("分析中，請稍候..."):
         for wh_code, wh_name in code_name.items():
             if wh_name not in VALID_SRC: continue
             total += get_avail(pno, wh_code)
-        # 只有期初行、無日期行（補充）
         init_rows = part_sd[part_sd['日期'].isna() & part_sd['庫別名稱'].isna()]
         for wh_k in init_rows['庫別'].dropna().unique():
             ws = str(wh_k)
@@ -246,6 +245,47 @@ with st.spinner("分析中，請稍候..."):
             if not qty.empty and float(qty.iloc[0]) > 0:
                 total += float(qty.iloc[0])
         return int(total)
+
+    def avail_prod_wh(pno):
+        """5142 工單專用：直接查「加工倉」庫存（同時相容生産/生產兩種字形）"""
+        part_sd = sd[sd['品號'] == pno]
+        # 用「加工倉」關鍵字比對，避免簡繁體字形不同造成錯誤
+        prod = part_sd[part_sd['庫別名稱'].astype(str).str.contains('加工倉', na=False)]
+        if prod.empty:
+            return 0
+        dated = prod[prod['日期'].notna() & prod['預計結存'].notna()]
+        in_range = dated[dated['日期'] <= end]
+        if not in_range.empty:
+            last_bal = in_range.sort_values('日期').iloc[-1]['預計結存']
+            return max(0, int(last_bal))
+        # 沒有日期列 → 找初始異動數量
+        init_r = prod[prod['日期'].isna()]
+        if not init_r.empty:
+            qty = init_r['異動數量'].dropna()
+            if not qty.empty:
+                return max(0, int(float(qty.iloc[0])))
+        return 0
+
+    def get_other_wh_stocks(pno):
+        """5142 工單：取得除加工倉外其餘 VALID_SRC 倉的庫存字串，格式：'電子倉(100)、機構倉(50)'"""
+        part_sd    = sd[sd['品號'] == pno]
+        # 排除生産/生產加工倉（用關鍵字，相容簡繁體）
+        dated_part = part_sd[
+            part_sd['日期'].notna() &
+            part_sd['庫別名稱'].notna() &
+            ~part_sd['庫別名稱'].astype(str).str.contains('加工倉', na=False)
+        ]
+        code_name  = (dated_part[['庫別', '庫別名稱']]
+                      .drop_duplicates('庫別')
+                      .set_index('庫別')['庫別名稱']
+                      .to_dict())
+        parts = []
+        for wh_code, wh_name in code_name.items():
+            if wh_name not in VALID_SRC: continue
+            qty = int(get_avail(pno, wh_code))
+            if qty > 0:
+                parts.append(f'{wh_name}({qty:,})')
+        return '、'.join(parts) if parts else ''
 
     def get_incoming(pno):
         """從供需表抓預計進貨＋預計生產：不限分析區間，依日期排序，格式 [類型]MM/DD(數量)"""
@@ -263,9 +303,11 @@ with st.spinner("分析中，請稍候..."):
 
     # ── 主分析 ────────────────────────────────────────────────────────────────
     # 逐列處理：每張工單每個料號各自一行
-    # avail_4wh 以料號為單位，同一料號只計算一次（用 cache 加速）
-    rows      = []
-    avail_cache = {}
+    # 5142 工單：只算生產加工倉做齊缺判斷，其餘五倉庫存顯示於預計進料欄
+    rows             = []
+    avail_cache      = {}    # 一般工單：六倉合計
+    avail_cache_5142 = {}    # 5142 工單：只算生產加工倉
+    other_wh_cache   = {}    # 5142 工單：其餘五倉庫存字串（顯示於預計進料欄）
 
     for _, row_sf in sf.iterrows():
         pno_str  = str(row_sf['_pno']).strip()
@@ -281,10 +323,23 @@ with st.spinner("分析中，請稍候..."):
         if demand <= 0:
             continue
 
-        # 六倉可用庫存（同一料號只查一次）
-        if pno_str not in avail_cache:
-            avail_cache[pno_str] = avail_4wh(pno_str)
-        avail = avail_cache[pno_str]
+        is_5142 = wo.startswith('5142')
+
+        if is_5142:
+            # 5142：只算生産加工倉（直接查詢，避免字形問題）
+            if pno_str not in avail_cache_5142:
+                avail_cache_5142[pno_str] = avail_prod_wh(pno_str)
+            avail = avail_cache_5142[pno_str]
+            # 其餘五倉庫存字串（顯示於預計進料欄）
+            if pno_str not in other_wh_cache:
+                other_wh_cache[pno_str] = get_other_wh_stocks(pno_str)
+        else:
+            if pno_str not in avail_cache:
+                avail_cache[pno_str] = avail_4wh(pno_str)
+            avail = avail_cache[pno_str]
+
+        # 5142 工單：其餘五倉庫存字串（顯示於預計進料欄）
+        other_wh_str = other_wh_cache.get(pno_str, '') if is_5142 else ''
 
         # 判斷齊料 / 缺料
         ship_note = shipdate_map.get(wo, '')
@@ -299,7 +354,7 @@ with st.spinner("分析中，請稍候..."):
                 '六倉可用庫存':         avail,
                 '缺料量':               0,
                 '狀態':                 '✅ 齊料',
-                '預計進貨日（含數量）': '',
+                '預計進料日（含數量）': other_wh_str,  # 5142：其餘五倉庫存；其餘工單為空
                 '出貨備註':             ship_note,
                 '_is_short':            False,
             })
@@ -309,10 +364,14 @@ with st.spinner("分析中，請稍候..."):
                 incoming = get_incoming(pno_str)
             else:
                 incoming = next(
-                    (r['預計進貨日（含數量）'] for r in reversed(rows)
+                    (r['預計進料日（含數量）'] for r in reversed(rows)
                      if r['料號'] == pno_str and r['_is_short']),
                     get_incoming(pno_str)
                 )
+            # 5142：其餘五倉庫存字串加在最前面，再接預計進貨/生產
+            incoming_full = incoming or ''
+            if other_wh_str:
+                incoming_full = (other_wh_str + '、' + incoming_full).rstrip('、') if incoming_full else other_wh_str
             rows.append({
                 '工單單號':             wo,
                 '開工日':               wo_date,
@@ -322,7 +381,7 @@ with st.spinner("分析中，請稍候..."):
                 '六倉可用庫存':         avail,
                 '缺料量':               shortage,
                 '狀態':                 f'🔴 缺料 {shortage:,}',
-                '預計進貨日（含數量）': incoming or '—（供需表無預計進貨）',
+                '預計進料日（含數量）': incoming_full or '—（供需表無預計進貨）',
                 '出貨備註':             ship_note,
                 '_is_short':            True,
             })
@@ -351,10 +410,31 @@ if df_out.empty:
 else:
 
     display_cols = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                    '六倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
+                    '六倉可用庫存', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
     # 明細表只顯示缺料項目
     df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
     df_display = df_short[[c for c in display_cols if c in df_short.columns]].copy()
+
+    # 5142 工單完整檢視（含齊料），方便確認計算是否正確
+    df_5142_all = df_out[df_out['工單單號'].str.startswith('5142', na=False)].reset_index(drop=True)
+    if not df_5142_all.empty:
+        with st.expander(f"📋 5142 工單完整明細（含齊料，共 {len(df_5142_all)} 筆）", expanded=False):
+            st.caption("5142 工單只以「生產加工倉」庫存做齊缺判斷，六倉可用庫存欄 = 生產加工倉庫存")
+            def _style_5142(row):
+                if '缺料' in str(row.get('狀態', '')):
+                    return ['background-color:#fef2f2; color:#991b1b; font-weight:600;'] * len(row)
+                return ['background-color:#f0fdf4; color:#15803d;'] * len(row)
+            df_5142_disp = df_5142_all[[c for c in display_cols if c in df_5142_all.columns]].copy()
+            st.dataframe(
+                df_5142_disp.style.apply(_style_5142, axis=1),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    '預計進料日（含數量）': st.column_config.TextColumn(width='large'),
+                    '品名':               st.column_config.TextColumn(width='medium'),
+                    '工單單號':           st.column_config.TextColumn(width='medium'),
+                }
+            )
 
     def _row_style2(row):
         return ['background-color:#fef2f2; color:#991b1b; font-weight:600;'] * len(row)
@@ -365,7 +445,7 @@ else:
         height=560,
         hide_index=True,
         column_config={
-            '預計進貨日（含數量）': st.column_config.TextColumn(width='large'),
+            '預計進料日（含數量）': st.column_config.TextColumn(width='large'),
             '出貨備註':           st.column_config.TextColumn(width='large'),
             '品名':               st.column_config.TextColumn(width='medium'),
             '工單單號':           st.column_config.TextColumn(width='medium'),
@@ -382,7 +462,7 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         headers    = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                      '六倉可用庫存', '缺料量', '狀態', '預計進貨日（含數量）', '出貨備註']
+                      '六倉可用庫存', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
         col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 40, 36]
         hdr_colors = ['FFF2F2F2', 'FFFFF0CC', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
                       'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD', 'FFF5E6FF']
@@ -442,3 +522,116 @@ else:
         file_name=f"廠內配料表_{date_start.strftime('%Y%m%d')}_{date_end.strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+# ── 診斷查詢（開發用）─────────────────────────────────────────────────────────
+with st.expander("🔍 倉庫庫存診斷查詢", expanded=False):
+    st.caption("輸入工單號 + 料號，查看各倉庫存的詳細計算過程")
+    diag_col1, diag_col2 = st.columns(2)
+    diag_wo  = diag_col1.text_input("工單號碼", placeholder="e.g. 5142-20260317002")
+    diag_pno = diag_col2.text_input("料號",     placeholder="e.g. 1903-10-01-245176-00")
+
+    if diag_wo.strip() and diag_pno.strip():
+        dpno = diag_pno.strip()
+        dwo  = diag_wo.strip()
+        dis_5142 = dwo.startswith('5142')
+
+        st.markdown(f"**工單**：`{dwo}` {'→ 5142工單（只算生産加工倉）' if dis_5142 else '→ 一般工單（六倉合計）'}")
+
+        # ① 先看廠內排程表裡有沒有這筆
+        sf_match = sf[sf['_wo'] == dwo]
+        pno_match = sf_match[sf_match['_pno'] == dpno]
+        if pno_match.empty:
+            st.warning(f"⚠️ 廠內排程表中找不到 工單={dwo} 且 料號={dpno} 的資料")
+            # 列出該工單下所有料號
+            if not sf_match.empty:
+                st.write("該工單下的所有料號：", sf_match['_pno'].tolist())
+        else:
+            demand_diag = int(pno_match.iloc[0]['_demand'])
+            st.info(f"📋 廠內排程需求量：**{demand_diag:,}**")
+
+        # ② 供需表裡查該料號的所有倉別
+        part_sd_diag = sd[sd['品號'] == dpno]
+        if part_sd_diag.empty:
+            st.error(f"供需表中找不到料號 {dpno}")
+        else:
+            dated_diag = part_sd_diag[part_sd_diag['日期'].notna() & part_sd_diag['庫別名稱'].notna()]
+            code_name_diag = (dated_diag[['庫別', '庫別名稱']]
+                              .drop_duplicates('庫別')
+                              .set_index('庫別')['庫別名稱']
+                              .to_dict())
+            code_name_diag = {c: n for c, n in code_name_diag.items() if len(str(c)) <= 12}
+
+            st.markdown("**各倉庫存計算明細：**")
+            diag_rows = []
+            total_all = 0
+            total_5142 = 0   # 只含生産加工倉
+            for wh_code, wh_name in code_name_diag.items():
+                in_valid = wh_name in VALID_SRC
+                qty = int(get_avail(dpno, wh_code)) if in_valid else 0
+
+                # 最後一筆結存 & planned_in（透明化）
+                w_rows = part_sd_diag[part_sd_diag['庫別'] == wh_code]
+                dated_w = w_rows[w_rows['日期'].notna() & w_rows['預計結存'].notna()]
+                in_range_w = dated_w[dated_w['日期'] <= end]
+                if not in_range_w.empty:
+                    last_bal_w = in_range_w.sort_values('日期').iloc[-1]['預計結存']
+                    planned_w  = dated_w[
+                        (dated_w['日期'] <= end) &
+                        (dated_w['異動別'].isin(['預計進貨', '預計生産']))
+                    ]['異動數量'].sum()
+                    detail_str = f"預計結存={int(last_bal_w):,}  -  預計進貨/生産={int(planned_w):,}  =  可用{qty:,}"
+                else:
+                    detail_str = "無日期資料"
+
+                use_for_5142 = (wh_name == '生産加工倉')
+                diag_rows.append({
+                    '倉別代碼': str(wh_code),
+                    '倉別名稱': wh_name,
+                    '在VALID_SRC': '✅' if in_valid else '❌',
+                    '5142計算': '✅ 計入' if use_for_5142 else '—',
+                    '可用庫存': qty,
+                    '計算明細': detail_str,
+                })
+                if in_valid:
+                    total_all += qty
+                if use_for_5142:
+                    total_5142 += qty
+
+            # init_rows（日期＆倉別名稱均為空）
+            init_diag = part_sd_diag[part_sd_diag['日期'].isna() & part_sd_diag['庫別名稱'].isna()]
+            dated_codes_diag = set(code_name_diag.keys())
+            names_diag = set(code_name_diag.values())
+            for wh_k in init_diag['庫別'].dropna().unique():
+                ws2 = str(wh_k)
+                if ws2 in dated_codes_diag or ws2 in names_diag:
+                    continue
+                in_valid2 = ws2 in VALID_SRC and len(ws2) <= 12
+                qty2_raw = init_diag[init_diag['庫別'] == wh_k]['異動數量'].dropna()
+                qty2 = int(float(qty2_raw.iloc[0])) if not qty2_raw.empty and float(qty2_raw.iloc[0]) > 0 else 0
+                use_for_5142_2 = (ws2 == '生産加工倉')
+                diag_rows.append({
+                    '倉別代碼': ws2,
+                    '倉別名稱': '(init_rows，無名稱)',
+                    '在VALID_SRC': '✅' if in_valid2 else '❌',
+                    '5142計算': '✅ 計入' if use_for_5142_2 else '—',
+                    '可用庫存': qty2 if in_valid2 else 0,
+                    '計算明細': f'init異動數量={qty2}',
+                })
+                if in_valid2:
+                    total_all += qty2
+                if use_for_5142_2:
+                    total_5142 += qty2
+
+            df_diag = pd.DataFrame(diag_rows)
+            st.dataframe(df_diag, use_container_width=True, hide_index=True)
+            st.markdown(
+                f"**六倉合計可用庫存（一般工單）：{total_all:,}**　｜　"
+                f"**生産加工倉可用庫存（5142工單）：{total_5142:,}**"
+            )
+            if not pno_match.empty:
+                demand_diag = int(pno_match.iloc[0]['_demand'])
+                used = total_5142 if dis_5142 else total_all
+                st.markdown(
+                    f"需求量={demand_diag:,}　可用={used:,}　"
+                    + ("→ **應為 ✅ 齊料**" if used >= demand_diag else "→ **應為 🔴 缺料**")
+                )
