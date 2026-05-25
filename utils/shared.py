@@ -494,7 +494,7 @@ def render_sidebar():
 
 # ── 供需表 NAS 自動載入（共用）─────────────────────────────────────────────────
 
-_NAS_SD_DIR = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 鼎新系統報表\LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
+_NAS_SD_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 鼎新系統報表/LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
 _LOCAL_SD   = _os.path.join(_os.path.dirname(__file__), "..", "data", "sd_latest.xlsx")
 _LOCAL_DONE = _os.path.join(_os.path.dirname(__file__), "..", "data", "sd_fetch_done.txt")
 
