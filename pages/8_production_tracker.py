@@ -11,26 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar, render_sd_loader, read_source
 from utils.i18n import t
 
-if "lang" not in st.session_state:
-    st.session_state["lang"] = "zh"
-
 st.set_page_config(page_title="生產進度表", page_icon="🏭", layout="wide", initial_sidebar_state="expanded")
 inject_css()
-
-with st.sidebar:
-    col_zh, col_en = st.columns(2)
-    with col_zh:
-        if st.button("🇹🇼 中文", key="btn_zh",
-                     type="primary" if st.session_state["lang"] == "zh" else "secondary",
-                     use_container_width=True):
-            st.session_state["lang"] = "zh"
-            st.rerun()
-    with col_en:
-        if st.button("🇺🇸 EN", key="btn_en",
-                     type="primary" if st.session_state["lang"] == "en" else "secondary",
-                     use_container_width=True):
-            st.session_state["lang"] = "en"
-            st.rerun()
 
 render_header(
     title="生產進度表",

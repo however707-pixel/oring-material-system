@@ -6,6 +6,7 @@ from utils.shared import inject_css, render_header, render_sidebar
 
 st.set_page_config(page_title="倉儲人員編製", page_icon="👥", layout="wide", initial_sidebar_state="expanded")
 inject_css()
+
 render_header(
     title="倉儲人員編製",
     subtitle="Warehouse Staff Organization &nbsp;·&nbsp; ORing Industrial Networking",

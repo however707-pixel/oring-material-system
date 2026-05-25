@@ -259,7 +259,22 @@ body {{ background:transparent; padding:4px 0; }}
 
 def render_sidebar():
     from utils.i18n import t
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "zh"
     with st.sidebar:
+        col_zh, col_en = st.columns(2)
+        with col_zh:
+            if st.button("🇹🇼 中文", key="btn_zh",
+                         type="primary" if st.session_state["lang"] == "zh" else "secondary",
+                         use_container_width=True):
+                st.session_state["lang"] = "zh"
+                st.rerun()
+        with col_en:
+            if st.button("🇺🇸 EN", key="btn_en",
+                         type="primary" if st.session_state["lang"] == "en" else "secondary",
+                         use_container_width=True):
+                st.session_state["lang"] = "en"
+                st.rerun()
         st.markdown(f"""
         <div style="
             text-align:center; padding:22px 12px 18px; margin-bottom:16px;

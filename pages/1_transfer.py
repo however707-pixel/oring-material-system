@@ -14,30 +14,12 @@ from utils.i18n import t
 # 0. 初始化
 # =========================
 ensure_calamine()
-if "lang" not in st.session_state:
-    st.session_state["lang"] = "zh"
 
 # =========================
 # 1. 頁面設定
 # =========================
 st.set_page_config(page_title="工單調撥決策看板", page_icon="📊", layout="wide", initial_sidebar_state="expanded")
 inject_css()
-
-# 語言切換（側邊欄頂部）
-with st.sidebar:
-    col_zh, col_en = st.columns(2)
-    with col_zh:
-        if st.button("🇹🇼 中文", key="btn_zh",
-                     type="primary" if st.session_state["lang"] == "zh" else "secondary",
-                     use_container_width=True):
-            st.session_state["lang"] = "zh"
-            st.rerun()
-    with col_en:
-        if st.button("🇺🇸 EN", key="btn_en",
-                     type="primary" if st.session_state["lang"] == "en" else "secondary",
-                     use_container_width=True):
-            st.session_state["lang"] = "en"
-            st.rerun()
 
 render_header(
     title="工單調撥決策看板",
