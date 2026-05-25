@@ -1,7 +1,9 @@
 import subprocess
 import sys
 import base64
+import os as _os
 from pathlib import Path
+from datetime import datetime as _dt
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -491,8 +493,6 @@ def render_sidebar():
         """, unsafe_allow_html=True)
 
 # ── 供需表 NAS 自動載入（共用）─────────────────────────────────────────────────
-import os as _os
-from datetime import datetime as _dt
 
 _NAS_SD_DIR = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 鼎新系統報表\LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
 _LOCAL_SD   = _os.path.join(_os.path.dirname(__file__), "..", "data", "sd_latest.xlsx")
