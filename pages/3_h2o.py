@@ -9,7 +9,10 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, source_is_csv
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, render_nas_loader, source_is_csv
+
+_NAS_TRANSFER_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 工作/資材部/每日調撥與送燒ic(NEW)/生管互調料通知"
+_NAS_TRANSFER_PFX = "加工廠互調料滙整表-"
 
 ensure_calamine()
 
@@ -36,7 +39,13 @@ with st.sidebar:
 
     h2o_file      = st.file_uploader("📂 上傳 H2O 缺料明細",      type=["xlsx", "xls", "csv"])
     sd_file       = render_sd_loader(key="h2o")
-    transfer_file = st.file_uploader("📂 上傳加工廠互調料滙整表（選填）", type=["xlsx", "xls", "xlsm"])
+    transfer_file = render_nas_loader(
+        key="h2o_transfer",
+        nas_dir=_NAS_TRANSFER_DIR,
+        prefix=_NAS_TRANSFER_PFX,
+        label="📂 上傳加工廠互調料滙整表（選填覆蓋）",
+        types=["xlsx", "xls", "xlsm"],
+    )
 
     st.markdown("**📅 分析區間**")
     date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")

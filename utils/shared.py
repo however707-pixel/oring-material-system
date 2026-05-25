@@ -492,6 +492,72 @@ def render_sidebar():
         </a>
         """, unsafe_allow_html=True)
 
+# ── NAS 通用工具 ──────────────────────────────────────────────────────────────
+
+def find_latest_nas_file(nas_dir: str, prefix: str, exts=('.xlsx', '.xlsm', '.xls')):
+    """
+    在 nas_dir 內找出檔名以 prefix 開頭、副檔名符合 exts 的最新檔案。
+    排除 ~$ 暫存檔。回傳 (完整路徑, 檔名) 或 (None, None)。
+    """
+    try:
+        files = sorted([
+            f for f in _os.listdir(nas_dir)
+            if not f.startswith('~$')
+            and f.startswith(prefix)
+            and any(f.lower().endswith(e) for e in exts)
+        ])
+        if not files:
+            return None, None
+        latest = files[-1]
+        return _os.path.join(nas_dir, latest), latest
+    except Exception:
+        return None, None
+
+def render_nas_loader(key: str, nas_dir: str, prefix: str, label: str,
+                      types: list = None, exts: tuple = ('.xlsx', '.xlsm', '.xls')):
+    """
+    通用 NAS 檔案自動載入元件，在 st.sidebar 內呼叫。
+    自動偵測 nas_dir 內最新的 prefix 開頭檔案，提供一鍵載入。
+    手動上傳優先權最高。
+    回傳 src：UploadedFile | str(路徑) | None
+    """
+    if types is None:
+        types = ['xlsx', 'xls', 'xlsm']
+
+    skey_path = f"_tf_path_{key}"
+    skey_name = f"_tf_name_{key}"
+
+    nas_path, nas_name = find_latest_nas_file(nas_dir, prefix, exts)
+
+    if nas_path:
+        st.success("✅ NAS 已連線")
+        st.caption(f"最新：**{nas_name}**")
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            if st.button("⬇️ 自動載入最新版", use_container_width=True, key=f"_btn_nas_{key}"):
+                st.session_state[skey_path] = nas_path
+                st.session_state[skey_name] = nas_name
+                st.rerun()
+        with c2:
+            if st.button("🔄 重新偵測", use_container_width=True, key=f"_btn_ref_{key}"):
+                st.session_state.pop(skey_path, None)
+                st.rerun()
+        if skey_name in st.session_state:
+            st.info(f"📂 已載入：{st.session_state[skey_name]}")
+    else:
+        st.warning("⚠️ NAS 離線，請手動上傳")
+        st.session_state.pop(skey_path, None)
+
+    st.caption("手動上傳可覆蓋 NAS 版本：")
+    uploaded = st.file_uploader(label, type=types, key=f"_upload_{key}")
+
+    if uploaded:
+        st.session_state.pop(skey_path, None)
+        return uploaded
+    elif skey_path in st.session_state:
+        return st.session_state[skey_path]
+    return None
+
 # ── 供需表 NAS 自動載入（共用）─────────────────────────────────────────────────
 
 _NAS_SD_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 鼎新系統報表/LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
