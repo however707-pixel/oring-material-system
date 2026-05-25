@@ -33,12 +33,60 @@ COL_DEMAND = 7   # H: 欠料數量
 COL_WODATE = 13  # N: 工單開工日
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
+NAS_SD_DIR = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 鼎新系統報表\LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
+
+def find_latest_nas_sd():
+    """回傳 (完整路徑, 檔名)，若 NAS 不可達則回傳 (None, None)"""
+    try:
+        files = sorted([
+            f for f in os.listdir(NAS_SD_DIR)
+            if f.startswith('供需表(分倉)-') and f.endswith('.xlsx')
+        ])
+        if not files:
+            return None, None
+        latest = files[-1]
+        return os.path.join(NAS_SD_DIR, latest), latest
+    except Exception:
+        return None, None
+
 with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
     shortage_file = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
-    sd_file       = st.file_uploader("📂 上傳供需表",                 type=["xlsx", "xls", "csv"])
+
+    # ── 供需表：NAS 自動偵測 + 手動上傳 ──────────────────────────────────────
+    nas_path, nas_name = find_latest_nas_sd()
+    if nas_path:
+        st.success(f"✅ NAS 已連線")
+        st.caption(f"最新供需表：**{nas_name}**")
+        col_a, col_b = st.columns([3, 2])
+        with col_a:
+            if st.button("⬇️ 載入最新供需表", use_container_width=True):
+                st.session_state['nas_sd_path'] = nas_path
+                st.session_state['nas_sd_name'] = nas_name
+        with col_b:
+            if st.button("🔄 重新偵測", use_container_width=True):
+                st.session_state.pop('nas_sd_path', None)
+                st.rerun()
+        if 'nas_sd_name' in st.session_state:
+            st.info(f"📊 已載入：{st.session_state['nas_sd_name']}")
+        st.caption("或手動上傳覆蓋：")
+    else:
+        st.warning("⚠️ NAS 離線，請手動上傳供需表")
+        st.session_state.pop('nas_sd_path', None)
+
+    sd_file = st.file_uploader("📂 上傳供需表", type=["xlsx", "xls", "csv"])
+
+    # 決定供需表來源
+    if sd_file:
+        sd_source = sd_file          # 手動上傳優先
+        st.session_state.pop('nas_sd_path', None)
+    elif 'nas_sd_path' in st.session_state:
+        sd_source = st.session_state['nas_sd_path']   # NAS 路徑字串
+    else:
+        sd_source = None
+
     shipdate_file = st.file_uploader("📂 上傳出貨日（選填）",         type=["xlsx", "xls"])
 
     st.markdown("**📅 分析區間**")
@@ -64,8 +112,8 @@ with st.sidebar:
     )
 
 # ── 空狀態 ────────────────────────────────────────────────────────────────────
-if not shortage_file or not sd_file:
-    st.info("👈 請在左側上傳「廠內排程表」及「供需表」開始分析")
+if not shortage_file or not sd_source:
+    st.info("👈 請在左側上傳「廠內排程表」，並載入或上傳「供需表」開始分析")
     st.stop()
 
 with st.spinner("分析中，請稍候..."):
@@ -112,24 +160,25 @@ with st.spinner("分析中，請稍候..."):
     sf['_wodate'] = sf.iloc[:, COL_WODATE].apply(_fmt_date_cell) if sf.shape[1] > COL_WODATE else ''
     sf = sf[sf['_pno'].notna() & (sf['_pno'] != '') & (sf['_pno'] != 'nan')].copy()
 
-    # ── 讀供需表 ──────────────────────────────────────────────────────────────
+    # ── 讀供需表（支援上傳檔案 or NAS 路徑字串）──────────────────────────────
     try:
-        if sd_file.name.lower().endswith('.csv'):
+        src_name = sd_source if isinstance(sd_source, str) else getattr(sd_source, 'name', '')
+        if str(src_name).lower().endswith('.csv'):
             sd = None
             for enc in ['utf-8-sig', 'cp950', 'big5']:
                 try:
-                    sd = pd.read_csv(sd_file, header=0, encoding=enc)
+                    sd = pd.read_csv(sd_source, header=0, encoding=enc)
                     break
                 except Exception:
-                    sd_file.seek(0)
+                    if hasattr(sd_source, 'seek'): sd_source.seek(0)
             if sd is None:
                 st.error("供需表 CSV 無法讀取。"); st.stop()
         else:
             try:
-                sd = pd.read_excel(sd_file, sheet_name=0, header=0, engine='calamine')
+                sd = pd.read_excel(sd_source, sheet_name=0, header=0, engine='calamine')
             except Exception:
-                sd_file.seek(0)
-                sd = pd.read_excel(sd_file, sheet_name=0, header=0, engine='openpyxl')
+                if hasattr(sd_source, 'seek'): sd_source.seek(0)
+                sd = pd.read_excel(sd_source, sheet_name=0, header=0, engine='openpyxl')
         sd['日期'] = pd.to_datetime(sd['日期'], errors='coerce')
     except Exception as e:
         st.error(f"供需表讀取失敗：{e}"); st.stop()
