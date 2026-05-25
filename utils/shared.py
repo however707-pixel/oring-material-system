@@ -356,7 +356,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            💧 唐佑配料表
+            💧 {t("link_h2o")}
         </a>
         <a href="/guozhi" target="_self" style="
             display:flex; align-items:center; gap:8px;
@@ -366,7 +366,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            🏭 國智配料表
+            🏭 {t("link_guozhi")}
         </a>
         <a href="/factory" target="_self" style="
             display:flex; align-items:center; gap:8px;
@@ -376,7 +376,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            🏭 廠內配料表
+            🏭 {t("link_factory")}
         </a>
         """, unsafe_allow_html=True)
 
