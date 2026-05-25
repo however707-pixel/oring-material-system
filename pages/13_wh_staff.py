@@ -1,5 +1,6 @@
 import streamlit as st
 import sys, os
+from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar
 
@@ -13,4 +14,9 @@ render_header(
 )
 render_sidebar()
 
-st.info("🚧 功能開發中，敬請期待。")
+img_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "wh_staff.png")
+if os.path.exists(img_path):
+    img = Image.open(img_path)
+    st.image(img, use_container_width=True)
+else:
+    st.warning("找不到流程圖檔案，請確認 assets/wh_staff.png 是否存在。")
