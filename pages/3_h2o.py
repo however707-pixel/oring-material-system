@@ -577,14 +577,6 @@ else:
     ]
 df_display = df_display[disp_cols]
 
-# 若有庫存不足料號，先用 callout 提醒
-if len(short_warn) > 0:
-    pno_list = '、'.join(short_warn['料號'].tolist())
-    st.warning(
-        f"**⚠️ 以下 {len(short_warn)} 個料號庫存不足，已依最早缺料日期自動排定配料優先順序，請確認：**\n\n"
-        f"{pno_list}",
-        icon="⚠️",
-    )
 
 # 庫存不足的 shortage 集合（用料號比對，因 df_display 已不含 _shortage 欄）
 _shortage_pnos = set(short_warn['料號'].tolist())

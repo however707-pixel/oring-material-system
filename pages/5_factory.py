@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, render_nas_loader
 
 ensure_calamine()
 
@@ -39,7 +39,16 @@ with st.sidebar:
 
     shortage_file = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
     sd_source     = render_sd_loader(key="factory")
-    shipdate_file = st.file_uploader("📂 上傳出貨日（選填）",         type=["xlsx", "xls"])
+
+    _NAS_SHIPDATE_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 工作/生管部/09. 廠內改機排程/2025早會"
+    _NAS_SHIPDATE_PFX = "寶橋早會資料"
+    shipdate_file = render_nas_loader(
+        key="factory_shipdate",
+        nas_dir=_NAS_SHIPDATE_DIR,
+        prefix=_NAS_SHIPDATE_PFX,
+        label="📂 上傳出貨日（選填覆蓋）",
+        types=["xlsx", "xls"],
+    )
 
     st.markdown("**📅 分析區間**")
     date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")
@@ -145,7 +154,9 @@ with st.spinner("分析中，請稍候..."):
     shipdate_map = {}
     if shipdate_file is not None:
         try:
-            sh_raw  = pd.read_excel(shipdate_file, sheet_name=1, header=None, engine='openpyxl')
+            _sd_src = shipdate_file if not isinstance(shipdate_file, str) else open(shipdate_file, 'rb')
+            sh_raw  = pd.read_excel(_sd_src, sheet_name=1, header=None, engine='openpyxl')
+            if isinstance(shipdate_file, str): _sd_src.close()
             sh_data = sh_raw.iloc[3:].reset_index(drop=True)
             n_cols  = sh_data.shape[1]
             wo_col  = sh_data.iloc[:, 2].astype(str).str.strip() if n_cols > 2  else pd.Series([''] * len(sh_data))
@@ -333,7 +344,7 @@ with st.spinner("分析中，請稍候..."):
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
-                '六倉可用庫存':         avail,
+                '加工倉庫存量':         avail,
                 '缺料量':               0,
                 '狀態':                 '✅ 齊料',
                 '預計進料日（含數量）': other_wh_str,
@@ -354,7 +365,7 @@ with st.spinner("分析中，請稍候..."):
                 '料號':                 pno_str,
                 '品名':                 part_name,
                 '工單需求量':           demand,
-                '六倉可用庫存':         avail,
+                '加工倉庫存量':         avail,
                 '缺料量':               shortage,
                 '狀態':                 f'🔴 缺料 {shortage:,}',
                 '預計進料日（含數量）': incoming_full or '—（供需表無預計進貨）',
@@ -385,7 +396,7 @@ if df_out.empty:
     st.success("✅ 沒有工單需求資料，請確認廠內排程表內容。")
 else:
     display_cols = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                    '六倉可用庫存', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
+                    '加工倉庫存量', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
 
     df_short   = df_out[df_out['_is_short'] == True].reset_index(drop=True)
     df_display = df_short[[c for c in display_cols if c in df_short.columns]].copy()
@@ -404,7 +415,7 @@ else:
             '料號':               st.column_config.TextColumn(width='medium'),
             '品名':               st.column_config.TextColumn(width='medium'),
             '工單需求量':         st.column_config.NumberColumn(width='small'),
-            '六倉可用庫存':       st.column_config.NumberColumn(width='small'),
+            '加工倉庫存量':       st.column_config.NumberColumn(width='small'),
             '缺料量':             st.column_config.NumberColumn(width='small'),
             '狀態':               st.column_config.TextColumn(width='small'),
             '預計進料日（含數量）': st.column_config.TextColumn(width='large'),
@@ -421,7 +432,7 @@ else:
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
         headers    = ['工單單號', '開工日', '料號', '品名', '工單需求量',
-                      '六倉可用庫存', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
+                      '加工倉庫存量', '缺料量', '狀態', '預計進料日（含數量）', '出貨備註']
         col_widths = [28, 14, 32, 28, 12, 14, 12, 14, 44, 36]
         hdr_colors = ['FFF2F2F2', 'FFFFF0CC', 'FFD9E8FF', 'FFF5F5F5', 'FFE8F4FD',
                       'FFE8F4FD', 'FFFCE4D6', 'FFF2F2F2', 'FFE8F4FD', 'FFF5E6FF']
