@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import inject_css, render_header, render_sidebar
+from utils.shared import inject_css, render_header, render_sidebar, render_sd_loader, read_source
 from utils.i18n import t
 
 # ── 初始化 ────────────────────────────────────────────────────────────────────
@@ -407,7 +407,7 @@ def analyze_bom(bom_entries, stocks, wh_map, qc_map, incoming_map, wo_wh_code,
 with st.sidebar:
     st.divider()
     st.markdown("### 📂 上傳資料檔案")
-    f_supply   = st.file_uploader("供需表（分倉）", type=["xlsx", "xls"], key="f_supply")
+    f_supply   = render_sd_loader(key="wo_progress", label="供需表（分倉）")
     f_wo       = st.file_uploader("工單表",         type=["xlsx", "xls"], key="f_wo")
     f_qc       = st.file_uploader("QC表",           type=["xlsx", "xls"], key="f_qc")
     f_transfer = st.file_uploader("調撥表",         type=["xlsx", "xls"], key="f_transfer")
@@ -445,7 +445,7 @@ if not all_uploaded:
 
 # ── 載入資料 ──────────────────────────────────────────────────────────────────
 with st.spinner("載入資料中，請稍候..."):
-    stocks, wh_map, bom_map, incoming_map = parse_supply(f_supply.read())
+    stocks, wh_map, bom_map, incoming_map = parse_supply(read_source(f_supply))
     wo_dict = parse_wo(f_wo.read())
     qc_map  = parse_qc(f_qc.read())
     _       = parse_transfer(f_transfer.read())   # 保留供未來擴充

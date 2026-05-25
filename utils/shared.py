@@ -489,3 +489,114 @@ def render_sidebar():
             👥 {t("link_wh_staff")}
         </a>
         """, unsafe_allow_html=True)
+
+# ── 供需表 NAS 自動載入（共用）─────────────────────────────────────────────────
+import os as _os
+from datetime import datetime as _dt
+
+_NAS_SD_DIR = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 鼎新系統報表\LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
+_LOCAL_SD   = _os.path.join(_os.path.dirname(__file__), "..", "data", "sd_latest.xlsx")
+_LOCAL_DONE = _os.path.join(_os.path.dirname(__file__), "..", "data", "sd_fetch_done.txt")
+
+def _find_latest_nas_sd():
+    """回傳 (完整路徑, 檔名, 是否今日)，NAS 不可達則 (None, None, False)"""
+    try:
+        today_tag = _dt.now().strftime('%Y%m%d')
+        files = sorted([
+            f for f in _os.listdir(_NAS_SD_DIR)
+            if f.startswith('供需表(分倉)-') and f.endswith('.xlsx')
+        ])
+        if not files:
+            return None, None, False
+        latest   = files[-1]
+        is_today = today_tag in latest
+        return _os.path.join(_NAS_SD_DIR, latest), latest, is_today
+    except Exception:
+        return None, None, False
+
+def _local_cache_date():
+    """回傳本機快取的日期字串，無則 None"""
+    try:
+        if _os.path.exists(_LOCAL_DONE):
+            return open(_LOCAL_DONE, encoding='utf-8').read().strip()
+    except Exception:
+        pass
+    return None
+
+def render_sd_loader(key: str = "sd", label: str = "📂 上傳供需表（選填覆蓋）"):
+    """
+    在 st.sidebar 內呼叫。
+    自動偵測 NAS 最新供需表，NAS 離線時 fallback 到本機快取。
+    手動上傳的檔案優先權最高。
+    回傳 sd_source：UploadedFile | str(路徑) | None
+    """
+    skey_path = f"_sd_path_{key}"
+    skey_name = f"_sd_name_{key}"
+    today_str = _dt.now().strftime('%Y%m%d')
+
+    nas_path, nas_name, nas_is_today = _find_latest_nas_sd()
+    cache_date = _local_cache_date()
+    local_ok   = _os.path.exists(_LOCAL_SD)
+
+    if nas_path:
+        tag = "（今日 ✅）" if nas_is_today else "（非今日）"
+        st.success("✅ NAS 已連線")
+        st.caption(f"最新：**{nas_name}** {tag}")
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            if st.button("⬇️ 載入最新供需表", use_container_width=True, key=f"_btn_nas_{key}"):
+                st.session_state[skey_path] = nas_path
+                st.session_state[skey_name] = nas_name
+                st.rerun()
+        with c2:
+            if st.button("🔄 重新偵測", use_container_width=True, key=f"_btn_ref_{key}"):
+                st.session_state.pop(skey_path, None)
+                st.rerun()
+        if skey_name in st.session_state:
+            st.info(f"📊 已載入：{st.session_state[skey_name]}")
+    else:
+        st.warning("⚠️ NAS 離線")
+        st.session_state.pop(skey_path, None)
+        if local_ok:
+            cl = f"今日（{cache_date}）" if cache_date == today_str else f"前次備份（{cache_date or '?'}）"
+            st.info(f"💾 本機快取：{cl}")
+            if st.button("載入本機快取", use_container_width=True, key=f"_btn_cache_{key}"):
+                st.session_state[skey_path] = _LOCAL_SD
+                st.session_state[skey_name] = f"sd_latest.xlsx（{cl}）"
+                st.rerun()
+
+    st.caption("手動上傳可覆蓋 NAS 版本：")
+    uploaded = st.file_uploader(label, type=["xlsx", "xls", "csv"], key=f"_upload_{key}")
+
+    if uploaded:
+        st.session_state.pop(skey_path, None)
+        return uploaded
+    elif skey_path in st.session_state:
+        return st.session_state[skey_path]
+    elif local_ok:
+        return _LOCAL_SD   # 自動 fallback
+    return None
+
+def read_source(src) -> bytes:
+    """從 UploadedFile 或路徑字串讀取 bytes。"""
+    if src is None:
+        return b""
+    if isinstance(src, str):
+        with open(src, 'rb') as f:
+            return f.read()
+    data = src.read()
+    if hasattr(src, 'seek'):
+        src.seek(0)
+    return data
+
+def source_filename(src) -> str:
+    """取得檔名，支援 UploadedFile 或路徑字串。"""
+    if src is None:
+        return ''
+    if isinstance(src, str):
+        return _os.path.basename(src)
+    return getattr(src, 'name', 'file.xlsx')
+
+def source_is_csv(src) -> bool:
+    """判斷來源是否為 CSV。"""
+    return source_filename(src).lower().endswith('.csv')

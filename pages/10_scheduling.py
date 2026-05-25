@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import io, sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import inject_css, render_header, render_sidebar
+from utils.shared import inject_css, render_header, render_sidebar, render_sd_loader, read_source
 
 st.set_page_config(page_title="排程系統", page_icon="🗓", layout="wide")
 inject_css()
@@ -236,7 +236,7 @@ with u2:
 with u3:
     f_ship = st.file_uploader("③ 出貨日.xlsx（選填）", type=["xlsx"], key="f_ship")
 with u4:
-    f_qiliao = st.file_uploader("④ 供需表.xlsx（齊料日）", type=["xlsx"], key="f_qiliao")
+    f_qiliao = render_sd_loader(key="scheduling", label="④ 供需表.xlsx（齊料日）")
 with u5:
     st.markdown("<br>", unsafe_allow_html=True)
     load_btn = st.button("載入", type="primary", disabled=not (f_wo and f_prog))
@@ -256,7 +256,7 @@ if load_btn and f_wo and f_prog:
         _qiliao_matched = 0
         qiliao_map = {}
         if f_qiliao:
-            qiliao_map = read_qiliao_dates(f_qiliao.read())
+            qiliao_map = read_qiliao_dates(read_source(f_qiliao))
             if qiliao_map:
                 wo_keys = _result["製令編號"].astype(str).str.strip()
                 mapped_q = wo_keys.map(qiliao_map)

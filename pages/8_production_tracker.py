@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import inject_css, render_header, render_sidebar
+from utils.shared import inject_css, render_header, render_sidebar, render_sd_loader, read_source
 from utils.i18n import t
 
 if "lang" not in st.session_state:
@@ -363,7 +363,7 @@ with st.sidebar:
     prod_file  = st.file_uploader("生產進度表（ERP匯出）", type=["xlsx", "xls"], key="prod")
     short_file = st.file_uploader("製令欠料表（ERP匯出）",  type=["xlsx", "xls"], key="short")
     iqc_file   = st.file_uploader("IQC 待驗表（ERP匯出）", type=["xlsx", "xls"], key="iqc")
-    stock_file = st.file_uploader("供需表-分倉（每日更新）", type=["xlsx", "xls"], key="stock")
+    stock_file = render_sd_loader(key="prod_tracker", label="供需表-分倉（每日更新）")
     st.caption("從 ERP → 製令/託外管理系統 匯出後上傳")
 
     st.divider()
@@ -418,7 +418,7 @@ with st.spinner("分析中..."):
         short_file.read(),
         date.today().isoformat(),
         iqc_file.read() if iqc_file else None,
-        stock_file.read() if stock_file else None,
+        read_source(stock_file) if stock_file else None,
     )
 
 # ── 舊快取格式相容處理 ───────────────────────────────────────────────────────

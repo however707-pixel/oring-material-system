@@ -7,7 +7,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, PRIORITY_WHS
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, PRIORITY_WHS, render_sd_loader, read_source, source_filename
 from utils.i18n import t
 
 # =========================
@@ -271,7 +271,7 @@ with st.sidebar:
     st.divider()
     st.markdown(f"### {t('settings')}")
 
-    uploaded_file = st.file_uploader(t("upload_label"), type=["csv", "xlsx", "xls"])
+    uploaded_file = render_sd_loader(key="transfer", label=t("upload_label"))
 
     analysis_date = st.date_input(t("date_start"), datetime(2026, 5, 1), format="YYYY/MM/DD")
     end_date      = st.date_input(t("date_end"),   datetime(2026, 5, 31), format="YYYY/MM/DD")
@@ -303,11 +303,11 @@ with st.sidebar:
 # 5. 主畫面
 # =========================
 if uploaded_file is not None:
-    file_bytes = uploaded_file.read()
+    file_bytes = read_source(uploaded_file)
 
     with st.spinner(t("spinner")):
         matrix, spq_map, raw_period = load_and_pivot_data(
-            file_bytes, uploaded_file.name, analysis_date, end_date
+            file_bytes, source_filename(uploaded_file), analysis_date, end_date
         )
 
     if matrix is not None and not matrix.empty:

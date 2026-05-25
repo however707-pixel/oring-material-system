@@ -6,7 +6,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader
 
 # =========================
 # 0. 初始化
@@ -34,7 +34,7 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
     outsource_file = st.file_uploader("上傳委外需求表", type=["xlsx", "xls", "csv"])
-    supply_file    = st.file_uploader("上傳供需表",     type=["xlsx", "xls", "csv"])
+    supply_file    = render_sd_loader(key="outsource", label="上傳供需表")
     analysis_date  = st.date_input("📅 分析基準日", datetime(2026, 5, 15), format="YYYY/MM/DD")
     days_range     = st.slider("考慮未來天數", 1, 30, 14)
     st.divider()

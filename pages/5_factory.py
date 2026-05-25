@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader
 
 ensure_calamine()
 
@@ -33,86 +33,12 @@ COL_DEMAND = 7   # H: 欠料數量
 COL_WODATE = 13  # N: 工單開工日
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
-NAS_SD_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 鼎新系統報表\LRPMR05庫存供需表(分倉)-每日(AM4-00抓取)(Ian提供)-2020"
-LOCAL_SD    = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "sd_latest.xlsx")
-LOCAL_DONE  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "sd_fetch_done.txt")
-
-def find_latest_nas_sd():
-    """回傳 (完整路徑, 檔名, 是否為今日)，若 NAS 不可達則回傳 (None, None, False)"""
-    try:
-        today_tag = datetime.now().strftime('%Y%m%d')
-        files = sorted([
-            f for f in os.listdir(NAS_SD_DIR)
-            if f.startswith('供需表(分倉)-') and f.endswith('.xlsx')
-        ])
-        if not files:
-            return None, None, False
-        latest    = files[-1]
-        is_today  = today_tag in latest
-        return os.path.join(NAS_SD_DIR, latest), latest, is_today
-    except Exception:
-        return None, None, False
-
-def local_cache_info():
-    """回傳本機快取的日期標記（若無則 None）"""
-    try:
-        if os.path.exists(LOCAL_DONE):
-            return open(LOCAL_DONE, encoding='utf-8').read().strip()
-    except Exception:
-        pass
-    return None
-
 with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ 設定")
 
     shortage_file = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
-
-    # ── 供需表：NAS 自動偵測 + 本機快取 + 手動上傳 ───────────────────────────
-    nas_path, nas_name, nas_is_today = find_latest_nas_sd()
-    cache_date = local_cache_info()
-    today_str  = datetime.now().strftime('%Y%m%d')
-
-    if nas_path:
-        tag = "（今日）" if nas_is_today else "（非今日）"
-        st.success(f"✅ NAS 已連線")
-        st.caption(f"最新供需表：**{nas_name}** {tag}")
-        col_a, col_b = st.columns([3, 2])
-        with col_a:
-            if st.button("⬇️ 載入最新供需表", use_container_width=True):
-                st.session_state['nas_sd_path'] = nas_path
-                st.session_state['nas_sd_name'] = nas_name
-        with col_b:
-            if st.button("🔄 重新偵測", use_container_width=True):
-                st.session_state.pop('nas_sd_path', None)
-                st.rerun()
-        if 'nas_sd_name' in st.session_state:
-            st.info(f"📊 已載入：{st.session_state['nas_sd_name']}")
-    else:
-        st.warning("⚠️ NAS 離線")
-        st.session_state.pop('nas_sd_path', None)
-        # 嘗試本機快取
-        if os.path.exists(LOCAL_SD):
-            cache_label = f"今日（{cache_date}）" if cache_date == today_str else f"前次備份（{cache_date or '未知'}）"
-            st.info(f"💾 使用本機快取：{cache_label}")
-            if st.button("載入本機快取供需表", use_container_width=True):
-                st.session_state['nas_sd_path'] = LOCAL_SD
-                st.session_state['nas_sd_name'] = f"sd_latest.xlsx（{cache_label}）"
-
-    st.caption("或手動上傳覆蓋：")
-    sd_file = st.file_uploader("📂 上傳供需表", type=["xlsx", "xls", "csv"])
-
-    # 決定供需表來源（優先順序：手動上傳 > NAS > 本機快取）
-    if sd_file:
-        sd_source = sd_file
-        st.session_state.pop('nas_sd_path', None)
-    elif 'nas_sd_path' in st.session_state:
-        sd_source = st.session_state['nas_sd_path']
-    elif os.path.exists(LOCAL_SD):
-        sd_source = LOCAL_SD   # 自動 fallback 到本機快取
-    else:
-        sd_source = None
-
+    sd_source     = render_sd_loader(key="factory")
     shipdate_file = st.file_uploader("📂 上傳出貨日（選填）",         type=["xlsx", "xls"])
 
     st.markdown("**📅 分析區間**")

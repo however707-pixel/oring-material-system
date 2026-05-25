@@ -9,7 +9,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar
+from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, source_is_csv
 
 ensure_calamine()
 
@@ -35,7 +35,7 @@ with st.sidebar:
     st.markdown("### ⚙️ 設定")
 
     h2o_file      = st.file_uploader("📂 上傳國智缺料表（W11）",          type=["xlsx", "xls", "csv"])
-    sd_file       = st.file_uploader("📂 上傳供需表",                      type=["xlsx", "xls", "csv"])
+    sd_file       = render_sd_loader(key="guozhi")
     transfer_file = st.file_uploader("📂 上傳加工廠互調料滙整表（選填）", type=["xlsx", "xls", "xlsm"])
 
     st.markdown("**📅 分析區間**")
@@ -111,13 +111,13 @@ with st.spinner("分析中，請稍候..."):
 
     # 讀供需表
     try:
-        if sd_file.name.endswith('.csv'):
+        if source_is_csv(sd_file):
             for enc in ['utf-8-sig', 'cp950', 'big5']:
                 try:
                     sd = pd.read_csv(sd_file, header=0, encoding=enc)
                     break
                 except Exception:
-                    sd_file.seek(0)
+                    if hasattr(sd_file, 'seek'): sd_file.seek(0)
         else:
             sd = pd.read_excel(sd_file, sheet_name=0, header=0)
         sd['日期'] = pd.to_datetime(sd['日期'], errors='coerce')
