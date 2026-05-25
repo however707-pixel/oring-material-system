@@ -28,6 +28,7 @@ TEXTS = {
         "link_scheduling":  "排程系統",
         "link_daily_inbound": "每日入庫筆數",
         "link_daily_picking": "每日備料筆數",
+        "link_wh_staff":     "倉儲人員編製",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -139,6 +140,7 @@ TEXTS = {
         "link_scheduling":  "Scheduling System",
         "link_daily_inbound": "Daily Inbound Count",
         "link_daily_picking": "Daily Picking Count",
+        "link_wh_staff":     "Warehouse Staff",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",
