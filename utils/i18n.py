@@ -24,6 +24,10 @@ TEXTS = {
         "link_wo_progress": "工單進度表",
         "link_shortage_detail": "區間工單缺料明細",
         "link_production_tracker": "生產進度表",
+        "link_monthly_cost": "每月成本計算表",
+        "link_scheduling":  "排程系統",
+        "link_daily_inbound": "每日入庫筆數",
+        "link_daily_picking": "每日備料筆數",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -131,6 +135,10 @@ TEXTS = {
         "link_wo_progress": "Work Order Progress",
         "link_shortage_detail": "Period Shortage Detail",
         "link_production_tracker": "Production Tracker",
+        "link_monthly_cost": "Monthly Cost Sheet",
+        "link_scheduling":  "Scheduling System",
+        "link_daily_inbound": "Daily Inbound Count",
+        "link_daily_picking": "Daily Picking Count",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",

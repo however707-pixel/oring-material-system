@@ -432,7 +432,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            📊 每月成本計算表
+            📊 {t("link_monthly_cost")}
         </a>
         <a href="/scheduling" target="_self" style="
             display:flex; align-items:center; gap:8px;
@@ -442,7 +442,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            🗓 排程系統
+            🗓 {t("link_scheduling")}
         </a>
         """, unsafe_allow_html=True)
 
@@ -466,7 +466,7 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            📥 每日入庫筆數
+            📥 {t("link_daily_inbound")}
         </a>
         <a href="/daily_picking" target="_self" style="
             display:flex; align-items:center; gap:8px;
@@ -476,6 +476,6 @@ def render_sidebar():
             transition:background 0.15s;
         " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
            onmouseout="this.style.background='';this.style.color='#475569'">
-            📋 每日備料筆數
+            📋 {t("link_daily_picking")}
         </a>
         """, unsafe_allow_html=True)
