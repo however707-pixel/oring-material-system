@@ -383,15 +383,19 @@ with st.spinner("分析中，請稍候..."):
 
         return int(total)
 
-    def fmt_deficit(qty, deficit, alloc=None, net=None):
+    def fmt_deficit(qty, deficit, alloc=None, net=None, pending=None):
         """缺料量顯示（SPQ進位後）：
-        - alloc < net → 庫存不足：「⚠️ 實配量（需 X）」
+        - alloc < net → 庫存不足：「⚠️ 原缺X｜已調Y｜尚缺Z｜可調W｜差V」
         - qty != deficit → SPQ進位：「qty (原缺 X)」
         - 正常：直接顯示 qty
         """
         if not qty: return None
         if alloc is not None and net is not None and int(alloc) < int(net):
-            return f"⚠️ {int(alloc):,}  （需 {int(net):,}）"
+            gap = int(net) - int(alloc)
+            pend = int(pending) if pending else 0
+            if pend > 0:
+                return f"⚠️ 原缺{int(deficit):,}｜已調{pend:,}｜尚缺{int(net):,}｜可調{int(alloc):,}｜差{gap:,}"
+            return f"⚠️ 尚缺{int(net):,}｜可調{int(alloc):,}｜差{gap:,}"
         d = int(deficit)
         return f"{qty:,}  (原缺 {d:,})" if qty != d else qty
 
@@ -463,22 +467,28 @@ with st.spinner("分析中，請稍候..."):
                     t_alloc, k_alloc = first_alloc, second_alloc
                 else:
                     k_alloc, t_alloc = first_alloc, second_alloc
+                _t_pend_note = f"唐佑已調 {t_pending:,}、" if t_pending > 0 else ""
+                _k_pend_note = f"國智已調 {k_pending:,}、" if k_pending > 0 else ""
                 alloc_note = (
-                    f"⚠️ 庫存不足（需 {total_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {total_net - net_avail_4w:,}）\n"
+                    f"⚠️ 庫存不足（{_t_pend_note}{_k_pend_note}合計尚缺 {total_net:,}，四倉剩餘可調 {net_avail_4w:,}，差 {total_net - net_avail_4w:,}）\n"
                     f"► 優先供應 {first_nm}（最早缺料 {first_ds}）→ 配 {first_alloc:,}\n"
                     f"► {second_nm}（最早缺料 {second_ds}）→ 僅可配 {second_alloc:,}，尚缺 {second_net - second_alloc:,}"
                 )
             elif t_net > 0:
                 t_alloc = min(t_net, net_avail_4w)
                 k_alloc = 0
+                _pend_note = f"已待調撥 {t_pending:,}，" if t_pending > 0 else ""
                 alloc_note = (
-                    f"⚠️ 庫存不足（唐佑需 {t_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {t_net - t_alloc:,}）"
+                    f"⚠️ 庫存不足（唐佑原缺 {t_deficit:,}，{_pend_note}"
+                    f"尚缺 {t_net:,}，四倉剩餘可調 {net_avail_4w:,}，差 {t_net - t_alloc:,}）"
                 )
             else:
                 k_alloc = min(k_net, net_avail_4w)
                 t_alloc = 0
+                _pend_note = f"已待調撥 {k_pending:,}，" if k_pending > 0 else ""
                 alloc_note = (
-                    f"⚠️ 庫存不足（國智需 {k_net:,}，四倉剩餘可用 {net_avail_4w:,}，尚缺 {k_net - k_alloc:,}）"
+                    f"⚠️ 庫存不足（國智原缺 {k_deficit:,}，{_pend_note}"
+                    f"尚缺 {k_net:,}，四倉剩餘可調 {net_avail_4w:,}，差 {k_net - k_alloc:,}）"
                 )
         elif net_avail_4w >= total_spq_net:
             # 剩餘庫存足夠 SPQ 進位量：給整包 SPQ 量
@@ -502,14 +512,16 @@ with st.spinner("分析中，請稍候..."):
             '缺料量':            int(shortage) if shortage > 0 else None,
             '唐佑代工倉 缺料量':
                 fmt_deficit(t_qty, t_deficit,
-                            t_alloc if insufficient and t_net > 0 else None,
-                            t_net   if insufficient and t_net > 0 else None),
+                            t_alloc   if insufficient and t_net > 0 else None,
+                            t_net     if insufficient and t_net > 0 else None,
+                            t_pending if insufficient and t_net > 0 else None),
             '唐佑代工倉 待調撥量':    t_pending if (has_transfer and t_deficit > 0) else None,
             '唐佑代工倉 實際應調撥量': t_actual  if has_transfer else None,
             '國智代工倉 缺料量':
                 fmt_deficit(k_qty, k_deficit,
-                            k_alloc if insufficient and k_net > 0 else None,
-                            k_net   if insufficient and k_net > 0 else None),
+                            k_alloc   if insufficient and k_net > 0 else None,
+                            k_net     if insufficient and k_net > 0 else None,
+                            k_pending if insufficient and k_net > 0 else None),
             '國智代工倉 待調撥量':    k_pending if (has_transfer and k_deficit > 0) else None,
             '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
             '合計委外缺料':          int(t_qty + k_qty) if (t_qty + k_qty) else None,
