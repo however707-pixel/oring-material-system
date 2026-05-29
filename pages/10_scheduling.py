@@ -1,613 +1,878 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+import re
 from datetime import date, timedelta
-import io, sys, os
+import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import inject_css, render_header, render_sidebar, render_sd_loader, read_source
+from utils.shared import inject_css, render_header, render_sidebar
 
 st.set_page_config(page_title="排程系統", page_icon="🗓", layout="wide")
 inject_css()
 render_header(title="排程系統", subtitle="Production Scheduling System", badge="生管 PC")
 render_sidebar()
 
-COLOR_STAGE  = {"組裝":"#1d4ed8","測試":"#7c3aed","包裝":"#0891b2","其他":"#64748b","委外":"#d97706"}
-COLOR_STATUS = {"生產中":"#16a34a","待開工":"#f59e0b","已完工":"#94a3b8","已發料":"#0891b2"}
+TODAY      = date.today()
+MIN_BUFFER = 10   # 最低齊料緩衝（2個工作週 = 10個工作天）
+REF_YEAR   = TODAY.year
 
-# G欄(製程名稱) → 大類（僅供甘特圖配色，不影響顯示）
-STAGE_MAP = {
-    "組裝":"組裝","組裝前製製程":"組裝","組裝2":"組裝","代工前製製程":"組裝","代工":"組裝",
-    "測試":"測試","SWTS":"測試",
-    "包裝":"包裝","包裝線":"包裝",
-    "FW燒錄":"其他","點膠":"其他","其他":"其他",
+# ── 2026 台灣國定假日（週六日已由 weekday() 排除，這裡只需填平日補假）─────────
+# 資料來源：勞動部行政院公告，如有異動請自行更新
+TAIWAN_HOLIDAYS = {
+    # 元旦
+    date(2026, 1, 1),   # 元旦
+    date(2026, 1, 2),   # 彈性放假
+    # 春節
+    date(2026, 2, 16),  # 除夕（彈性放假）
+    date(2026, 2, 17),  # 春節初一
+    date(2026, 2, 18),  # 春節初二
+    date(2026, 2, 19),  # 春節初三
+    date(2026, 2, 20),  # 春節初四
+    # 228 和平紀念日（2/28 週六，3/2 週一補假）
+    date(2026, 3, 2),
+    # 兒童節（4/4 週六，4/3 週五補假）
+    date(2026, 4, 3),
+    # 清明節（4/5 週日，4/6 週一補假）
+    date(2026, 4, 6),
+    # 勞動節
+    date(2026, 5, 1),
+    # 端午節（農曆5/5 ≈ 6/19 週五）
+    date(2026, 6, 19),
+    # 中秋節（農曆8/15 ≈ 9/25 週五）
+    date(2026, 9, 25),
+    # 國慶日（10/10 週六，10/9 週五補假）
+    date(2026, 10, 9),
 }
 
-# 「指定完工」不列入 → 工單明細讀取時整筆排除
-STATUS_MAP = {
-    "已完工":"已完工","生產中":"生產中","已生產":"生產中",
-    "已發料":"已發料","未完工":"待開工","未完工前站":"待開工",
-}
-
-def add_workdays(start, n=5):
-    """完工日 + n 個工作天（跳過週六日）"""
-    cur = pd.Timestamp(start)
+def count_workdays(start: date, end: date) -> int:
+    """計算 start（不含）到 end（含）之間的工作天數，排除週六日及國定假日。"""
+    if not start or not end or start >= end:
+        return 0
     count = 0
-    while count < n:
+    cur = start
+    while cur < end:
         cur += timedelta(days=1)
-        if cur.weekday() < 5:
+        if cur.weekday() < 5 and cur not in TAIWAN_HOLIDAYS:
             count += 1
-    return cur.date()
+    return count
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 解析函數
+# 工具函式
 # ═══════════════════════════════════════════════════════════════════════════════
-def parse_files(bytes_wo, bytes_prog):
-    wo   = pd.read_excel(io.BytesIO(bytes_wo))
-    prog = pd.read_excel(io.BytesIO(bytes_prog))
-    wo.columns   = wo.columns.str.strip()
-    prog.columns = prog.columns.str.strip()
 
-    # ── 工單明細 ──────────────────────────────────────────────────────────────
-    # D欄(index 3)=預計產量, E欄(index 4)=已生產量, F欄(index 5)=已領套數
-    # G欄(index 6)=未生產量, H欄(index 7)=預計開工, I欄(index 8)=預計完工
-    # M欄(index 12)=狀態碼 → 排除「指定完工」
-    if "狀態碼" in wo.columns:
-        wo = wo[wo["狀態碼"].astype(str).str.strip() != "指定完工"].copy()
-
-    wo["開工"] = pd.to_datetime(wo.iloc[:, 7], errors="coerce").dt.date   # H欄
-    wo["完工"] = pd.to_datetime(wo.iloc[:, 8], errors="coerce").dt.date   # I欄
-    wo["類型"] = wo["廠商名稱"].apply(
-        lambda x: "委外" if pd.notna(x) and str(x).strip() not in ["", "nan"] else "廠內"
-    )
-    wo["狀態_wo"] = wo["狀態碼"].map(STATUS_MAP).fillna("待開工")
-
-    wo_keep = ["製令編號", "品名", "產品品號", "預計產量", "已生產量", "已領套數",
-               "未生產量", "開工", "完工", "類型", "狀態_wo", "廠商名稱"]
-    wo_base = wo[[c for c in wo_keep if c in wo.columns]].copy()
-    wo_base = wo_base.rename(columns={"品名": "產品"})
-
-    # ── 廠內進度原始欄位（供選取工單後展開用） ───────────────────────────────
-    _raw_cols = ["製令編號", "急料", "品號",
-                 "製程代號", "製程名稱", "製令狀態", "批量狀態", "工序",
-                 "預計產量", "數量", "包裝數量", "單位"]
-    prog_raw = prog[[c for c in _raw_cols if c in prog.columns]].copy()
-    prog_raw["製令編號"] = prog_raw["製令編號"].astype(str).str.strip()  # 確保值無空白
-
-    # ── 廠內進度 ──────────────────────────────────────────────────────────────
-    # A欄(index 0)=製令編號, G欄(index 6)=製程名稱, H欄(index 7)=製令狀態, I欄(index 8)=批量狀態
-    prog["工序"]    = prog.iloc[:, 6].fillna("").astype(str).str.strip()   # G欄 原值顯示
-    prog["工序_類"] = prog.iloc[:, 6].map(STAGE_MAP).fillna("其他")        # G欄 → 配色分類
-    prog["工序狀態"] = prog.iloc[:, 7].map(STATUS_MAP).fillna("待開工")    # H欄
-    prog["批量狀態"] = prog.iloc[:, 8].astype(str).str.strip() if len(prog.columns) > 8 else ""  # I欄
-    # G欄空白的列直接排除
-    prog = prog[prog["工序"].str.len() > 0]
-
-    prog_keep = ["製令編號", "工序", "工序_類", "批量狀態", "工序狀態"]
-    prog_base = prog[[c for c in prog_keep if c in prog.columns]].copy()
-
-    # ── JOIN：廠內進度（左表）← 工單明細（右表） ──────────────────────────
-    # 預計產量/已生產量/已領套數/未生產量 全部取工單明細（D/E/F/G欄）
-    wo_join_cols = ["製令編號", "產品", "產品品號", "預計產量", "已生產量", "已領套數",
-                    "未生產量", "開工", "完工", "類型", "廠商名稱"]
-    merged = prog_base.merge(
-        wo_base[[c for c in wo_join_cols if c in wo_base.columns]],
-        on="製令編號", how="left"
-    )
-    merged["狀態"]     = merged["工序狀態"]
-    merged["已生產量"] = pd.to_numeric(merged["已生產量"], errors="coerce").fillna(0)
-    merged["未生產量"] = pd.to_numeric(merged["未生產量"], errors="coerce").fillna(0)
-
-    merged = merged.dropna(subset=["開工", "完工"])
-    merged = merged[merged["開工"] <= merged["完工"]]
-    merged["出貨日"] = merged["完工"].apply(add_workdays)   # 完工 + 5 工作天
-    merged["齊料日"] = ""
-
-    # ── 委外工單（只從工單明細取） ────────────────────────────────────────────
-    ow = wo_base[wo_base["類型"] == "委外"].copy()
-    ow["工序"]     = "委外"
-    ow["工序_類"]  = "委外"
-    ow["批量狀態"] = ""
-    ow["狀態"]     = ow["狀態_wo"]
-    ow = ow.dropna(subset=["開工", "完工"])
-    ow = ow[ow["開工"] <= ow["完工"]]
-    ow["出貨日"] = ow["完工"].apply(add_workdays)
-    ow["齊料日"] = ""
-
-    # ── 合併廠內 + 委外 ───────────────────────────────────────────────────────
-    cols = ["製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
-            "預計產量", "已生產量", "已領套數", "未生產量",
-            "開工", "完工", "出貨日", "齊料日", "狀態"]
-
-    for c in ["出貨日", "齊料日", "類型", "批量狀態", "工序_類", "已領套數"]:
-        if c not in merged.columns:
-            merged[c] = ""
-
-    final_inner = merged[[c for c in cols if c in merged.columns]].copy()
-    final_outer = ow[[c for c in cols if c in ow.columns]].copy()
-    final = pd.concat([final_inner, final_outer], ignore_index=True)
-    final["UPH"]      = 10
-    final["優先順序"] = 99
-    for col in ["預計產量", "已生產量", "已領套數", "未生產量"]:
-        final[col] = pd.to_numeric(final.get(col, 0), errors="coerce").fillna(0)
-    final = final.sort_values("開工").reset_index(drop=True)
-    return final, wo_base, prog_raw   # 同時回傳工單明細+廠內進度原始資料
+def parse_date_str(s):
+    """將 '5/28'、'6/1' 等字串轉為 date，跨年自動判斷。"""
+    try:
+        m, d = map(int, s.split('/'))
+        dt = date(REF_YEAR, m, d)
+        # 若日期比今天早超過 6 個月，視為明年
+        if (TODAY - dt).days > 180:
+            dt = date(REF_YEAR + 1, m, d)
+        return dt
+    except Exception:
+        return None
 
 
-def read_ship_dates(bytes_ship):
+def parse_ship_date(raw):
     """
-    從出貨日.xlsx 的「彙總」工作表讀取出貨日資訊
-    C欄(index 2) = 製令編號，V欄(index 21) = 對應/出貨組（文字原封不動）
+    解析 M欄出貨日，回傳 (ship_date: date|None, ship_label: str)
+    格式可能為：
+      - datetime    → 2026-05-25
+      - 文字日期    → 6/15-國智*750，6/29-國智*1000  (取最早日期)
+      - 空 / TBD / 試產 / 00:00:00
     """
-    df = pd.read_excel(io.BytesIO(bytes_ship), sheet_name=1, header=2)
-    wo_col   = df.iloc[:, 2]    # C欄 = 工單號碼
-    ship_col = df.iloc[:, 21]   # V欄 = 對應/出貨組
+    if pd.isna(raw):
+        return None, ''
+    s = str(raw).strip()
+    if s in ('', 'nan', 'None', 'TBD', '試產', '00:00:00'):
+        return None, s if s not in ('nan', 'None', '00:00:00') else ''
 
-    mapping = {}
-    for wo, ship in zip(wo_col, ship_col):
-        wo_str = str(wo).strip()
-        if not wo_str or wo_str in ("nan", "None", ""):
+    # 已是 datetime
+    if hasattr(raw, 'date'):
+        d = raw.date()
+        return d, d.strftime('%Y-%m-%d')
+
+    # 嘗試直接 pd.to_datetime
+    try:
+        d = pd.to_datetime(s).date()
+        return d, d.strftime('%Y-%m-%d')
+    except Exception:
+        pass
+
+    # 從文字中找所有 M/D 或 M月D日 格式，取最早那個
+    found = re.findall(r'(\d{1,2})/(\d{1,2})', s)
+    dates = []
+    for m_str, d_str in found:
+        dt = parse_date_str(f'{m_str}/{d_str}')
+        if dt:
+            dates.append(dt)
+    if dates:
+        earliest = min(dates)
+        return earliest, s   # label 保留原文
+    return None, s
+
+
+def parse_material_status(text):
+    """
+    解析 L欄進料狀況內容，回傳：
+      latest_date  : 所有料號中最晚的預計到料日（None = 無日期資訊）
+      delayed_items: [(料號, 預計日, 逾期天數), ...]  已逾期未到
+      iqc_items    : [(料號, 最後日期|None), ...]     目前在 IQC
+      future_items : [(料號, 預計日, 距今天數), ...]  尚未到但有明確日期
+    """
+    if pd.isna(text) or not str(text).strip():
+        return None, [], [], []
+
+    lines = str(text).strip().split('\n')
+    all_dates    = []
+    delayed_items = []
+    iqc_items    = []
+    future_items = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
             continue
-        if pd.isna(ship):
-            continue
-        # datetime → 日期字串；其他文字原封不動
-        if hasattr(ship, "strftime"):
-            ship_str = ship.strftime("%Y-%m-%d")
+
+        # 料號（* 前面）
+        mat_no = line.split('*')[0].strip() if '*' in line else line[:50]
+
+        # 判斷是否在 IQC（行尾或括號內有 IQC）
+        is_iqc = bool(re.search(r'IQC', line, re.IGNORECASE))
+
+        # 擷取所有 (M/D) 日期
+        date_strs = re.findall(r'\((\d{1,2}/\d{1,2})\)', line)
+        mat_dates = [parse_date_str(s) for s in date_strs]
+        mat_dates = [d for d in mat_dates if d]
+
+        if mat_dates:
+            latest = max(mat_dates)
+            all_dates.append(latest)
+
+            if is_iqc:
+                iqc_items.append((mat_no, latest))
+            elif latest < TODAY:
+                days_late = (TODAY - latest).days
+                delayed_items.append((mat_no, latest, days_late))
+            else:
+                days_to   = (latest - TODAY).days
+                future_items.append((mat_no, latest, days_to))
         else:
-            ship_str = str(ship).strip()
-        if ship_str:
-            mapping[wo_str] = ship_str
-    return mapping   # {製令編號: 出貨日文字}
+            # 只有 (IQC) 沒有日期
+            if is_iqc:
+                iqc_items.append((mat_no, None))
+
+    latest_all = max(all_dates) if all_dates else None
+    return latest_all, delayed_items, iqc_items, future_items
 
 
-def read_qiliao_dates(bytes_supply):
-    """
-    從供需表(分倉).xlsx 計算齊料日
-      G欄(index 6)  = 到料日（datetime）
-      J欄(index 9)  = 差異（負數 = 缺料）
-      L欄(index 11) = 工單號碼
-
-    規則（以「今天」為基準）：
-      - 缺料（差異 < 0）+ 到料日 >= 今天 → 取「未來」缺料行中最晚到料日
-      - 缺料（差異 < 0）+ 到料日全部已過 or 無到料日 → 顯示「缺料」（逾期未到）
-      - 不缺料 → 不填（空白）
-    """
-    import datetime as _dt
-    today = _dt.date.today()
-
-    df = pd.read_excel(io.BytesIO(bytes_supply), header=0)
-
-    tmp = pd.DataFrame({
-        "工單":  df.iloc[:, 11],   # L欄 = 工單號碼
-        "到料日": df.iloc[:, 6],   # G欄 = 到料日
-        "差異":  df.iloc[:, 9],    # J欄 = 差異（負 = 缺料）
-    })
-
-    # 基本篩選：有工單號碼
-    tmp = tmp[tmp["工單"].notna()]
-    tmp["工單"] = tmp["工單"].astype(str).str.strip()
-    tmp = tmp[~tmp["工單"].isin(["", "nan", "None"])]
-
-    # 差異數值化，只留缺料行
-    tmp["差異"] = pd.to_numeric(tmp["差異"], errors="coerce").fillna(0)
-    shortage = tmp[tmp["差異"] < 0].copy()
-
-    if shortage.empty:
-        return {}
-
-    # 判斷 G欄是否為日期
-    def is_date(v):
-        return isinstance(v, (_dt.datetime, _dt.date, pd.Timestamp))
-
-    shortage["有到料日"] = shortage["到料日"].apply(is_date)
-
-    # 所有有缺料的工單（不分日期新舊）
-    all_shortage_wos = set(shortage["工單"].unique())
-
-    # ① 只取「到料日 >= 今天」的缺料行
-    has_date = shortage[shortage["有到料日"]].copy()
-    has_date["到料日_dt"] = pd.to_datetime(has_date["到料日"]).dt.date
-    future_shortage = has_date[has_date["到料日_dt"] >= today]
-
-    mapping = {}
-    if not future_shortage.empty:
-        latest = future_shortage.groupby("工單")["到料日_dt"].max()
-        for wo, dt in latest.items():
-            mapping[wo] = dt.strftime("%Y-%m-%d")
-
-    # ② 缺料 但「無任何未來到料日」→ 顯示「缺料」（到料日已全過或根本沒有採購）
-    covered_wos = set(mapping.keys())
-    for wo in all_shortage_wos - covered_wos:
-        mapping[wo] = "缺料"
-
-    return mapping   # {製令編號: "YYYY-MM-DD" or "缺料"}
+def classify_assy(val):
+    """ASSY / PACKING 欄：回傳 (label, date|None)"""
+    if pd.isna(val):
+        return '', None
+    s = str(val).strip()
+    if s.upper() in ('V', 'V-2/5'):
+        return '✓', None
+    if hasattr(val, 'date'):
+        return val.date().strftime('%m/%d'), val.date()
+    try:
+        d = pd.to_datetime(s).date()
+        return d.strftime('%m/%d'), d
+    except Exception:
+        return s, None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 上傳區
+# 解析整份檔案
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_file(uploaded):
+    df = pd.read_excel(uploaded, sheet_name='LIST', header=0)
+
+    rows = []
+    for _, r in df.iterrows():
+        wo       = str(r.iloc[1]).strip() if pd.notna(r.iloc[1]) else ''
+        product  = str(r.iloc[2]).strip() if pd.notna(r.iloc[2]) else ''
+        qty      = r.iloc[3]
+        rate     = float(r.iloc[5]) if pd.notna(r.iloc[5]) else 0.0
+        hint     = str(r.iloc[8]).strip() if pd.notna(r.iloc[8]) else ''
+        need_n   = int(r.iloc[9])  if pd.notna(r.iloc[9])  else 0
+        lack_n   = int(r.iloc[10]) if pd.notna(r.iloc[10]) else 0
+        mat_text = r.iloc[11]
+        delay_mat = str(r.iloc[13]).strip() if pd.notna(r.iloc[13]) else ''
+
+        if not wo or wo == 'nan':
+            continue
+
+        ship_date, ship_label = parse_ship_date(r.iloc[12])
+        assy_label, assy_date = classify_assy(r.iloc[6])
+
+        latest_mat, delayed, iqc, future = parse_material_status(mat_text)
+
+        # ── 齊料日判斷 ──────────────────────────────────────────────────────
+        # 優先用 L欄解析出的最晚到料日；
+        # L欄空白時，若 I欄(重點提示)含「已發料」「已齊料」「已發放」→ 視為齊料，
+        # 並從 hint 中抽取日期（如「5/4已發料」→ 5/4）
+        qi_liao_date = latest_mat
+
+        hint_qi_keywords = ('已發料', '已齊料', '已發放', '齊料')
+        hint_is_qi = any(kw in hint for kw in hint_qi_keywords)
+
+        if qi_liao_date is None and hint_is_qi:
+            # 從 hint 抽取第一個 M/D 日期（如 5/4、5/13）
+            m = re.search(r'(\d{1,2})/(\d{1,2})', hint)
+            if m:
+                qi_liao_date = parse_date_str(f'{m.group(1)}/{m.group(2)}')
+            else:
+                qi_liao_date = TODAY   # 有發料字樣但沒日期，保守用今天
+
+        # 料況狀態文字
+        if rate >= 1.0 or hint_is_qi:
+            mat_status   = '已齊料'
+            qi_liao_date = qi_liao_date or TODAY
+        elif rate == 0.0:
+            mat_status = '完全缺料'
+        else:
+            mat_status = f'缺料 {rate:.0%}'
+
+        # 齊料緩衝 & 達標差距
+        buffer_days = None
+        target_gap  = None
+
+        if ship_date and qi_liao_date:
+            buffer_days = count_workdays(qi_liao_date, ship_date)
+            target_gap  = buffer_days - MIN_BUFFER   # 正=達標, 負=不足
+
+        # 延遲料況摘要（最嚴重的那顆）
+        delay_summary = ''
+        if delayed:
+            worst = max(delayed, key=lambda x: x[2])
+            delay_summary = f'逾期 -{worst[2]}天：{worst[0]}'
+            if len(delayed) > 1:
+                delay_summary += f' 等共 {len(delayed)} 料'
+        elif iqc:
+            delay_summary = f'IQC 中 {len(iqc)} 料'
+
+        rows.append({
+            '工單':         wo,
+            '成品料號':     product,
+            '預計產量':     qty,
+            '出貨日':       ship_date,
+            '出貨日_顯示':  ship_label,
+            '整體料齊率':   rate,
+            '料況狀態':     mat_status,
+            'ASSY齊料日':   assy_label,
+            'ASSY_date':    assy_date,
+            '重點提示':     hint,
+            '需領料數':     need_n,
+            '未領料數':     lack_n,
+            '預計齊料日':   qi_liao_date,
+            '緩衝天數':     buffer_days,
+            '達標差距':     target_gap,
+            '延遲料況':     delay_summary,
+            '延遲物料':     str(mat_text) if pd.notna(mat_text) else '',
+            '進料明細':     str(mat_text) if pd.notna(mat_text) else '',
+            '_delayed':     delayed,
+            '_iqc':         iqc,
+            '_future':      future,
+        })
+
+    return pd.DataFrame(rows)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 說明卡片
 # ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("---")
-u1, u2, u3, u4, u5 = st.columns([2, 2, 2, 2, 1])
-with u1:
-    f_wo   = st.file_uploader("① 工單明細.xlsx",  type=["xlsx"], key="f_wo")
-with u2:
-    f_prog = st.file_uploader("② 廠內進度.xlsx",  type=["xlsx"], key="f_prog")
-with u3:
-    f_ship = st.file_uploader("③ 出貨日.xlsx（選填）", type=["xlsx"], key="f_ship")
-with u4:
-    f_qiliao = render_sd_loader(key="scheduling", label="④ 供需表.xlsx（齊料日）")
-with u5:
-    st.markdown("<br>", unsafe_allow_html=True)
-    load_btn = st.button("載入", type="primary", disabled=not (f_wo and f_prog))
+st.markdown("#### 系統邏輯說明")
 
-if load_btn and f_wo and f_prog:
-    with st.spinner("讀取並合併中..."):
-        _result, _wo_all, _prog_raw = parse_files(f_wo.read(), f_prog.read())
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    st.markdown("""
+<div style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:6px;padding:12px 14px">
+<div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:6px">📦 出貨日（M欄）</div>
+<div style="font-size:12px;color:#374151;line-height:1.6">
+以出貨日為中心追蹤每張工單<br>
+<b>空白</b> = 尚未回交期給業務
+</div>
+</div>""", unsafe_allow_html=True)
 
-        # ── 出貨日.xlsx：V欄原文覆寫出貨日 ──────────────────────────────────
-        if f_ship:
-            ship_map = read_ship_dates(f_ship.read())
-            if ship_map:
-                mapped = _result["製令編號"].astype(str).str.strip().map(ship_map)
-                _result["出貨日"] = mapped.where(mapped.notna(), _result["出貨日"].astype(str))
+with c2:
+    st.markdown("""
+<div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:6px;padding:12px 14px">
+<div style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">⚙️ 預計齊料日</div>
+<div style="font-size:12px;color:#374151;line-height:1.6">
+① <b>L欄</b>：取各料號最晚到料日<br>
+② L欄空白 → 看 <b>I欄</b> 是否含<br>「已發料／已齊料／已發放」
+</div>
+</div>""", unsafe_allow_html=True)
 
-        # ── 供需表.xlsx：計算齊料日（缺料物料中到料日最晚者） ──────────────
-        _qiliao_matched = 0
-        qiliao_map = {}
-        if f_qiliao:
-            qiliao_map = read_qiliao_dates(read_source(f_qiliao))
-            if qiliao_map:
-                wo_keys = _result["製令編號"].astype(str).str.strip()
-                mapped_q = wo_keys.map(qiliao_map)
-                _qiliao_matched = int(mapped_q.notna().sum())
-                _result["齊料日"] = mapped_q.where(mapped_q.notna(), _result["齊料日"])
+with c3:
+    st.markdown("""
+<div style="background:#fefce8;border-left:4px solid #eab308;border-radius:6px;padding:12px 14px">
+<div style="font-size:13px;font-weight:700;color:#854d0e;margin-bottom:6px">📏 緩衝天數</div>
+<div style="font-size:12px;color:#374151;line-height:1.6">
+<b>出貨日 − 齊料日（工作天）</b><br>
+已扣除週六日 + 國定假日<br>
+最低標準：<b>≥ 10 工作天（2週）</b><br>
+達標差距 = 緩衝 − 10
+</div>
+</div>""", unsafe_allow_html=True)
 
-        st.session_state.wo_data      = _result
-        st.session_state.wo_all       = _wo_all
-        st.session_state.prog_raw     = _prog_raw
-        st.session_state._qiliao_map  = qiliao_map if f_qiliao else {}
-        st.session_state._result_wos  = _result["製令編號"].astype(str).str.strip().unique().tolist()
-        # 強制清除 data_editor 快取，避免舊值蓋掉新資料
-        st.session_state.pop("priority_editor", None)
+with c4:
+    st.markdown("""
+<div style="background:#fff1f2;border-left:4px solid #ef4444;border-radius:6px;padding:12px 14px">
+<div style="font-size:13px;font-weight:700;color:#b91c1c;margin-bottom:6px">🔴 進料延遲判斷</div>
+<div style="font-size:12px;color:#374151;line-height:1.6">
+L欄格式：<code>料號*數量(日期)</code><br>
+日期已過未到 → <b>逾期 −N 天</b><br>
+含 IQC → 已到廠驗收中
+</div>
+</div>""", unsafe_allow_html=True)
 
-    _tags = []
-    if f_ship:   _tags.append("出貨日")
-    if f_qiliao: _tags.append("齊料日")
-    st.success(
-        f"載入完成：{len(st.session_state.wo_data):,} 筆工序記錄，"
-        f"{st.session_state.wo_data['製令編號'].nunique():,} 張工單"
-        + (f"（已套用：{'、'.join(_tags)}）" if _tags else "")
-    )
-    # 齊料日診斷
-    if f_qiliao:
-        _qmap = st.session_state.get("_qiliao_map", {})
-        _rwos = st.session_state.get("_result_wos", [])
-        _matched_wos = [w for w in _rwos if w in _qmap]
-        st.info(
-            f"供需表共 {len(_qmap):,} 張缺料工單｜"
-            f"排程有 {len(set(_rwos)):,} 張工單｜"
-            f"對到 {len(_matched_wos):,} 張"
-            + (f"（範例：{', '.join(_matched_wos[:3])}）" if _matched_wos else "（⚠️ 完全沒有對到，請確認工單號碼格式是否相同）")
+st.markdown("""
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 16px;margin-top:10px;font-size:12px;color:#64748b">
+<b>達標差距色碼：</b>
+&nbsp;&nbsp;
+<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:4px;font-weight:600">+N 工作天 ✅ 達標（≥10工作天）</span>
+&nbsp;
+<span style="background:#fef9c3;color:#92400e;padding:2px 8px;border-radius:4px;font-weight:600">−1~−3 工作天 ⚠️ 輕微不足</span>
+&nbsp;
+<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:4px;font-weight:600">< −3 工作天 🔴 嚴重不足</span>
+</div>
+""", unsafe_allow_html=True)
+
+# ── 自動抓取最新檔案 ──────────────────────────────────────────────────────────
+BASE_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
+FILE_NAME = "簡版-工單缺料狀況.xlsx"
+
+def find_latest_files(n=2):
+    """遞迴搜尋 BASE_DIR，回傳最新 n 個 FILE_NAME，依修改時間降冪。"""
+    import glob, os
+    pattern = os.path.join(BASE_DIR, "**", FILE_NAME)
+    files = glob.glob(pattern, recursive=True)
+    if not files:
+        return []
+    files.sort(key=os.path.getmtime, reverse=True)
+    result = []
+    for f in files[:n]:
+        mtime = pd.Timestamp(os.path.getmtime(f), unit='s').tz_localize('UTC').tz_convert('Asia/Taipei')
+        result.append((f, mtime))
+    return result
+
+
+# 比對欄位定義：(欄位 index, 顯示名稱)
+DIFF_COLS = [(5, "料齊率"), (6, "ASSY日"), (7, "PACKING日"),
+             (8, "重點提示"), (11, "進料狀況"), (12, "出貨日")]
+
+def build_diff_map(path_new, path_old):
+    """
+    比對新舊兩份 LIST，回傳 {工單: [變更欄位名稱, ...]}
+    新增工單標記 ['🆕 新增']，消失工單不顯示。
+    """
+    def load_wo(path):
+        df = pd.read_excel(path, sheet_name='LIST', header=0)
+        return {str(r.iloc[1]).strip(): r for _, r in df.iterrows()
+                if pd.notna(r.iloc[1]) and str(r.iloc[1]).strip() not in ('', 'nan')}
+
+    def extract_ship(raw):
+        """從出貨日欄取最早日期，回傳 date 或 None。"""
+        if pd.isna(raw): return None
+        s = str(raw).strip()
+        if s in ('', 'nan', 'None', 'TBD', '試產', '00:00:00'): return None
+        if hasattr(raw, 'date'): return raw.date()
+        try: return pd.to_datetime(s).date()
+        except Exception: pass
+        found = re.findall(r'(\d{1,2})/(\d{1,2})', s)
+        dates = [parse_date_str(f'{m}/{d}') for m, d in found]
+        dates = [d for d in dates if d]
+        return min(dates) if dates else None
+
+    def extract_latest_mat_date(text):
+        """從 L欄取所有日期中最晚的，回傳 date 或 None。"""
+        if pd.isna(text) or not str(text).strip(): return None
+        dates = []
+        for s in re.findall(r'\((\d{1,2}/\d{1,2})\)', str(text)):
+            d = parse_date_str(s)
+            if d: dates.append(d)
+        return max(dates) if dates else None
+
+    new_map = load_wo(path_new)
+    old_map = load_wo(path_old)
+
+    diff = {}
+    for wo, r_new in new_map.items():
+        if wo not in old_map:
+            diff[wo] = ['🆕 新工單']
+            continue
+        r_old = old_map[wo]
+        changed = []
+
+        # ① 出貨日：空→有、提前、延後
+        sd_new = extract_ship(r_new.iloc[12] if len(r_new) > 12 else None)
+        sd_old = extract_ship(r_old.iloc[12] if len(r_old) > 12 else None)
+        if sd_new != sd_old:
+            if sd_old is None and sd_new is not None:
+                changed.append(f'📅 出貨日新增 →{sd_new.strftime("%m/%d")}')
+            elif sd_old is not None and sd_new is None:
+                changed.append(f'📅 出貨日移除')
+            elif sd_old and sd_new:
+                delta = (sd_new - sd_old).days
+                arrow = f'提前 {abs(delta)}天' if delta < 0 else f'延後 {delta}天'
+                changed.append(f'📅 出貨日{arrow} ({sd_old.strftime("%m/%d")}→{sd_new.strftime("%m/%d")})')
+
+        # ② 進料交期：最晚到料日提早或延後
+        md_new = extract_latest_mat_date(r_new.iloc[11] if len(r_new) > 11 else None)
+        md_old = extract_latest_mat_date(r_old.iloc[11] if len(r_old) > 11 else None)
+        if md_new != md_old:
+            if md_old is None and md_new is not None:
+                changed.append(f'📦 進料日新增 →{md_new.strftime("%m/%d")}')
+            elif md_old is not None and md_new is None:
+                changed.append(f'📦 進料日移除')
+            elif md_old and md_new:
+                delta = (md_new - md_old).days
+                arrow = f'提早 {abs(delta)}天' if delta < 0 else f'延後 {delta}天'
+                changed.append(f'📦 進料{arrow} ({md_old.strftime("%m/%d")}→{md_new.strftime("%m/%d")})')
+
+        # ③ 料齊率：改善或惡化
+        rate_new = float(r_new.iloc[5]) if pd.notna(r_new.iloc[5]) else 0.0
+        rate_old = float(r_old.iloc[5]) if pd.notna(r_old.iloc[5]) else 0.0
+        if abs(rate_new - rate_old) > 0.001:
+            arrow = '↑改善' if rate_new > rate_old else '↓惡化'
+            changed.append(f'料齊率{arrow} ({rate_old:.0%}→{rate_new:.0%})')
+
+        # ④ 重點提示變更
+        hint_new = str(r_new.iloc[8]).strip() if pd.notna(r_new.iloc[8]) else ''
+        hint_old = str(r_old.iloc[8]).strip() if pd.notna(r_old.iloc[8]) else ''
+        if hint_new != hint_old and hint_new:
+            changed.append(f'💬 {hint_old or "無"}→{hint_new}')
+
+        if changed:
+            diff[wo] = changed
+    return diff
+
+
+st.markdown("---")
+col_info, col_btn = st.columns([5, 1])
+
+all_files = find_latest_files(2)
+latest_path  = all_files[0][0] if all_files else None
+latest_mtime = all_files[0][1] if all_files else None
+prev_path    = all_files[1][0] if len(all_files) >= 2 else None
+prev_mtime   = all_files[1][1] if len(all_files) >= 2 else None
+
+with col_info:
+    if latest_path:
+        rel = latest_path.replace(BASE_DIR, "").lstrip("\\")
+        prev_rel = prev_path.replace(BASE_DIR, "").lstrip("\\") if prev_path else "無"
+        st.markdown(
+            f"<div style='padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;"
+            f"border-radius:6px;font-size:13px'>"
+            f"📂 <b>今日：</b>{rel}"
+            f"&nbsp;&nbsp;<span style='color:#64748b'>（{latest_mtime.strftime('%Y-%m-%d %H:%M')}）</span>"
+            f"&nbsp;&nbsp;&nbsp;🔄 <b>比對：</b>{prev_rel}"
+            f"&nbsp;&nbsp;<span style='color:#64748b'>（{prev_mtime.strftime('%Y-%m-%d %H:%M') if prev_mtime else '-'}）</span>"
+            f"</div>",
+            unsafe_allow_html=True
         )
+    else:
+        st.error(f"⚠️ 找不到檔案，請確認網路磁碟已連線：{BASE_DIR}")
 
-REQUIRED_COLS = {"製令編號", "產品", "類型", "工序", "工序_類", "批量狀態",
-                 "預計產量", "已領套數", "UPH", "開工", "完工", "狀態", "優先順序"}
+with col_btn:
+    load_btn = st.button("載入最新", type="primary", disabled=(latest_path is None))
 
-if "wo_data" not in st.session_state or not REQUIRED_COLS.issubset(st.session_state.wo_data.columns):
-    st.session_state.wo_data = pd.DataFrame([
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
-             工序="組裝前製製程", 工序_類="組裝", 批量狀態="待進站",
-             預計產量=100, 已生產量=60, 已領套數=80, 未生產量=40, UPH=12,
-             開工=date(2026,5,1), 完工=date(2026,5,4), 出貨日=date(2026,5,9), 齊料日="",
-             狀態="生產中", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
-             工序="測試", 工序_類="測試", 批量狀態="待進站",
-             預計產量=100, 已生產量=0, 已領套數=0, 未生產量=100, UPH=20,
-             開工=date(2026,5,5), 完工=date(2026,5,6), 出貨日=date(2026,5,13), 齊料日="",
-             狀態="待開工", 優先順序=1),
-        dict(製令編號="5140-20260501001", 產品="IGS-9122GP", 類型="廠內",
-             工序="包裝", 工序_類="包裝", 批量狀態="待進站",
-             預計產量=100, 已生產量=0, 已領套數=0, 未生產量=100, UPH=30,
-             開工=date(2026,5,7), 完工=date(2026,5,8), 出貨日=date(2026,5,15), 齊料日="",
-             狀態="待開工", 優先順序=1),
-        dict(製令編號="MO02-20260501001", 產品="機殼-A型", 類型="委外",
-             工序="委外", 工序_類="委外", 批量狀態="",
-             預計產量=500, 已生產量=200, 已領套數=200, 未生產量=300, UPH=50,
-             開工=date(2026,5,1), 完工=date(2026,5,10), 出貨日=date(2026,5,17), 齊料日="",
-             狀態="生產中", 優先順序=2),
-    ])
+if load_btn and latest_path:
+    with st.spinner("讀取中..."):
+        sdf = parse_file(latest_path)
+        # 與前一份比對
+        if prev_path:
+            diff_map = build_diff_map(latest_path, prev_path)
+            sdf['變更'] = sdf['工單'].map(
+                lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
+        else:
+            sdf['變更'] = ''
+        st.session_state.sched_df   = sdf
+        st.session_state.sched_src  = latest_path
+        st.session_state.sched_time = latest_mtime
+    changed_n = (st.session_state.sched_df['變更'] != '').sum()
+    st.success(f"載入完成：{len(st.session_state.sched_df)} 張工單，其中 {changed_n} 張與上次不同")
 
-df = st.session_state.wo_data.copy()
-df["開工_dt"] = pd.to_datetime(df["開工"])
-df["完工_dt"] = pd.to_datetime(df["完工"])
+if "sched_df" not in st.session_state:
+    st.stop()
+
+df = st.session_state.sched_df.copy()
+
+st.markdown("---")
 
 # ── 篩選列 ──────────────────────────────────────────────────────────────────
-fc1, fc2, fc3, fc4 = st.columns([3, 2, 2, 2])
-with fc1:
-    min_d = df["開工_dt"].min().date() if not df.empty else date(2026, 1, 1)
-    max_d = df["開工_dt"].max().date() if not df.empty else date(2026, 12, 31)
-    dr = st.date_input("開工日區間", value=(min_d, max_d))
-with fc2:
-    sel_type  = st.selectbox("類型", ["全部", "廠內", "委外"])
-with fc3:
-    stage_opts = ["全部"] + sorted(df["工序"].dropna().unique().tolist())
-    sel_stage  = st.selectbox("工序", stage_opts)
-with fc4:
-    sel_state = st.selectbox("狀態", ["全部", "待開工", "已發料", "生產中", "已完工"])
+fd1, fd2 = st.columns([3, 4])
+with fd1:
+    # 出貨日區間：預設今天 ~ 今天 +30 天
+    ship_dates = df["出貨日"].dropna()
+    d_min = ship_dates.min() if not ship_dates.empty else TODAY
+    d_max = ship_dates.max() if not ship_dates.empty else TODAY + timedelta(days=60)
+    date_range = st.date_input(
+        "出貨日區間",
+        value=(TODAY, TODAY + timedelta(days=30)),
+        min_value=d_min, max_value=d_max,
+        key="ship_range"
+    )
+with fd2:
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        sel_status = st.selectbox("料況篩選",
+            ["全部", "已齊料", "缺料中", "完全缺料", "不達標（<14天）"])
+    with fc2:
+        sel_delay = st.selectbox("進料延遲",
+            ["全部", "有逾期料", "IQC 中", "無問題"])
+    with fc3:
+        search = st.text_input("工單號 / 料號搜尋", placeholder="輸入關鍵字")
 
 dff = df.copy()
-if isinstance(dr, (list, tuple)) and len(dr) == 2:
-    dff = dff[(dff["開工_dt"] >= pd.to_datetime(dr[0])) & (dff["開工_dt"] <= pd.to_datetime(dr[1]))]
-if sel_type  != "全部": dff = dff[dff["類型"] == sel_type]
-if sel_stage != "全部": dff = dff[dff["工序"] == sel_stage]
-if sel_state != "全部": dff = dff[dff["狀態"] == sel_state]
 
-# ── KPI ──────────────────────────────────────────────────────────────────────
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("工單數",     dff["製令編號"].nunique())
-m2.metric("廠內",       dff[dff["類型"] == "廠內"]["製令編號"].nunique())
-m3.metric("委外",       dff[dff["類型"] == "委外"]["製令編號"].nunique())
-m4.metric("生產中工序", len(dff[dff["狀態"] == "生產中"]))
-m5.metric("待開工工序", len(dff[dff["狀態"].isin(["待開工", "已發料"])]))
+# 出貨日區間篩選（只篩有出貨日的；無出貨日的保留在 Tab2 明細）
+if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+    dr_start = pd.Timestamp(date_range[0])
+    dr_end   = pd.Timestamp(date_range[1])
+    has_date_mask = dff["出貨日"].notna()
+    in_range_mask = (dff["出貨日"].apply(lambda v: pd.Timestamp(v) if pd.notna(v) else pd.NaT) >= dr_start) & \
+                    (dff["出貨日"].apply(lambda v: pd.Timestamp(v) if pd.notna(v) else pd.NaT) <= dr_end)
+    dff = dff[~has_date_mask | in_range_mask]  # 無出貨日的保留；有出貨日的套用區間
+
+if sel_status == "已齊料":
+    dff = dff[dff["料況狀態"] == "已齊料"]
+elif sel_status == "缺料中":
+    dff = dff[dff["料況狀態"] != "已齊料"]
+elif sel_status == "完全缺料":
+    dff = dff[dff["料況狀態"] == "完全缺料"]
+elif sel_status == "不達標（<14天）":
+    dff = dff[dff["達標差距"].notna() & (dff["達標差距"] < 0)]
+
+if sel_delay == "有逾期料":
+    dff = dff[dff["延遲料況"].str.contains("逾期", na=False)]
+elif sel_delay == "IQC 中":
+    dff = dff[dff["延遲料況"].str.contains("IQC", na=False)]
+elif sel_delay == "無問題":
+    dff = dff[~dff["延遲料況"].str.contains("逾期|IQC", na=False)]
+
+if search.strip():
+    kw = search.strip()
+    dff = dff[dff["工單"].str.contains(kw, na=False) |
+              dff["成品料號"].str.contains(kw, na=False)]
+
+# ── KPI（依篩選後結果計算）────────────────────────────────────────────────────
+dff_ship   = dff[dff["出貨日"].notna()]
+has_ship   = len(dff_ship)
+already_qi = (dff_ship["料況狀態"] == "已齊料").sum()
+shortage   = has_ship - already_qi
+
+_, k1, k2, k3, _ = st.columns(5)
+k1.metric("有出貨日", has_ship)
+k2.metric("已齊料",   already_qi)
+k3.metric("缺料中",   shortage)
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4 = st.tabs(["📅 甘特圖", "📊 工序稼動率", "🔢 優先序管理", "🧮 預計完工試算"])
+tab1, tab2 = st.tabs(["📦 出貨時程總覽", "🔍 進料延遲明細"])
 
-# ── Tab1 甘特圖 ──────────────────────────────────────────────────────────────
+# ── Tab1：出貨時程總覽 ───────────────────────────────────────────────────────
 with tab1:
-    if dff.empty:
-        st.warning("目前篩選條件下無資料。")
-    else:
-        MAX_G = 300
-        gantt_df = dff.sort_values("開工_dt").head(MAX_G)
-        if len(dff) > MAX_G:
-            st.info(f"資料較多，甘特圖顯示前 {MAX_G} 筆（依開工日）。")
+    st.caption(f"今日：{TODAY}　　最低齊料緩衝：{MIN_BUFFER} 天（2週）　　"
+               f"達標差距 = 緩衝天數 - {MIN_BUFFER}，負值代表不達標")
 
-        cl, cr = st.columns([3, 1])
-        with cr:
-            color_by = st.radio("顏色", ["工序", "狀態"], horizontal=True)
+    # 有出貨日的工單，依出貨日排序
+    has_date_df = dff[dff["出貨日"].notna()].sort_values("出貨日")
+    no_date_df  = dff[dff["出貨日"].isna()]
 
-        color_col = "工序_類" if color_by == "工序" else "狀態"
-        cmap      = COLOR_STAGE if color_by == "工序" else COLOR_STATUS
-        hover_extra = {"產品": True, "類型": True, "工序": True,
-                       "預計產量": True, "批量狀態": True, "狀態": True}
-        if "出貨日" in gantt_df.columns:
-            hover_extra["出貨日"] = True
+    def build_display(sub):
+        show_cols = ["變更", "工單", "成品料號", "預計產量",
+                     "出貨日_顯示", "料況狀態",
+                     "預計齊料日", "緩衝天數", "達標差距",
+                     "延遲料況", "延遲物料"]
+        show_cols = [c for c in show_cols if c in sub.columns]
+        return sub[show_cols].copy()
 
-        fig = px.timeline(
-            gantt_df, x_start="開工_dt", x_end="完工_dt",
-            y="工序", color=color_col, color_discrete_map=cmap,
-            text="製令編號", hover_data=hover_extra,
-        )
-        fig.update_traces(textposition="inside", insidetextanchor="middle",
-                          textfont=dict(size=9, color="white"))
-        n_y = gantt_df["工序"].nunique()
-        fig.update_layout(
-            height=max(400, n_y * 28),
-            margin=dict(l=10, r=10, t=30, b=10),
-            paper_bgcolor="white", plot_bgcolor="#f8fafc",
-            yaxis=dict(autorange="reversed", gridcolor="#e2e8f0"),
-            xaxis=dict(gridcolor="#e2e8f0"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=1, xanchor="right"),
-        )
-        today_str = date.today().isoformat()
-        fig.add_shape(type="line", x0=today_str, x1=today_str, y0=0, y1=1,
-                      yref="paper", line=dict(color="#ef4444", width=2, dash="dash"))
-        fig.add_annotation(x=today_str, y=1, yref="paper", text="今天",
-                           showarrow=False, font=dict(color="#ef4444", size=12),
-                           xanchor="left", yanchor="bottom")
-        with cl:
-            st.plotly_chart(fig, use_container_width=True)
+    def highlight_changed_row(row):
+        """整列標淡橙底，若該列有變更。"""
+        if "變更" in row.index and row["變更"]:
+            return ['background-color:#fff7ed'] * len(row)
+        return [''] * len(row)
 
-# ── Tab2 工序稼動率 ───────────────────────────────────────────────────────────
-with tab2:
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        daily_cap = st.number_input("每日產能（PCS/工序）", min_value=1, max_value=99999,
-                                    value=200, step=10)
-        work_days = max((dr[1] - dr[0]).days + 1, 1) if isinstance(dr, (list, tuple)) and len(dr) == 2 else 20
-        avail     = daily_cap * work_days
-        st.metric("區間天數",     f"{work_days} 天")
-        st.metric("每工序總產能", f"{avail:,} PCS")
-    with c2:
-        active = dff[~dff["狀態"].isin(["已完工"])].copy()
-        if active.empty:
-            st.info("無進行中工序。")
+    def color_changed(val):
+        if val and str(val).strip():
+            return 'background-color:#fed7aa;color:#9a3412;font-weight:bold'
+        return ''
+
+    def color_target_gap(val):
+        if pd.isna(val):
+            return ''
+        if val >= 0:
+            return 'background-color:#dcfce7;color:#15803d;font-weight:bold'
+        elif val >= -3:
+            return 'background-color:#fef9c3;color:#92400e;font-weight:bold'
         else:
-            active["計畫產量"] = pd.to_numeric(active["預計產量"], errors="coerce").fillna(0)
-            load = active.groupby("工序")["計畫產量"].sum().reset_index()
-            lt   = load.copy()
-            lt["稼動率%"] = (lt["計畫產量"] / avail * 100).round(1)
+            return 'background-color:#fee2e2;color:#dc2626;font-weight:bold'
 
-            fig2 = px.bar(load, x="工序", y="計畫產量", color="工序",
-                          color_discrete_map=COLOR_STAGE,
-                          labels={"計畫產量": "計畫產量 (PCS)"},
-                          text_auto=True)
-            fig2.add_hline(y=avail, line_dash="dash", line_color="#ef4444",
-                           annotation_text=f"可用上限 {avail:,} PCS")
-            fig2.update_layout(height=300, margin=dict(l=10, r=10, t=20, b=10),
-                                paper_bgcolor="white", plot_bgcolor="#f8fafc",
-                                yaxis=dict(gridcolor="#e2e8f0", title="PCS"),
-                                showlegend=False)
-            st.plotly_chart(fig2, use_container_width=True)
+    def color_rate(val):
+        if pd.isna(val): return ''
+        if val >= 1.0:   return 'color:#15803d;font-weight:bold'
+        if val == 0.0:   return 'color:#dc2626;font-weight:bold'
+        return 'color:#d97706'
 
-            def cr(v):
-                if v >= 90: return "background-color:#fee2e2;color:#dc2626;font-weight:bold"
-                if v >= 70: return "background-color:#fef9c3;color:#92400e"
-                return "background-color:#dcfce7;color:#15803d"
-            st.dataframe(
-                lt.rename(columns={"計畫產量": "計畫產量 (PCS)"})
-                  .style.map(cr, subset=["稼動率%"]),
-                use_container_width=True, hide_index=True
+    def color_delay(val):
+        if not val: return ''
+        if '逾期' in str(val): return 'color:#dc2626;font-weight:bold'
+        if 'IQC'  in str(val): return 'color:#d97706'
+        return ''
+
+    # ── 匯出 Excel ───────────────────────────────────────────────────────────
+    def to_excel_bytes(df_has, df_no):
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import (PatternFill, Font, Alignment, Border, Side,
+                                     GradientFill)
+        from openpyxl.utils import get_column_letter
+
+        EXPORT_COLS = ["變更", "工單", "成品料號", "預計產量", "出貨日_顯示", "料況狀態",
+                       "預計齊料日", "緩衝天數", "達標差距", "延遲料況", "延遲物料", "重點提示"]
+        COL_WIDTHS  = [20, 22, 36, 10, 16, 12, 12, 10, 10, 30, 52, 16]
+
+        # ── 色彩定義 ────────────────────────────────────────────────────────
+        HDR_FILL  = PatternFill("solid", fgColor="1E3A8A")   # 深藍 header
+        HDR_FONT  = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+        ROW_EVEN  = PatternFill("solid", fgColor="EFF6FF")   # 淺藍 偶數列
+        ROW_ODD   = PatternFill("solid", fgColor="FFFFFF")   # 白色 奇數列
+
+        FILL_GREEN  = PatternFill("solid", fgColor="DCFCE7")
+        FILL_YELLOW = PatternFill("solid", fgColor="FEF9C3")
+        FILL_RED    = PatternFill("solid", fgColor="FEE2E2")
+        FONT_GREEN  = Font(name="Arial", color="15803D", bold=True, size=9)
+        FONT_YELLOW = Font(name="Arial", color="92400E", bold=True, size=9)
+        FONT_RED    = Font(name="Arial", color="DC2626", bold=True, size=9)
+        FONT_ORANGE = Font(name="Arial", color="D97706", size=9)
+        FONT_NORMAL = Font(name="Arial", size=9)
+        FONT_DELAY  = Font(name="Arial", color="DC2626", size=9)
+
+        thin = Side(style="thin", color="CBD5E1")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+        def prep(sub):
+            cols = [c for c in EXPORT_COLS if c in sub.columns]
+            out = sub[cols].copy().rename(columns={"出貨日_顯示": "出貨日"})
+            if "預計齊料日" in out.columns:
+                out["預計齊料日"] = out["預計齊料日"].apply(
+                    lambda v: v.strftime('%Y-%m-%d') if pd.notna(v) and hasattr(v, 'strftime')
+                    else (str(v) if pd.notna(v) else ""))
+            for c in ["緩衝天數", "達標差距"]:
+                if c in out.columns:
+                    out[c] = out[c].apply(
+                        lambda v: f"{v:+.0f}天" if pd.notna(v) else "")
+            return out
+
+        def write_sheet(wb, sheet_name, data):
+            if data.empty:
+                return
+            ws = wb.create_sheet(title=sheet_name)
+            out = prep(data)
+            headers = list(out.columns)
+
+            # ── 標題列 ──────────────────────────────────────────────────────
+            ws.row_dimensions[1].height = 22
+            for ci, h in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=ci, value=h)
+                cell.fill   = HDR_FILL
+                cell.font   = HDR_FONT
+                cell.alignment = center
+                cell.border = border
+
+            # ── 資料列 ──────────────────────────────────────────────────────
+            gap_col     = headers.index("達標差距") + 1 if "達標差距" in headers else None
+            delay_col   = headers.index("延遲料況") + 1 if "延遲料況" in headers else None
+            status_col  = headers.index("料況狀態") + 1 if "料況狀態" in headers else None
+            changed_col = headers.index("變更")     + 1 if "變更"     in headers else None
+            FILL_CHANGED     = PatternFill("solid", fgColor="FFF7ED")
+            FILL_CHANGED_TAG = PatternFill("solid", fgColor="FED7AA")
+            FONT_CHANGED_TAG = Font(name="Arial", color="9A3412", bold=True, size=9)
+
+            for ri, (_, row) in enumerate(out.iterrows(), 2):
+                ws.row_dimensions[ri].height = 30
+                is_even   = (ri % 2 == 0)
+                is_changed = bool(str(row.iloc[changed_col - 1]).strip()) if changed_col else False
+                row_fill  = FILL_CHANGED if is_changed else (ROW_EVEN if is_even else ROW_ODD)
+
+                for ci, val in enumerate(row, 1):
+                    cell = ws.cell(row=ri, column=ci, value=str(val) if pd.notna(val) else "")
+                    cell.border    = border
+                    cell.font      = FONT_NORMAL
+                    cell.alignment = left
+
+                    # 達標差距 上色
+                    if ci == gap_col:
+                        s = str(val)
+                        if s.startswith("+") or (s and s[0].isdigit()):
+                            cell.fill = FILL_GREEN;  cell.font = FONT_GREEN
+                        elif s.startswith("-"):
+                            days = int(s.replace("天","").replace("+",""))
+                            if days >= -3:
+                                cell.fill = FILL_YELLOW; cell.font = FONT_YELLOW
+                            else:
+                                cell.fill = FILL_RED;    cell.font = FONT_RED
+                        else:
+                            cell.fill = row_fill
+                        cell.alignment = center
+
+                    # 延遲料況 上色
+                    elif ci == delay_col:
+                        cell.fill = row_fill
+                        if "逾期" in str(val):
+                            cell.font = FONT_DELAY
+                        elif "IQC" in str(val):
+                            cell.font = FONT_ORANGE
+                    # 料況狀態 上色
+                    elif ci == status_col:
+                        cell.fill = row_fill
+                        if "已齊料" in str(val):
+                            cell.font = FONT_GREEN
+                        elif "完全缺料" in str(val):
+                            cell.font = FONT_RED
+                        elif "缺料" in str(val):
+                            cell.font = FONT_ORANGE
+                    # 變更欄 上色
+                    elif ci == changed_col:
+                        if str(val).strip():
+                            cell.fill = FILL_CHANGED_TAG
+                            cell.font = FONT_CHANGED_TAG
+                            cell.alignment = center
+                        else:
+                            cell.fill = row_fill
+                    else:
+                        cell.fill = row_fill
+
+            # ── 欄寬 ────────────────────────────────────────────────────────
+            for ci, h in enumerate(headers, 1):
+                idx = EXPORT_COLS.index(h.replace("出貨日", "出貨日_顯示")
+                                          if h == "出貨日" else h) if (
+                    h.replace("出貨日", "出貨日_顯示") if h == "出貨日" else h
+                ) in EXPORT_COLS else -1
+                ws.column_dimensions[get_column_letter(ci)].width = (
+                    COL_WIDTHS[idx] if 0 <= idx < len(COL_WIDTHS) else 15)
+
+            # ── 凍結首列 ────────────────────────────────────────────────────
+            ws.freeze_panes = "A2"
+
+        wb = Workbook()
+        wb.remove(wb.active)   # 移除預設空白頁
+        write_sheet(wb, "有出貨日", df_has)
+        write_sheet(wb, "出貨日未定", df_no)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    ex_col, _ = st.columns([1, 5])
+    with ex_col:
+        if not dff.empty:
+            st.download_button(
+                "⬇ 匯出 Excel",
+                data=to_excel_bytes(has_date_df, no_date_df),
+                file_name=f"排程_缺料狀況_{TODAY}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
-# ── Tab3 優先序管理 ──────────────────────────────────────────────────────────
-with tab3:
-    # ── 快速查詢列 ───────────────────────────────────────────────────────────
-    sq1, sq2 = st.columns([4, 1])
-    with sq1:
-        search_input = st.text_input("貼上工單號碼查詢（可貼多筆，以逗號或換行分隔）",
-                                     placeholder="例：5142-20260417001, 5142-20260427002",
-                                     label_visibility="visible")
-    with sq2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        search_btn = st.button("🔍 查詢", type="primary")
-
-    if search_btn and search_input.strip():
-        import re
-        query_nos = [s.strip() for s in re.split(r"[,\n\r；，]+", search_input) if s.strip()]
-
-        # ① 先查合併後的工序明細（廠內進度 JOIN 工單明細，含 -rw01 衍生編號）
-        hit = df[df["製令編號"].apply(
-            lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in query_nos)
-        )].copy()
-
-        if not hit.empty:
-            show_q = ["製令編號", "產品", "類型", "工序", "批量狀態",
-                      "預計產量", "已生產量", "已領套數", "未生產量",
-                      "開工", "完工", "出貨日", "齊料日", "狀態"]
-            show_q = [c for c in show_q if c in hit.columns]
-            st.success(f"找到 {hit['製令編號'].nunique()} 張工單，共 {len(hit)} 筆工序記錄")
-            def _st(v): return "background-color:#eff6ff" if v == "廠內" else "background-color:#fffbeb"
-            st.dataframe(hit.sort_values("開工_dt")[show_q].style.map(_st, subset=["類型"]),
-                         use_container_width=True, hide_index=True)
-        else:
-            # ② 找不到時回查工單明細原始資料
-            wo_all = st.session_state.get("wo_all", pd.DataFrame())
-            hit2 = wo_all[wo_all["製令編號"].apply(
-                lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in query_nos)
-            )] if not wo_all.empty else pd.DataFrame()
-            if hit2.empty:
-                st.warning(f"查無符合的工單：{', '.join(query_nos)}")
-            else:
-                show_q2 = ["製令編號", "產品", "類型", "預計產量", "已生產量",
-                           "已領套數", "未生產量", "開工", "完工", "狀態_wo"]
-                show_q2 = [c for c in show_q2 if c in hit2.columns]
-                st.info(f"此工單不在廠內進度中，以下顯示工單明細原始資料")
-                st.dataframe(hit2[show_q2].rename(columns={"狀態_wo": "狀態"}),
-                             use_container_width=True, hide_index=True)
-        st.markdown("---")
-
-    st.caption("可直接修改優先順序（數字越小越優先）；勾選工單號碼可展開工序明細。按「套用」後更新。")
-    _want = ["製令編號", "產品", "類型", "預計產量", "已生產量", "已領套數", "未生產量",
-             "開工", "完工", "出貨日", "齊料日", "狀態", "優先順序"]
-    _have = [c for c in _want if c in dff.columns]
-    wo_view = (
-        dff[~dff["狀態"].isin(["已完工"])]
-        .drop_duplicates(subset=["製令編號"])
-        [_have]
-        .sort_values("優先順序")
-        .copy()
-    )
-    wo_view.insert(0, "選取", False)   # 最左欄加 checkbox
-
-    edited = st.data_editor(
-        wo_view,
-        column_config={
-            "選取":   st.column_config.CheckboxColumn("選取", default=False),
-            "優先順序": st.column_config.NumberColumn("優先順序", min_value=1, max_value=999, step=1),
-            **{c: st.column_config.TextColumn(disabled=True)
-               for c in ["製令編號", "產品", "類型", "狀態"] if c in _have},
-            **{c: st.column_config.NumberColumn(disabled=True)
-               for c in ["預計產量", "已生產量", "已領套數", "未生產量"] if c in _have},
-            **{c: st.column_config.DateColumn(disabled=True)
-               for c in ["開工", "完工"] if c in _have},
-            **{c: st.column_config.TextColumn(disabled=True)
-               for c in ["出貨日", "齊料日"] if c in _have},
-        },
-        hide_index=True, use_container_width=True, key="priority_editor"
-    )
-    if st.button("套用排序", type="primary"):
-        for _, row in edited.iterrows():
-            st.session_state.wo_data.loc[
-                st.session_state.wo_data["製令編號"] == row["製令編號"], "優先順序"
-            ] = row["優先順序"]
-        st.success("排序已更新！")
-        st.rerun()
-
-    # ── 只有勾選的工單才顯示廠內進度工序明細 ────────────────────────────────
-    selected_wos = [str(s).strip() for s in edited[edited["選取"] == True]["製令編號"].tolist()]
-
-    def prefix_match(series, prefixes):
-        """比對完整編號，或以 prefix + '-' 開頭的衍生工單（如 -rw01）"""
-        return series.apply(
-            lambda x: any(str(x) == p or str(x).startswith(p + "-") for p in prefixes)
-        )
-
-    if selected_wos:
-        st.markdown(f"**工序明細 — {', '.join(selected_wos)}**")
-        prog_raw = st.session_state.get("prog_raw", pd.DataFrame())
-
-        # ① 優先從廠內進度原始資料取（含 -rw01 等衍生編號）
-        if not prog_raw.empty and "製令編號" in prog_raw.columns:
-            detail_df = prog_raw[prefix_match(prog_raw["製令編號"], selected_wos)].reset_index(drop=True)
-        else:
-            detail_df = pd.DataFrame()
-
-        # ② 查不到 → 從工單明細取（委外工單或廠內進度無此工單）
-        if detail_df.empty:
-            wo_all = st.session_state.get("wo_all", pd.DataFrame())
-            if not wo_all.empty and "製令編號" in wo_all.columns:
-                _show = ["製令編號", "產品", "類型", "預計產量", "已生產量",
-                         "已領套數", "未生產量", "開工", "完工", "狀態_wo"]
-                _show = [c for c in _show if c in wo_all.columns]
-                detail_df = (wo_all[prefix_match(wo_all["製令編號"], selected_wos)][_show]
-                             .rename(columns={"狀態_wo": "狀態"})
-                             .reset_index(drop=True))
-                if not detail_df.empty:
-                    st.caption("此工單不在廠內進度中，顯示工單明細資料。")
-
-        if detail_df.empty:
-            st.info("查無此工單的工序資料。")
-        else:
-            st.dataframe(detail_df, use_container_width=True, hide_index=True)
-
-# ── Tab4 預計完工試算 ─────────────────────────────────────────────────────────
-with tab4:
-    st.caption("依 預計產量 ÷ UPH 推算所需工時，自動計算試算完工日並標示是否延遲。")
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        daily_h    = st.number_input("每日工作小時", 1, 24, 8, key="calc_h")
-        skip_wkend = st.checkbox("跳過週六日", value=True)
-
-    def add_wd(start, hrs, dh, skip):
-        rem = hrs; cur = pd.Timestamp(start)
-        while rem > 0:
-            cur += timedelta(days=1)
-            if skip and cur.weekday() >= 5: continue
-            rem -= dh
-        return cur.date()
-
-    pending = dff[~dff["狀態"].isin(["已完工"])].copy()
-    if pending.empty:
-        st.info("無待開工/生產中工序。")
+    if has_date_df.empty:
+        st.info("篩選條件下無有出貨日的工單。")
     else:
-        rows = []
-        for _, r in pending.iterrows():
-            hrs  = r["預計產量"] / max(r["UPH"], 1)
-            est  = add_wd(r["開工"], hrs, daily_h, skip_wkend)
-            diff = (pd.Timestamp(est) - pd.Timestamp(r["完工"])).days
-            row  = {
-                "製令編號": r["製令編號"], "產品": r["產品"], "類型": r["類型"],
-                "工序": r["工序"], "預計產量": r["預計產量"],
-                "計畫工時(hr)": round(hrs, 1),
-                "計畫完工": r["完工"], "試算完工": est, "差異(天)": diff,
-            }
-            if "出貨日" in r: row["出貨日"] = r["出貨日"]
-            rows.append(row)
-        calc_df = pd.DataFrame(rows)
+        st.markdown(f"**有出貨日 — {len(has_date_df)} 張**")
+        disp = build_display(has_date_df)
+        style = (
+            disp.style
+                .apply(highlight_changed_row, axis=1)
+                .map(color_changed,    subset=["變更"]      if "變更"      in disp.columns else [])
+                .map(color_target_gap, subset=["達標差距"]  if "達標差距"  in disp.columns else [])
+                .map(color_delay,      subset=["延遲料況"]  if "延遲料況"  in disp.columns else [])
+                .format({"緩衝天數": lambda v: f"{v:+.0f}天" if pd.notna(v) else "",
+                         "達標差距": lambda v: f"{v:+.0f}天" if pd.notna(v) else "",
+                         "預計齊料日": lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v, 'strftime') else (str(v) if pd.notna(v) else "")})
+        )
+        st.dataframe(style, use_container_width=True, hide_index=True)
 
-        def sd(v):
-            if v > 0: return "background-color:#fee2e2;color:#dc2626;font-weight:bold"
-            if v < 0: return "background-color:#dcfce7;color:#15803d"
-            return ""
-        with c2:
-            st.dataframe(calc_df.style.map(sd, subset=["差異(天)"]),
-                         use_container_width=True, hide_index=True)
-        late = calc_df[calc_df["差異(天)"] > 0]
-        if not late.empty:
-            st.warning(f"⚠️ **{late['製令編號'].nunique()}** 張工單共 **{len(late)}** 道工序預計延遲。")
-        else:
-            st.success("✅ 所有工序依 UPH 試算均可在計畫日內完工。")
+    if not no_date_df.empty:
+        with st.expander(f"⚠️ 出貨日未定 — {len(no_date_df)} 張"):
+            disp2 = build_display(no_date_df)
+            st.dataframe(disp2.style
+                .map(color_rate,  subset=["整體料齊率"] if "整體料齊率" in disp2.columns else [])
+                .map(color_delay, subset=["延遲料況"]   if "延遲料況"   in disp2.columns else [])
+                .format({"整體料齊率": "{:.0%}"})
+                , use_container_width=True, hide_index=True)
+
+# ── Tab2：進料延遲明細 ────────────────────────────────────────────────────────
+with tab2:
+    st.caption("展開每張工單，逐料顯示進料狀況、是否逾期、逾期天數。")
+
+    # 只顯示有缺料的工單
+    need_track = dff[dff["整體料齊率"] < 1.0].sort_values("出貨日")
+
+    if need_track.empty:
+        st.success("目前篩選範圍內所有工單均已齊料。")
+    else:
+        for _, row in need_track.iterrows():
+            delayed  = row["_delayed"]   # [(料號, 日期, 逾期天)]
+            iqc      = row["_iqc"]       # [(料號, 日期|None)]
+            future   = row["_future"]    # [(料號, 日期, 距今天)]
+
+            ship_str = row["出貨日_顯示"] or "出貨日未定"
+            gap_str  = (f"達標差距 **{row['達標差距']:+.0f} 天**"
+                        if pd.notna(row["達標差距"]) else "出貨日未定")
+            warn = "🔴" if (pd.notna(row["達標差距"]) and row["達標差距"] < 0) else (
+                   "🟡" if row["延遲料況"] else "🟢")
+
+            with st.expander(
+                f"{warn} {row['工單']}　｜　{row['成品料號']}　×{row['預計產量']}　"
+                f"｜　出貨 {ship_str}　｜　{gap_str}　"
+                f"｜　料齊率 {row['整體料齊率']:.0%}　{row['重點提示']}"
+            ):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.metric("整體料齊率",  f"{row['整體料齊率']:.0%}")
+                    st.metric("需/未領料數", f"{row['需領料數']} / {row['未領料數']}")
+                    if pd.notna(row["預計齊料日"]):
+                        st.metric("預計齊料日", row["預計齊料日"].strftime('%m/%d'))
+                    if pd.notna(row["達標差距"]):
+                        color = "normal" if row["達標差距"] >= 0 else "inverse"
+                        st.metric("達標差距（緩衝-10工作天）",
+                                  f"{row['達標差距']:+.0f} 天", delta_color=color)
+                    if row["延遲物料"]:
+                        st.markdown(f"**N欄延遲物料：** {row['延遲物料']}")
+
+                with c2:
+                    if delayed:
+                        st.markdown("**🔴 逾期未到（進料日已過但尚未到）**")
+                        rows_d = [{"料號": m, "承諾到料日": d.strftime('%m/%d'),
+                                   "已逾期": f"-{n} 天"} for m, d, n in
+                                  sorted(delayed, key=lambda x: -x[2])]
+                        st.dataframe(pd.DataFrame(rows_d), hide_index=True,
+                                     use_container_width=True)
+
+                    if iqc:
+                        st.markdown("**🟡 IQC 檢驗中**")
+                        rows_i = [{"料號": m,
+                                   "到廠日": d.strftime('%m/%d') if d else "未知"}
+                                  for m, d in iqc]
+                        st.dataframe(pd.DataFrame(rows_i), hide_index=True,
+                                     use_container_width=True)
+
+                    if future:
+                        st.markdown("**🔵 預計進料（未到但有承諾日）**")
+                        rows_f = [{"料號": m, "預計到料": d.strftime('%m/%d'),
+                                   "距今": f"+{n} 天"} for m, d, n in
+                                  sorted(future, key=lambda x: x[1])]
+                        st.dataframe(pd.DataFrame(rows_f), hide_index=True,
+                                     use_container_width=True)
+
+                    if not delayed and not iqc and not future:
+                        st.info("L欄無詳細進料資訊，請參考重點提示欄。")
+                        if row["進料明細"]:
+                            st.text(row["進料明細"])
