@@ -3,6 +3,7 @@ import pandas as pd
 import re
 from datetime import date, timedelta
 import sys, os
+import plotly.express as px
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar
@@ -454,49 +455,82 @@ def build_diff_map(path_new, path_old):
 
 
 st.markdown("---")
-col_info, col_btn = st.columns([5, 1])
 
-all_files = find_latest_files(2)
-latest_path  = all_files[0][0] if all_files else None
-latest_mtime = all_files[0][1] if all_files else None
+# ── NAS 偵測 & 自動載入 ────────────────────────────────────────────────────────
+all_files    = find_latest_files(2)
+nas_ok       = len(all_files) > 0
+latest_path  = all_files[0][0] if nas_ok else None
+latest_mtime = all_files[0][1] if nas_ok else None
 prev_path    = all_files[1][0] if len(all_files) >= 2 else None
 prev_mtime   = all_files[1][1] if len(all_files) >= 2 else None
 
-with col_info:
-    if latest_path:
-        rel = latest_path.replace(BASE_DIR, "").lstrip("\\")
-        prev_rel = prev_path.replace(BASE_DIR, "").lstrip("\\") if prev_path else "無"
-        st.markdown(
-            f"<div style='padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;"
-            f"border-radius:6px;font-size:13px'>"
-            f"📂 <b>今日：</b>{rel}"
-            f"&nbsp;&nbsp;<span style='color:#64748b'>（{latest_mtime.strftime('%Y-%m-%d %H:%M')}）</span>"
-            f"&nbsp;&nbsp;&nbsp;🔄 <b>比對：</b>{prev_rel}"
-            f"&nbsp;&nbsp;<span style='color:#64748b'>（{prev_mtime.strftime('%Y-%m-%d %H:%M') if prev_mtime else '-'}）</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-    else:
-        st.error(f"⚠️ 找不到檔案，請確認網路磁碟已連線：{BASE_DIR}")
+if nas_ok:
+    # ── NAS 連線：自動載入，無需按鈕 ────────────────────────────────────────
+    rel      = latest_path.replace(BASE_DIR, "").lstrip("\\")
+    prev_rel = prev_path.replace(BASE_DIR, "").lstrip("\\") if prev_path else "無"
+    st.markdown(
+        f"<div style='padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;"
+        f"border-radius:6px;font-size:13px'>"
+        f"✅ <b>NAS 已連線，自動載入最新版</b>"
+        f"&nbsp;&nbsp;📂 {rel}"
+        f"&nbsp;&nbsp;<span style='color:#64748b'>（{latest_mtime.strftime('%Y-%m-%d %H:%M')}）</span>"
+        f"&nbsp;&nbsp;&nbsp;🔄 比對：{prev_rel}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+    if st.button("🔄 重新偵測 NAS", key="sched_refresh"):
+        for k in ("sched_df", "sched_src", "sched_time"):
+            st.session_state.pop(k, None)
+        st.rerun()
 
-with col_btn:
-    load_btn = st.button("載入最新", type="primary", disabled=(latest_path is None))
+    if "sched_df" not in st.session_state:
+        with st.spinner("讀取中..."):
+            sdf = parse_file(latest_path)
+            if prev_path:
+                diff_map = build_diff_map(latest_path, prev_path)
+                sdf['變更'] = sdf['工單'].map(
+                    lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
+            else:
+                sdf['變更'] = ''
+            st.session_state.sched_df   = sdf
+            st.session_state.sched_src  = latest_path
+            st.session_state.sched_time = latest_mtime
+        changed_n = (sdf['變更'] != '').sum()
+        st.success(f"載入完成：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
 
-if load_btn and latest_path:
-    with st.spinner("讀取中..."):
-        sdf = parse_file(latest_path)
-        # 與前一份比對
-        if prev_path:
-            diff_map = build_diff_map(latest_path, prev_path)
-            sdf['變更'] = sdf['工單'].map(
-                lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
-        else:
-            sdf['變更'] = ''
-        st.session_state.sched_df   = sdf
-        st.session_state.sched_src  = latest_path
-        st.session_state.sched_time = latest_mtime
-    changed_n = (st.session_state.sched_df['變更'] != '').sum()
-    st.success(f"載入完成：{len(st.session_state.sched_df)} 張工單，其中 {changed_n} 張與上次不同")
+else:
+    # ── NAS 離線（雲端 or 斷線）：改用手動上傳 ───────────────────────────────
+    st.warning("⚠️ NAS 離線，請手動上傳檔案（雲端使用時）")
+    with st.expander("📂 上傳 簡版-工單缺料狀況.xlsx", expanded=True):
+        up_col1, up_col2 = st.columns(2)
+        with up_col1:
+            st.caption("**今日檔案**（必要）")
+            upload_new = st.file_uploader(
+                "上傳今日版本", type=["xlsx", "xls"], key="sched_upload_new",
+                label_visibility="collapsed")
+        with up_col2:
+            st.caption("**前一日檔案**（選填，用於比對變更）")
+            upload_old = st.file_uploader(
+                "上傳前一版本", type=["xlsx", "xls"], key="sched_upload_old",
+                label_visibility="collapsed")
+
+    if upload_new is not None:
+        if st.button("📥 載入", type="primary", key="sched_load_btn"):
+            with st.spinner("讀取中..."):
+                sdf = parse_file(upload_new)
+                if upload_old is not None:
+                    diff_map = build_diff_map(upload_new, upload_old)
+                    sdf['變更'] = sdf['工單'].map(
+                        lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
+                else:
+                    sdf['變更'] = ''
+                st.session_state.sched_df   = sdf
+                st.session_state.sched_src  = upload_new.name
+                st.session_state.sched_time = pd.Timestamp.now()
+            changed_n = (sdf['變更'] != '').sum()
+            st.success(f"載入完成：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
+    elif "sched_df" not in st.session_state:
+        st.info("👆 請先上傳今日的「簡版-工單缺料狀況.xlsx」")
 
 if "sched_df" not in st.session_state:
     st.stop()
@@ -574,7 +608,166 @@ k3.metric("缺料中",   shortage)
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-tab1, tab2 = st.tabs(["📦 出貨時程總覽", "🔍 進料延遲明細"])
+tab0, tab1, tab2, tab3 = st.tabs(["📊 今日出貨看板", "📦 出貨時程總覽", "🔍 進料延遲明細", "📅 每日來料排程"])
+
+# ── Tab0：出貨達成看板 ─────────────────────────────────────────────────────
+with tab0:
+    import plotly.graph_objects as go
+
+    DAILY_CAP = 150   # 每日產能（pcs）
+
+    # 本週 / 下週 日期範圍（週一～週五）
+    _wd     = TODAY.weekday()
+    wk_mon  = TODAY - timedelta(days=_wd)
+    wk_fri  = wk_mon + timedelta(days=4)
+    nwk_mon = wk_mon + timedelta(days=7)
+    nwk_fri = nwk_mon + timedelta(days=4)
+
+    def _expand_ship(src_df):
+        """
+        將出貨日欄含多筆日期的工單（如 '6/12-國智*500，6/18-國智*800'）
+        拆成多列，各自帶對應的出貨日與數量。
+        沒有多日期的工單維持原樣。
+        """
+        records = []
+        for _, row in src_df.iterrows():
+            label = str(row.get("出貨日_顯示", "") or "")
+            # 找所有 M/D...*數量 的組合
+            pairs = re.findall(r'(\d{1,2}/\d{1,2})[^*\n,，]*\*\s*(\d+)', label)
+            if len(pairs) > 1:
+                for date_str, qty_str in pairs:
+                    d = parse_date_str(date_str)
+                    if d:
+                        new_row = row.copy()
+                        new_row["出貨日"]      = d
+                        new_row["出貨日_顯示"] = f"{date_str}*{qty_str}"
+                        new_row["預計產量"]    = int(qty_str)
+                        records.append(new_row)
+            else:
+                records.append(row)
+        return pd.DataFrame(records) if records else src_df.copy()
+
+    # 展開多日期工單後再使用
+    exp_df = _expand_ship(dff[dff["出貨日"].notna()].copy())
+
+    def _week_stats(src_exp, start, end):
+        sub = src_exp[(src_exp["出貨日"] >= start) & (src_exp["出貨日"] <= end)].copy()
+        total_wo  = len(sub)
+        total_qty = int(sub["預計產量"].dropna().sum())
+        ready_qty = int(sub[sub["料況狀態"] == "已齊料"]["預計產量"].dropna().sum())
+        lack_qty  = total_qty - ready_qty
+        ready_wo  = int((sub["料況狀態"] == "已齊料").sum())
+
+        need_days  = round(total_qty / DAILY_CAP, 1) if total_qty else 0
+        wdays_left = count_workdays(TODAY - timedelta(days=1), end)
+        cap_left   = wdays_left * DAILY_CAP
+
+        # 缺料工單中，最晚的預計齊料日
+        lack_sub = sub[sub["料況狀態"] != "已齊料"]
+        mat_dates = lack_sub["預計齊料日"].dropna()
+        latest_mat = max(mat_dates) if not mat_dates.empty else None
+
+        return dict(total_wo=total_wo, total_qty=total_qty,
+                    ready_qty=ready_qty, lack_qty=lack_qty,
+                    ready_wo=ready_wo,
+                    need_days=need_days, wdays_left=wdays_left,
+                    cap_left=cap_left, latest_mat=latest_mat, sub=sub)
+
+    ws  = _week_stats(exp_df, wk_mon,  wk_fri)
+    nws = _week_stats(exp_df, nwk_mon, nwk_fri)
+
+    def _render_week_card(label, start, end, stats):
+        total_wo   = stats["total_wo"]
+        total_qty  = stats["total_qty"]
+        ready_qty  = stats["ready_qty"]
+        lack_qty   = stats["lack_qty"]
+        need_days  = stats["need_days"]
+        wdays_left = stats["wdays_left"]
+        cap_left   = stats["cap_left"]
+        latest_mat = stats["latest_mat"]
+
+        if total_qty == 0:
+            verdict = ("⬜", "#f1f5f9", "#64748b", "#e2e8f0", "本週無出貨工單")
+        elif lack_qty == 0:
+            verdict = ("✅", "#f0fdf4", "#15803d", "#86efac", "全數已齊料，可如期出貨")
+        elif cap_left >= lack_qty:
+            verdict = ("⚠️", "#fefce8", "#92400e", "#fde68a",
+                       f"仍缺料 {lack_qty:,} pcs，但產能尚足（剩餘產能 {cap_left:,} pcs）")
+        else:
+            verdict = ("🔴", "#fff1f2", "#b91c1c", "#fca5a5",
+                       f"缺料 {lack_qty:,} pcs，剩餘產能 {cap_left:,} pcs 不足，有出貨風險")
+
+        icon, bg, text_c, border_c, msg = verdict
+        pct_ready = int(ready_qty / total_qty * 100) if total_qty else 0
+
+        mat_line = ""
+        if latest_mat is not None:
+            mat_str  = latest_mat.strftime('%m/%d') if hasattr(latest_mat, 'strftime') else str(latest_mat)
+            mat_line = f"<span style='margin-left:16px'>最晚齊料日 <b style='color:#dc2626'>{mat_str}</b></span>"
+
+        st.markdown(f"""
+<div style="border:2px solid {border_c};border-radius:12px;padding:18px 20px;
+     background:{bg};height:100%">
+  <div style="font-size:18px;font-weight:800;color:{text_c};margin-bottom:2px">
+    {icon}&nbsp;{label}
+    <span style="font-size:13px;font-weight:400;color:#64748b;margin-left:8px">
+      {start.strftime('%m/%d')} ~ {end.strftime('%m/%d')}
+    </span>
+  </div>
+  <div style="font-size:13px;color:{text_c};margin-bottom:12px">{msg}</div>
+
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:800;color:{text_c}">{total_wo}</div>
+      <div style="font-size:11px;color:#64748b">出貨筆數</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:800;color:{text_c}">{total_qty:,}</div>
+      <div style="font-size:11px;color:#64748b">總數量 (pcs)</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:800;color:#15803d">{ready_qty:,}</div>
+      <div style="font-size:11px;color:#64748b">已齊料 (pcs)</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:800;color:#dc2626">{lack_qty:,}</div>
+      <div style="font-size:11px;color:#64748b">缺料 (pcs)</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:28px;font-weight:800;color:{text_c}">{need_days}</div>
+      <div style="font-size:11px;color:#64748b">需生產天數<br><span style='font-size:10px'>(150pcs/天)</span></div>
+    </div>
+  </div>
+
+  <div style="font-size:12px;color:#64748b;margin-bottom:4px">
+    齊料進度 {pct_ready}%　｜　週內剩餘產能 {cap_left:,} pcs（{wdays_left} 工作天）{mat_line}
+  </div>
+  <div style="background:#e2e8f0;border-radius:6px;height:14px;overflow:hidden">
+    <div style="display:flex;height:100%">
+      <div style="width:{pct_ready}%;background:#22c55e"></div>
+      <div style="width:{100-pct_ready}%;background:#f87171"></div>
+    </div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    cw1, cw2 = st.columns(2)
+    with cw1:
+        _render_week_card("本週出貨", wk_mon, wk_fri, ws)
+    with cw2:
+        _render_week_card("下週出貨", nwk_mon, nwk_fri, nws)
+
+    st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
+
+    # ── 缺料工單明細（可展開）────────────────────────────────────────
+    both_lack = pd.concat([ws["sub"], nws["sub"]], ignore_index=True)
+    both_lack = both_lack[both_lack["料況狀態"] != "已齊料"].drop_duplicates(subset=["工單", "出貨日_顯示"]).sort_values("出貨日")
+    if not both_lack.empty:
+        with st.expander(f"⚠️ 兩週內缺料工單明細（共 {len(both_lack)} 筆）"):
+            show = both_lack[["工單", "成品料號", "預計產量", "出貨日_顯示",
+                               "料況狀態", "預計齊料日", "延遲料況", "重點提示"]].copy()
+            show["預計齊料日"] = show["預計齊料日"].apply(
+                lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v, 'strftime') else "")
+            st.dataframe(show, hide_index=True, use_container_width=True)
 
 # ── Tab1：出貨時程總覽 ───────────────────────────────────────────────────────
 with tab1:
@@ -876,3 +1069,346 @@ with tab2:
                         st.info("L欄無詳細進料資訊，請參考重點提示欄。")
                         if row["進料明細"]:
                             st.text(row["進料明細"])
+
+# ── Tab3：每日來料排程 ─────────────────────────────────────────────────────
+with tab3:
+    st.caption("整合所有缺料工單的進料資訊，依預計到料日分組，方便追蹤每天應到的物料。")
+
+    # ── 建立「每日來料」資料表 ──────────────────────────────────────
+    # 從每張工單的 _delayed / _future / _iqc 展開成逐料列
+    daily_rows = []
+    for _, row in dff.iterrows():
+        if row["料況狀態"] == "已齊料":
+            continue
+        wo       = row["工單"]
+        product  = row["成品料號"]
+        ship_d   = row["出貨日"]
+        ship_str = row["出貨日_顯示"] or "未定"
+        qty      = row["預計產量"]
+
+        # 計算距出貨日剩餘工作天，判斷是否為急件
+        if pd.notna(ship_d):
+            wdays_to_ship = count_workdays(TODAY - timedelta(days=1), ship_d)
+            is_urgent = wdays_to_ship <= 10
+        else:
+            wdays_to_ship = None
+            is_urgent = False
+        urgent_label = "🚨 急件" if is_urgent else "📦 不急件"
+        urgent_note  = f"（出貨剩 {wdays_to_ship} 工作天）" if wdays_to_ship is not None else ""
+
+        # 逾期未到
+        for mat, arr_d, days_late in row["_delayed"]:
+            daily_rows.append({
+                "預計到料日":  arr_d,
+                "狀態":       "🔴 逾期",
+                "急件":        urgent_label,
+                "料號":        mat,
+                "工單":        wo,
+                "成品料號":    product,
+                "出貨日":      ship_str,
+                "出貨數量":    qty,
+                "備註":        f"已逾期 {days_late} 天 {urgent_note}",
+                "_urgent":    is_urgent,
+            })
+        # IQC 中
+        for mat, arr_d in row["_iqc"]:
+            daily_rows.append({
+                "預計到料日":  arr_d if arr_d else None,
+                "狀態":       "🟡 IQC",
+                "急件":        urgent_label,
+                "料號":        mat,
+                "工單":        wo,
+                "成品料號":    product,
+                "出貨日":      ship_str,
+                "出貨數量":    qty,
+                "備註":        f"廠內驗收中 {urgent_note}",
+                "_urgent":    is_urgent,
+            })
+        # 未來預計到料
+        for mat, arr_d, days_to in row["_future"]:
+            daily_rows.append({
+                "預計到料日":  arr_d,
+                "狀態":       "🔵 待進料",
+                "急件":        urgent_label,
+                "料號":        mat,
+                "工單":        wo,
+                "成品料號":    product,
+                "出貨日":      ship_str,
+                "出貨數量":    qty,
+                "備註":        f"距今 +{days_to} 天 {urgent_note}",
+                "_urgent":    is_urgent,
+            })
+
+    if not daily_rows:
+        st.success("目前篩選範圍內所有缺料工單均無進料明細資訊（請確認 L欄是否填寫）。")
+    else:
+        mat_df = pd.DataFrame(daily_rows)
+
+        # ── 篩選列 ───────────────────────────────────────────────────
+        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
+        with fc1:
+            _dates = mat_df["預計到料日"].dropna()
+            d_min  = _dates.min() if not _dates.empty else TODAY
+            d_max  = _dates.max() if not _dates.empty else TODAY + timedelta(days=30)
+            mat_range = st.date_input(
+                "到料日區間",
+                value=(TODAY, min(d_max, TODAY + timedelta(days=30))),
+                min_value=d_min, max_value=d_max,
+                key="mat_range"
+            )
+        with fc2:
+            status_opts = ["全部"] + sorted(mat_df["狀態"].unique().tolist())
+            sel_mat_status = st.selectbox("進料狀態", status_opts, key="mat_status")
+        with fc3:
+            sel_urgent = st.selectbox("急件篩選",
+                ["全部", "🚨 急件（≤10工作天）", "📦 不急件"], key="mat_urgent")
+        with fc4:
+            mat_search = st.text_input("料號 / 工單搜尋", placeholder="輸入關鍵字", key="mat_kw")
+
+        mdf = mat_df.copy()
+        if isinstance(mat_range, (list, tuple)) and len(mat_range) == 2:
+            r0, r1 = mat_range
+            mdf = mdf[mdf["預計到料日"].isna() |
+                      ((mdf["預計到料日"] >= r0) & (mdf["預計到料日"] <= r1))]
+        if sel_mat_status != "全部":
+            mdf = mdf[mdf["狀態"] == sel_mat_status]
+        if sel_urgent == "🚨 急件（≤10工作天）":
+            mdf = mdf[mdf["_urgent"] == True]
+        elif sel_urgent == "📦 不急件":
+            mdf = mdf[mdf["_urgent"] == False]
+        if mat_search.strip():
+            kw = mat_search.strip()
+            mdf = mdf[mdf["料號"].str.contains(kw, na=False) |
+                      mdf["工單"].str.contains(kw, na=False)]
+
+        # ── 匯出 Excel ───────────────────────────────────────────────
+        def _mat_to_excel(df_export):
+            import io
+            from openpyxl import Workbook
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            COLS   = ["預計到料日", "狀態", "急件", "料號", "工單", "成品料號",
+                      "出貨日", "出貨數量", "備註"]
+            WIDTHS = [14,           12,     12,     36,    18,    32,
+                      14,           10,     36]
+
+            thin   = Side(style="thin", color="CBD5E1")
+            border = Border(left=thin, right=thin, top=thin, bottom=thin)
+            center = Alignment(horizontal="center", vertical="center")
+            left   = Alignment(horizontal="left",   vertical="center", wrap_text=True)
+
+            HDR_FILL   = PatternFill("solid", fgColor="1E3A8A")
+            HDR_FONT   = Font(name="Arial", bold=True, color="FFFFFF", size=10)
+            FILL_URG   = PatternFill("solid", fgColor="FFF7ED")   # 急件
+            FILL_OVD   = PatternFill("solid", fgColor="FEE2E2")   # 逾期
+            FILL_IQC   = PatternFill("solid", fgColor="FEF9C3")   # IQC
+            FILL_EVEN  = PatternFill("solid", fgColor="EFF6FF")
+            FILL_ODD   = PatternFill("solid", fgColor="FFFFFF")
+            FONT_NORM  = Font(name="Arial", size=9)
+            FONT_URG   = Font(name="Arial", size=9, bold=True, color="C2410C")
+            FONT_OVD   = Font(name="Arial", size=9, bold=True, color="DC2626")
+
+            out = df_export[COLS].copy()
+            out["預計到料日"] = out["預計到料日"].apply(
+                lambda v: v.strftime('%Y-%m-%d') if pd.notna(v) and hasattr(v,'strftime') else "")
+            out["出貨數量"] = out["出貨數量"].apply(
+                lambda v: int(v) if pd.notna(v) else "")
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = f"來料排程_{TODAY.strftime('%m%d')}"
+            ws.row_dimensions[1].height = 22
+
+            for ci, h in enumerate(COLS, 1):
+                cell = ws.cell(row=1, column=ci, value=h)
+                cell.fill = HDR_FILL; cell.font = HDR_FONT
+                cell.alignment = center; cell.border = border
+                ws.column_dimensions[get_column_letter(ci)].width = WIDTHS[ci-1]
+
+            ws.freeze_panes = "A2"
+
+            for ri, (_, row) in enumerate(out.iterrows(), 2):
+                ws.row_dimensions[ri].height = 22
+                is_urg = bool(df_export.at[row.name, "_urgent"]) if row.name in df_export.index else False
+                status = str(row["狀態"])
+                base_fill = (FILL_OVD if "逾期" in status else
+                             FILL_IQC if "IQC" in status else
+                             FILL_URG if is_urg else
+                             (FILL_EVEN if ri % 2 == 0 else FILL_ODD))
+                for ci, val in enumerate(row, 1):
+                    cell = ws.cell(row=ri, column=ci, value=str(val) if pd.notna(val) else "")
+                    cell.border = border
+                    cell.fill   = base_fill
+                    cell.alignment = center if ci in (1, 7, 8) else left
+                    cell.font = (FONT_URG if is_urg and "逾期" not in status else
+                                 FONT_OVD if "逾期" in status else FONT_NORM)
+
+            buf = io.BytesIO(); wb.save(buf)
+            return buf.getvalue()
+
+        ex1, _ = st.columns([1, 5])
+        with ex1:
+            st.download_button(
+                "⬇ 匯出 Excel",
+                data=_mat_to_excel(mdf),
+                file_name=f"每日來料排程_{TODAY}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="mat_export"
+            )
+
+        # ── KPI ─────────────────────────────────────────────────────
+        n_urgent  = mdf["_urgent"].sum()
+        n_normal  = (~mdf["_urgent"]).sum()
+        n_overdue = (mdf["狀態"] == "🔴 逾期").sum()
+        n_iqc     = (mdf["狀態"] == "🟡 IQC").sum()
+        n_future  = (mdf["狀態"] == "🔵 待進料").sum()
+
+        k1, k2, k3, k4, k5 = st.columns(5)
+        k1.metric("追蹤料號總數", len(mdf))
+        k2.metric("🚨 急件",      n_urgent,  delta="需優先追蹤" if n_urgent else None,
+                  delta_color="inverse")
+        k3.metric("📦 不急件",    n_normal)
+        k4.metric("🔴 逾期未到",  n_overdue)
+        k5.metric("🟡 IQC 驗收中", n_iqc)
+        st.markdown("---")
+
+        # ── 顯示模式切換 ─────────────────────────────────────────────
+        view_mode = st.radio(
+            "顯示方式",
+            ["依到料日分組", "急件優先（上方）", "急件 / 不急件 分開"],
+            horizontal=True, key="mat_view"
+        )
+
+        wday_names = ["一", "二", "三", "四", "五", "六", "日"]
+
+        def _date_header(arr_date, n_items, extra_tags=""):
+            is_past  = arr_date < TODAY
+            is_today = arr_date == TODAY
+            if is_past:
+                hdr_bg, hdr_c = "#fff1f2", "#b91c1c"
+                tag = "<span style='background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 8px;font-size:12px;margin-left:6px'>⚠️ 已逾期</span>"
+            elif is_today:
+                hdr_bg, hdr_c = "#eff6ff", "#1d4ed8"
+                tag = "<span style='background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 8px;font-size:12px;margin-left:6px'>📌 今日</span>"
+            else:
+                hdr_bg, hdr_c = "#f8fafc", "#334155"
+                tag = ""
+            wday = wday_names[arr_date.weekday()]
+            st.markdown(f"""
+<div style="background:{hdr_bg};border-left:4px solid {hdr_c};border-radius:6px;
+     padding:7px 14px;margin-bottom:4px;margin-top:8px">
+  <span style="font-size:14px;font-weight:800;color:{hdr_c}">
+    {arr_date.strftime('%m / %d')}（週{wday}）
+  </span>
+  <span style="font-size:12px;color:#64748b;margin-left:8px">{n_items} 項</span>
+  {tag}{extra_tags}
+</div>""", unsafe_allow_html=True)
+
+        def _show_table(sub_df):
+            display = sub_df[["狀態", "急件", "料號", "工單", "成品料號",
+                               "出貨日", "出貨數量", "備註"]].copy()
+            display["出貨數量"] = display["出貨數量"].apply(
+                lambda v: int(v) if pd.notna(v) else "")
+
+            # urgent_map: index → bool，用來配色
+            urgent_map = sub_df["_urgent"].to_dict()
+
+            def _rc(r):
+                is_urg = urgent_map.get(r.name, False)
+                if r["狀態"] == "🔴 逾期":
+                    return ["background-color:#fff1f2"] * len(r)
+                if r["狀態"] == "🟡 IQC":
+                    return ["background-color:#fefce8"] * len(r)
+                if is_urg:
+                    return ["background-color:#fff7ed"] * len(r)
+                return [""] * len(r)
+
+            st.dataframe(
+                display.style.apply(_rc, axis=1),
+                hide_index=True, use_container_width=True
+            )
+
+        has_date = mdf[mdf["預計到料日"].notna()].copy()
+        no_date  = mdf[mdf["預計到料日"].isna()].copy()
+
+        if view_mode == "依到料日分組":
+            for arr_date in sorted(has_date["預計到料日"].unique()):
+                day_df = has_date[has_date["預計到料日"] == arr_date]
+                n_urg  = day_df["_urgent"].sum()
+                extra  = (f"<span style='background:#fff7ed;color:#c2410c;border-radius:4px;"
+                          f"padding:1px 8px;font-size:12px;margin-left:6px'>"
+                          f"🚨 急件 {n_urg} 項</span>") if n_urg else ""
+                _date_header(arr_date, len(day_df), extra)
+                _show_table(day_df)
+
+        elif view_mode == "急件優先（上方）":
+            urgent_df = has_date[has_date["_urgent"]].sort_values("預計到料日")
+            normal_df = has_date[~has_date["_urgent"]].sort_values("預計到料日")
+
+            if not urgent_df.empty:
+                st.markdown("""
+<div style="background:#fff7ed;border:2px solid #f97316;border-radius:8px;
+     padding:8px 14px;margin-bottom:8px;font-size:15px;font-weight:800;color:#c2410c">
+  🚨 急件（出貨日 ≤ 10 工作天）
+</div>""", unsafe_allow_html=True)
+                for arr_date in sorted(urgent_df["預計到料日"].unique()):
+                    day_df = urgent_df[urgent_df["預計到料日"] == arr_date]
+                    _date_header(arr_date, len(day_df))
+                    _show_table(day_df)
+
+            if not normal_df.empty:
+                st.markdown("""
+<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;
+     padding:8px 14px;margin-top:16px;margin-bottom:8px;font-size:15px;font-weight:800;color:#15803d">
+  📦 不急件（出貨日 &gt; 10 工作天）
+</div>""", unsafe_allow_html=True)
+                for arr_date in sorted(normal_df["預計到料日"].unique()):
+                    day_df = normal_df[normal_df["預計到料日"] == arr_date]
+                    _date_header(arr_date, len(day_df))
+                    _show_table(day_df)
+
+        else:  # 急件 / 不急件 分開（左右欄）
+            col_urg, col_norm = st.columns(2)
+            urgent_df = has_date[has_date["_urgent"]].sort_values("預計到料日")
+            normal_df = has_date[~has_date["_urgent"]].sort_values("預計到料日")
+
+            with col_urg:
+                st.markdown(f"""
+<div style="background:#fff7ed;border:2px solid #f97316;border-radius:8px;
+     padding:8px 14px;margin-bottom:10px;font-size:14px;font-weight:800;color:#c2410c">
+  🚨 急件 &nbsp;<span style="font-weight:400;font-size:12px">共 {len(urgent_df)} 項</span>
+</div>""", unsafe_allow_html=True)
+                if urgent_df.empty:
+                    st.success("無急件")
+                else:
+                    for arr_date in sorted(urgent_df["預計到料日"].unique()):
+                        day_df = urgent_df[urgent_df["預計到料日"] == arr_date]
+                        _date_header(arr_date, len(day_df))
+                        _show_table(day_df)
+
+            with col_norm:
+                st.markdown(f"""
+<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;
+     padding:8px 14px;margin-bottom:10px;font-size:14px;font-weight:800;color:#15803d">
+  📦 不急件 &nbsp;<span style="font-weight:400;font-size:12px">共 {len(normal_df)} 項</span>
+</div>""", unsafe_allow_html=True)
+                if normal_df.empty:
+                    st.info("無不急件")
+                else:
+                    for arr_date in sorted(normal_df["預計到料日"].unique()):
+                        day_df = normal_df[normal_df["預計到料日"] == arr_date]
+                        _date_header(arr_date, len(day_df))
+                        _show_table(day_df)
+
+        # 無日期的 IQC
+        if not no_date.empty:
+            st.markdown(f"""
+<div style="background:#fefce8;border-left:5px solid #eab308;border-radius:6px;
+     padding:8px 14px;margin-top:16px;margin-bottom:6px">
+  <span style="font-size:15px;font-weight:800;color:#92400e">
+    📦 IQC 驗收中（無明確到料日）
+  </span>
+  <span style="font-size:13px;color:#64748b;margin-left:10px">{len(no_date)} 項物料</span>
+</div>""", unsafe_allow_html=True)
+            _show_table(no_date)
