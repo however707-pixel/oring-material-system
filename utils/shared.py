@@ -73,7 +73,13 @@ def inject_css():
         border-right: 1.5px solid #e2e8f0;
         box-shadow: 4px 0 24px rgba(29,78,216,0.06);
     }
-    [data-testid="stSidebarNav"] { display: none !important; }
+    /* 隱藏 Streamlit 所有版本的自動頁面導覽 */
+    [data-testid="stSidebarNav"]          { display: none !important; }
+    [data-testid="stSidebarNavItems"]     { display: none !important; }
+    [data-testid="stSidebarNavLink"]      { display: none !important; }
+    [data-testid="stSidebarNavSeparator"] { display: none !important; }
+    section[data-testid="stSidebar"] nav  { display: none !important; }
+    section[data-testid="stSidebar"] ul   { display: none !important; }
 
     /* ── Status card 3D ── */
     .status-card {
@@ -190,6 +196,20 @@ def _logo_b64() -> str:
 
 # ── 頁首 Header（3D 風格）────────────────────────────────────────────────────
 
+def render_header_init():
+    """不顯示 Header，但執行必要的 components.html() 初始化，防止 None 導覽元素出現。"""
+    components.html(
+        "<!DOCTYPE html><html><head></head>"
+        "<body style='margin:0;padding:0;overflow:hidden'></body></html>",
+        height=1
+    )
+    st.markdown(
+        "<style>[data-testid='stCustomComponentV1']:first-of-type{"
+        "height:1px!important;min-height:0!important;margin:0!important;padding:0!important;"
+        "overflow:hidden!important;visibility:hidden!important}</style>",
+        unsafe_allow_html=True
+    )
+
 def render_header(title: str, subtitle: str, badge: str = "Production Management System", show_logo: bool = True):
     logo_data = _logo_b64() if show_logo else ""
     logo_html = (
@@ -254,6 +274,7 @@ body {{ background:transparent; padding:4px 0; }}
 </div>
 </body></html>
 """, height=118)
+
 
 # ── 側欄導覽 Sidebar ──────────────────────────────────────────────────────────
 
@@ -470,6 +491,17 @@ def render_sidebar():
         " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
            onmouseout="this.style.background='';this.style.color='#475569'">
             📉 耗損率分析
+        </a>
+        <a href="/kanban" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:600;
+            color:#1d4ed8 !important; text-decoration:none !important;
+            background:#eff6ff; border:1px solid #bfdbfe;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='#dbeafe';this.style.color='#1e40af'"
+           onmouseout="this.style.background='#eff6ff';this.style.color='#1d4ed8'">
+            📺 工單進度看板
         </a>
         """, unsafe_allow_html=True)
 
