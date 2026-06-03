@@ -197,10 +197,10 @@ with st.spinner("分析中，請稍候..."):
         in_range = dated[dated['日期'] <= end]
         if not in_range.empty:
             last_bal  = in_range.sort_values('日期').iloc[-1]['預計結存']
-            # 預計進貨 & 預計生產：尚未實際入庫/完工，不算現有可用庫存，須扣除
+            # 預計進貨 & 預計生產 & 預計請購：尚未實際入庫/完工，不算現有可用庫存，須扣除
             planned_in = dated[
                 (dated['日期'] <= end) &
-                (dated['異動別'].isin(['預計進貨', '預計生產']))
+                (dated['異動別'].isin(['預計進貨', '預計生產', '預計請購']))
             ]['異動數量'].sum()
             return max(0, last_bal - planned_in)
         # ── 無日期列（僅初始庫存）：優先讀 異動數量，其次讀 預計結存 ──
