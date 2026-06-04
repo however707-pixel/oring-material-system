@@ -400,7 +400,7 @@ with col_person:
                       tickfont=dict(color="#6B7280", size=13), zeroline=False),
             yaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=14,
                        family="Microsoft JhengHei")),
-            margin=dict(l=10, r=70, t=10, b=10),
+            margin=dict(l=10, r=90, t=10, b=10),
             height=max(200, len(person_today) * 52),
             font=dict(color="#6B7280", family="Microsoft JhengHei"),
         )
