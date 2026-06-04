@@ -14,7 +14,7 @@ st.set_page_config(page_title="工單進度看板", page_icon="📺",
 st.markdown("""
 <style>
 /* ── 白色底，清爽亮色主題 ── */
-.stApp { background:#f0f4f9 !important; }
+.stApp { background:#e8eef6 !important; }
 [data-testid="stHeader"]  { background:transparent !important; }
 [data-testid="stSidebar"] { background:#ffffff !important; }
 .block-container { padding:0.6rem 1.2rem 2rem !important; max-width:100% !important; }
@@ -421,7 +421,7 @@ def _big_card(wk):
         f'<div style="display:flex;height:100%">'
         f'<div style="width:{pct}%;background:linear-gradient(90deg,#22d3ee,#06b6d4);'
         f'box-shadow:0 0 8px rgba(34,211,238,0.6)"></div>'
-        f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4)"></div>'
+        f'<div style="width:{100-pct}%;background:#fca5a5"></div>'
         f'</div></div></div>'
     )
 
@@ -507,10 +507,10 @@ for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
     if total > 0:
         annotations.append(dict(
             x=labels[i], y=total,
-            text=f"✅ 已齊 <b>{rq:,}</b>　⚠️ 缺料 <b>{lq:,}</b>　共 {total:,}",
+            text=f"已齊 {rq:,}  |  缺料 {lq:,}  |  共 {total:,}",
             xanchor="center", yanchor="bottom",
             showarrow=False,
-            font=dict(size=18, color="#f0f9ff",
+            font=dict(size=18, color="#0f172a",
                       family="Microsoft JhengHei"),
             bgcolor="rgba(0,0,0,0)",
         ))
@@ -544,7 +544,7 @@ st.markdown(
     f'border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:12px 20px;margin-bottom:14px;'
     f'box-shadow:0 0 16px rgba(239,68,68,0.1);display:flex;align-items:center;gap:20px">'
     f'<span style="color:#fca5a5;font-size:16px;font-weight:800">🚨 &nbsp;兩週內急件缺料</span>'
-    f'<span style="color:#f87171;font-size:50px;font-weight:900;'
+    f'<span style="color:#dc2626;font-size:50px;font-weight:900;'
     f'text-shadow:0 0 16px rgba(239,68,68,0.5)">{len(urgent_lack)}</span>'
     f'<span style="color:#475569;font-size:14px">張工單（出貨剩 ≤10 工作天且尚未齊料）</span>'
     f'</div>',
