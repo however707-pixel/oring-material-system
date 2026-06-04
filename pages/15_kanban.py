@@ -62,12 +62,16 @@ div[data-testid="stButton"] > button[kind="tertiary"] {
 div[data-testid="stButton"] > button[kind="tertiary"]:hover {
     color:#2A9DF4 !important; border-color:#B9DDF5 !important;
 }
-/* 箭頭按鈕容器：拉進卡片內的出貨筆數位置 */
+/* 箭頭按鈕容器：拉到卡片右上角 */
 .wk-arrow-btn {
-    margin-top:-120px !important;
-    width:20% !important;
-    padding:0 !important;
-    text-align:center !important;
+    margin-top:-200px !important;
+    width:100% !important;
+    padding:0 4px 0 0 !important;
+    text-align:right !important;
+}
+.wk-arrow-btn div[data-testid="stButton"] {
+    display:inline-block !important;
+    width:auto !important;
 }
 </style>
 """, unsafe_allow_html=True)
