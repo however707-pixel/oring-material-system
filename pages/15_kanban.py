@@ -50,29 +50,35 @@ div[data-testid="stButton"] > button[kind="secondary"] {
 div[data-testid="stButton"] > button[kind="secondary"]:hover {
     background:#F4F8FB !important;
 }
-/* ▼/▲ 箭頭按鈕：白底灰字，只顯示符號，定位在出貨筆數下方 */
-div[data-testid="stButton"] > button[kind="tertiary"] {
-    all:unset !important;
-    cursor:pointer !important; font-size:16px !important;
-    color:#94a3b8 !important; padding:2px 8px !important;
-    display:block !important; border-radius:4px !important;
-    background:#ffffff !important; width:auto !important;
-    border:1px solid #e2e8f0 !important; margin-top:0 !important;
+/* 三週大卡片的 ▼/▲ 按鈕：絕對定位在卡片右上角 */
+[data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"] {
+    position: relative !important;
 }
-div[data-testid="stButton"] > button[kind="tertiary"]:hover {
-    color:#2A9DF4 !important; border-color:#B9DDF5 !important;
+[data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"] > *:nth-child(2) {
+    position: absolute !important;
+    top: 14px !important;
+    right: 14px !important;
+    width: auto !important;
+    z-index: 20 !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
-/* 箭頭按鈕容器：拉到卡片右上角 */
-.wk-arrow-btn {
-    margin-top:-200px !important;
-    width:100% !important;
-    padding:0 4px 0 0 !important;
-    text-align:right !important;
+[data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"] > *:nth-child(2) button {
+    all: unset !important;
+    cursor: pointer !important;
+    font-size: 15px !important;
+    color: #94a3b8 !important;
+    padding: 3px 9px !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    line-height: 1.3 !important;
 }
-.wk-arrow-btn div[data-testid="stButton"] {
-    display:inline-block !important;
-    width:auto !important;
+[data-testid="stHorizontalBlock"]:nth-of-type(2) [data-testid="column"] > *:nth-child(2) button:hover {
+    color: #2A9DF4 !important;
+    border-color: #B9DDF5 !important;
 }
+.wk-arrow-btn { display:contents !important; }
 </style>
 """, unsafe_allow_html=True)
 
