@@ -507,7 +507,7 @@ for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
     if total > 0:
         annotations.append(dict(
             x=labels[i], y=total,
-            text=f"<b>已齊 {rq:,}</b> / 共 {total:,}",
+            text=f"✅ 已齊 <b>{rq:,}</b>　⚠️ 缺料 <b>{lq:,}</b>　共 {total:,}",
             xanchor="center", yanchor="bottom",
             showarrow=False,
             font=dict(size=18, color="#f0f9ff",
