@@ -556,7 +556,7 @@ fig3d.update_layout(
             zeroline=False, showbackground=False,
         ),
         yaxis=dict(
-            title="pcs", titlefont=dict(size=13, color="#607080"),
+            title=dict(text="pcs", font=dict(size=13, color="#607080")),
             tickfont=dict(size=12, color="#607080"),
             showgrid=True, gridcolor="#DDE9F3",
             zeroline=True, zerolinecolor="#B9DDF5",
