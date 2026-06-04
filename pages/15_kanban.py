@@ -501,55 +501,87 @@ st.markdown(
     'margin-bottom:10px">📊 4週出貨量趨勢（pcs）</div>',
     unsafe_allow_html=True
 )
-labels  = [f'{w["label"]}  {w["start"].strftime("%m/%d")}~{w["end"].strftime("%m/%d")}' for w in weeks]
+short_labels = [f'{w["label"]}\n{w["start"].strftime("%m/%d")}~{w["end"].strftime("%m/%d")}' for w in weeks]
 rq_vals = [w["rq"] for w in weeks]
 lq_vals = [w["lq"] for w in weeks]
 
-fig = go.Figure()
-fig.add_trace(go.Bar(
-    name="已齊料 pcs", x=labels, y=rq_vals,
-    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
-    text=None,
-))
-fig.add_trace(go.Bar(
-    name="缺料 pcs", x=labels, y=lq_vals,
-    marker=dict(color="rgba(248,113,113,0.6)", line=dict(color="#E74C5B", width=1.5)),
-    text=None,
-))
+# ── 3D 立體長條圖 ────────────────────────────────────────
+def _bar3d(fig, xi, y0, y1, color, name=None, showlegend=False):
+    """在 xi 位置建立一個 3D 立體長條（Mesh3d）"""
+    if y1 <= y0: return
+    W, D = 0.38, 0.28           # 寬度、深度
+    x0b, x1b = xi-W/2, xi+W/2
+    z0b, z1b = 0,      D
+    vx = [x0b,x1b,x1b,x0b, x0b,x1b,x1b,x0b]
+    vy = [y0, y0, y0, y0,   y1, y1, y1, y1]
+    vz = [z0b,z0b,z1b,z1b, z0b,z0b,z1b,z1b]
+    ii = [0,0,4,4,0,0,2,2,0,0,1,1]
+    jj = [1,2,5,6,1,5,3,7,3,7,2,6]
+    kk = [2,3,6,7,5,4,7,6,7,4,6,5]
+    fig.add_trace(go.Mesh3d(
+        x=vx, y=vy, z=vz, i=ii, j=jj, k=kk,
+        color=color, opacity=0.88, flatshading=True,
+        name=name or "", showlegend=showlegend,
+        hovertemplate=f"{name}: %{{y:,.0f}} pcs<extra></extra>" if name else "",
+        lighting=dict(ambient=0.6, diffuse=0.9, specular=0.3, roughness=0.4),
+        lightposition=dict(x=2, y=3, z=1),
+    ))
 
-# 在每個長條最上方顯示：已齊料 / 總量，字夠大夠清楚
-annotations = []
+fig3d = go.Figure()
+for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
+    _bar3d(fig3d, i, 0,  rq,    "#16A085", "已齊料 pcs", i==0)
+    _bar3d(fig3d, i, rq, rq+lq, "#E74C5B", "缺料 pcs",   i==0)
+
+# 頂部文字標籤
 for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
     total = rq + lq
     if total > 0:
-        annotations.append(dict(
-            x=labels[i], y=total,
-            text=f"共 {total:,}<br><span style='font-size:14px'>齊 {rq:,} ｜ 缺 {lq:,}</span>",
-            xanchor="center", yanchor="bottom",
-            showarrow=True,
-            arrowhead=0, arrowcolor="rgba(0,0,0,0)",
-            ax=0, ay=-10,
-            font=dict(size=17, color="#123A5C",
-                      family="Microsoft JhengHei"),
-            bgcolor="rgba(244,248,251,0.85)",
-            bordercolor="#B9DDF5",
-            borderwidth=1,
-            borderpad=4,
+        fig3d.add_trace(go.Scatter3d(
+            x=[i], y=[total * 1.04], z=[0.14],
+            mode="text",
+            text=[f"共{total:,}<br>齊{rq:,}｜缺{lq:,}"],
+            textfont=dict(size=13, color="#123A5C",
+                          family="Microsoft JhengHei"),
+            showlegend=False, hoverinfo="skip",
         ))
 
-fig.update_layout(
-    barmode="stack",
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#607080", family="Microsoft JhengHei", size=16),
-    annotations=annotations,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#607080", size=18), bgcolor="rgba(0,0,0,0)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#607080", size=17)),
-    yaxis=dict(showgrid=True, gridcolor="#DDE9F3",
-               tickfont=dict(color="#607080", size=16), zeroline=False),
-    margin=dict(l=20, r=20, t=90, b=20), height=420,
+fig3d.update_layout(
+    scene=dict(
+        xaxis=dict(
+            tickvals=list(range(5)),
+            ticktext=[w["label"]+"<br>"+w["start"].strftime("%m/%d")+"~"+w["end"].strftime("%m/%d")
+                      for w in weeks],
+            tickfont=dict(size=13, color="#607080"),
+            showgrid=True, gridcolor="#DDE9F3",
+            zeroline=False, showbackground=False,
+        ),
+        yaxis=dict(
+            title="pcs", titlefont=dict(size=13, color="#607080"),
+            tickfont=dict(size=12, color="#607080"),
+            showgrid=True, gridcolor="#DDE9F3",
+            zeroline=True, zerolinecolor="#B9DDF5",
+            showbackground=False,
+        ),
+        zaxis=dict(visible=False, showbackground=False),
+        bgcolor="rgba(244,248,251,0)",
+        camera=dict(
+            eye=dict(x=1.6, y=0.4, z=1.1),
+            up=dict(x=0, y=1, z=0),
+        ),
+        aspectmode="manual",
+        aspectratio=dict(x=2.2, y=1.2, z=0.3),
+    ),
+    legend=dict(
+        orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+        font=dict(color="#607080", size=15, family="Microsoft JhengHei"),
+        bgcolor="rgba(244,248,251,0.8)",
+    ),
+    paper_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=0, r=0, t=30, b=0),
+    height=460,
+    font=dict(family="Microsoft JhengHei"),
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig3d, use_container_width=True)
 
 # ══════════════════════════════════════════════════════
 # SECTION 4：急件缺料工單
