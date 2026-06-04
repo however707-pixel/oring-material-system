@@ -261,93 +261,80 @@ def _dark_week_card(label, start, end, stats, wdays_left, cap_left):
     n=stats["n"]
     pct=int(rq/tq*100) if tq else 0
     need_days=round(tq/DAILY_CAP,1) if tq else 0
-    lm_s=lm.strftime('%m/%d') if lm and hasattr(lm,'strftime') else "—"
+    lm_s=lm.strftime('%m/%d') if lm and hasattr(lm,'strftime') else ""
 
     if tq==0:
-        status_txt="無出貨工單"
+        status_txt="無出貨工單";  icon="⬜"
         accent="#475569"; glow="rgba(71,85,105,0.3)"
-        icon_html="<span style='font-size:20px'>⬜</span>"
         badge_bg="rgba(71,85,105,0.2)"; badge_c="#94a3b8"
     elif lq==0:
-        status_txt="全數已齊料，可如期出貨"
+        status_txt="全數已齊料，可如期出貨"; icon="✅"
         accent="#22d3ee"; glow="rgba(34,211,238,0.25)"
-        icon_html="<span style='font-size:20px'>✅</span>"
         badge_bg="rgba(34,211,238,0.15)"; badge_c="#67e8f9"
     elif cap_left>=lq:
-        status_txt=f"仍缺料 {lq:,} pcs，產能尚足"
+        status_txt=f"仍缺料 {lq:,} pcs，產能尚足"; icon="⚠️"
         accent="#fbbf24"; glow="rgba(251,191,36,0.25)"
-        icon_html="<span style='font-size:20px'>⚠️</span>"
         badge_bg="rgba(251,191,36,0.15)"; badge_c="#fde68a"
     else:
-        status_txt=f"缺料 {lq:,} pcs，產能不足！"
+        status_txt=f"缺料 {lq:,} pcs，產能不足！"; icon="🔴"
         accent="#f87171"; glow="rgba(248,113,113,0.3)"
-        icon_html="<span style='font-size:20px'>🔴</span>"
         badge_bg="rgba(248,113,113,0.15)"; badge_c="#fca5a5"
 
-    bar_ready=f"width:{pct}%;background:linear-gradient(90deg,#22d3ee,#06b6d4)"
-    bar_lack =f"width:{100-pct}%;background:rgba(248,113,113,0.4)"
+    # 預先計算，不在 f-string 裡嵌套 HTML
+    lm_html = f"&nbsp;｜&nbsp; 最晚齊料 <b style=\"color:#f87171\">{lm_s}</b>" if lm_s else ""
 
-    return f"""
-<div style="
-  background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));
-  border:1px solid {accent};
-  border-radius:16px; padding:22px 26px;
-  box-shadow:0 0 28px {glow}, inset 0 1px 0 rgba(255,255,255,0.05);
-  position:relative; overflow:hidden; height:100%;">
+    # 數字欄：各自用獨立顏色，不嵌套 span
+    cols_data = [
+        (str(n),       accent,    "出貨筆數"),
+        (f"{tq:,}",    accent,    "總量 pcs"),
+        (f"{rq:,}",    "#4ade80", "已齊料 pcs"),
+        (f"{lq:,}",    "#f87171", "缺料 pcs"),
+        (str(need_days), accent,  f"需生產天數 ({DAILY_CAP}pcs/天)"),
+    ]
+    cols_html = ""
+    for v, vc, lb in cols_data:
+        cols_html += (
+            f'<div style="flex:1;text-align:center;'
+            f'border-right:1px solid rgba(255,255,255,0.07);padding:0 8px">'
+            f'<div style="font-size:38px;font-weight:900;color:{vc};line-height:1.1;'
+            f'text-shadow:0 0 20px {glow}">{v}</div>'
+            f'<div style="font-size:11px;color:#64748b;margin-top:4px">{lb}</div>'
+            f'</div>'
+        )
 
-  <!-- 角落光效 -->
-  <div style="position:absolute;top:-40px;right:-40px;width:120px;height:120px;
-    background:radial-gradient(circle,{glow} 0%,transparent 70%);pointer-events:none"></div>
-
-  <!-- 標題 -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-    <div>
-      <div style="color:#94a3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">
-        {label}
-      </div>
-      <div style="color:#cbd5e1;font-size:13px">
-        {start.strftime('%m/%d')} ~ {end.strftime('%m/%d')}
-      </div>
-    </div>
-    <div style="background:{badge_bg};border:1px solid {accent};border-radius:8px;
-                padding:6px 14px;font-size:14px;font-weight:800;color:{badge_c}">
-      {icon_html} &nbsp;{status_txt}
-    </div>
-  </div>
-
-  <!-- 數字區 -->
-  <div style="display:flex;gap:0;margin-bottom:18px">
-    {''.join([
-      f"""<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07);padding:0 8px">
-        <div style="font-size:38px;font-weight:900;color:{accent};line-height:1.1;
-                    text-shadow:0 0 20px {glow}">{v}</div>
-        <div style="font-size:11px;color:#64748b;margin-top:4px;letter-spacing:0.5px">{lb}</div>
-      </div>"""
-      for v,lb in [
-        (n, "出貨筆數"),
-        (f"{tq:,}", "總量 pcs"),
-        (f"<span style='color:#4ade80'>{rq:,}</span>", "已齊料 pcs"),
-        (f"<span style='color:#f87171'>{lq:,}</span>", "缺料 pcs"),
-        (f"{need_days}", f"需生產天數<br><span style='font-size:10px'>({DAILY_CAP}pcs/天)</span>"),
-      ]
-    ])}
-  </div>
-
-  <!-- 進度條 -->
-  <div style="font-size:12px;color:#64748b;margin-bottom:6px;display:flex;justify-content:space-between">
-    <span>齊料進度 <b style="color:{accent}">{pct}%</b></span>
-    <span>剩餘產能 <b style="color:#7dd3fc">{cap_left:,} pcs</b>（{wdays_left} 工作天）
-      {"&nbsp;｜&nbsp; 最晚齊料 <b style='color:#f87171'>" + lm_s + "</b>" if lm else ""}
-    </span>
-  </div>
-  <div style="background:rgba(255,255,255,0.06);border-radius:4px;height:8px;overflow:hidden;
-              box-shadow:inset 0 1px 3px rgba(0,0,0,0.5)">
-    <div style="display:flex;height:100%">
-      <div style="{bar_ready};border-radius:4px 0 0 4px;box-shadow:0 0 10px rgba(34,211,238,0.6)"></div>
-      <div style="{bar_lack};border-radius:0 4px 4px 0"></div>
-    </div>
-  </div>
-</div>"""
+    return (
+        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'border:1px solid {accent};border-radius:16px;padding:22px 26px;'
+        f'box-shadow:0 0 28px {glow},inset 0 1px 0 rgba(255,255,255,0.05);'
+        f'position:relative;overflow:hidden;height:100%">'
+        f'<div style="position:absolute;top:-40px;right:-40px;width:120px;height:120px;'
+        f'background:radial-gradient(circle,{glow} 0%,transparent 70%);pointer-events:none"></div>'
+        # 標題
+        f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">'
+        f'<div>'
+        f'<div style="color:#94a3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">{label}</div>'
+        f'<div style="color:#cbd5e1;font-size:13px">{start.strftime("%m/%d")} ~ {end.strftime("%m/%d")}</div>'
+        f'</div>'
+        f'<div style="background:{badge_bg};border:1px solid {accent};border-radius:8px;'
+        f'padding:6px 14px;font-size:14px;font-weight:800;color:{badge_c}">'
+        f'{icon} &nbsp;{status_txt}</div>'
+        f'</div>'
+        # 數字區
+        f'<div style="display:flex;gap:0;margin-bottom:18px">{cols_html}</div>'
+        # 進度條說明
+        f'<div style="font-size:12px;color:#64748b;margin-bottom:6px;display:flex;justify-content:space-between">'
+        f'<span>齊料進度 <b style="color:{accent}">{pct}%</b></span>'
+        f'<span>剩餘產能 <b style="color:#7dd3fc">{cap_left:,} pcs</b>（{wdays_left} 工作天）{lm_html}</span>'
+        f'</div>'
+        # 進度條
+        f'<div style="background:rgba(255,255,255,0.06);border-radius:4px;height:8px;overflow:hidden;'
+        f'box-shadow:inset 0 1px 3px rgba(0,0,0,0.5)">'
+        f'<div style="display:flex;height:100%">'
+        f'<div style="width:{pct}%;background:linear-gradient(90deg,#22d3ee,#06b6d4);'
+        f'border-radius:4px 0 0 4px;box-shadow:0 0 10px rgba(34,211,238,0.6)"></div>'
+        f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4);border-radius:0 4px 4px 0"></div>'
+        f'</div></div></div>'
+    )
 
 c1,c2=st.columns(2)
 c1.markdown(_dark_week_card("本週出貨",wk_mon,wk_fri,ws,wdays_this,cap_this),unsafe_allow_html=True)
@@ -465,18 +452,21 @@ with col_right:
                 badge="🔴 逾期" if is_ovd else ("🚨 急件" if is_urg_r else "🔵")
                 _dl=mr.get("_days_late",0)
                 _dl=0 if(_dl is None or(isinstance(_dl,float) and pd.isna(_dl))) else int(_dl)
-                ovd_note=f"<span style='color:#f87171;font-size:11px'> 逾期 {_dl} 天</span>" if is_ovd else ""
-                st.markdown(f"""
-<div style="border:1px solid rgba({
-  '248,113,113' if is_ovd else '251,146,60' if is_urg_r else '34,211,238'
-  },0.3);border-radius:6px;padding:8px 12px;margin-bottom:5px;background:{row_bg}">
-  <div style="font-size:13px;color:#e2e8f0">
-    {badge} <b style="color:{row_ac}">{mr['料號']}</b>
-    <span style="color:#475569;font-size:11px;margin-left:8px">{mr['工單']} / {mr['成品料號']}</span>
-    {ovd_note}
-  </div>
-  <div style="font-size:11px;color:#334155;margin-top:2px">出貨日：{mr['出貨日']}</div>
-</div>""", unsafe_allow_html=True)
+                ovd_note = f"　逾期 {_dl} 天" if is_ovd else ""
+                border_rgb = "248,113,113" if is_ovd else ("251,146,60" if is_urg_r else "34,211,238")
+                st.markdown(
+                    f'<div style="border:1px solid rgba({border_rgb},0.3);border-radius:6px;'
+                    f'padding:8px 12px;margin-bottom:5px;background:{row_bg}">'
+                    f'<div style="font-size:13px;color:#e2e8f0">'
+                    f'{badge} <b style="color:{row_ac}">{mr["料號"]}</b>'
+                    f'<span style="color:#475569;font-size:11px;margin-left:8px">'
+                    f'{mr["工單"]} / {mr["成品料號"]}</span>'
+                    f'<span style="color:#f87171;font-size:11px">{ovd_note}</span>'
+                    f'</div>'
+                    f'<div style="font-size:11px;color:#334155;margin-top:2px">出貨日：{mr["出貨日"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
 
 # ══════════════════════════════════════════════════════
 # 急件缺料工單
