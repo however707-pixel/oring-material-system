@@ -40,8 +40,10 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 隱藏 x 按鈕：把 .wk-hidden-btn 之後緊接的 div（Streamlit 按鈕容器）隱藏 */
-div:has(> .wk-hidden-btn) + div { display:none !important; }
+/* 隱藏 x 按鈕：欄位內含 .wk-hidden-btn 時，隱藏欄位內所有 stButton */
+[data-testid="column"]:has(.wk-hidden-btn) [data-testid="stButton"] {
+    display:none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -412,7 +414,7 @@ def _big_card(wk):
         f'{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
         # 出貨筆數：onclick 直接觸發隱藏的 Streamlit 按鈕
-        f'<div onclick="var b=document.querySelectorAll(\'.wk-hidden-btn button\');if(b[{wk["idx"]}])b[{wk["idx"]}].click();" '
+        f'<div onclick="var col=this.closest(\'[data-testid=\\\"column\\\"]\');var btn=col&&col.querySelector(\'button\');if(btn)btn.click();" '
         f'style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer">'
         f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
         f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div></div>'
