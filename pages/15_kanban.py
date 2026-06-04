@@ -357,24 +357,53 @@ for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
                 st.session_state["sel_week"] = None if is_sel else i
                 st.rerun()
 
-# ── 缺料明細展開區 ─────────────────────────────────────
+# ── 工單明細展開區（點擊KPI方塊後展開，顯示該週全部工單 + 到料日）────
 sel = st.session_state.get("sel_week")
-if sel is not None and weeks[sel]["n_short"] > 0:
+if sel is not None:
     wk = weeks[sel]
-    short_rows = wk["short_rows"]
+    _ws = wk["start"]; _we = wk["end"]
+    # 取該週所有出貨工單（不限缺料）
+    all_rows = df[
+        df["出貨日"].notna() &
+        (df["出貨日"] >= _ws) &
+        (df["出貨日"] <= _we)
+    ].drop_duplicates("工單").sort_values("出貨日").copy()
 
     st.markdown(
-        f'<div style="background:#fff8f8;'
-        f'border:1px solid #fecdd3;border-left:4px solid #E74C5B;'
-        f'border-radius:12px;padding:16px 20px;margin:12px 0;'
-        f'box-shadow:0 2px 12px rgba(231,76,91,0.08)">'
-        f'<div style="color:#be123c;font-size:16px;font-weight:800;margin-bottom:14px">'
-        f'📋 &nbsp;{wk["label"]}（{wk["start"].strftime("%m/%d")}~{wk["end"].strftime("%m/%d")}）'
-        f'&nbsp; 缺料工單明細 &nbsp;— 共 {wk["n_short"]} 張</div>',
+        f'<div style="background:#f8faff;'
+        f'border:1px solid #B9DDF5;border-left:4px solid #2A9DF4;'
+        f'border-radius:12px;padding:14px 18px;margin:10px 0 6px;'
+        f'box-shadow:0 2px 10px rgba(18,58,92,0.08)">'
+        f'<div style="color:#123A5C;font-size:16px;font-weight:800;margin-bottom:0">'
+        f'📋 &nbsp;{wk["label"]}（{_ws.strftime("%m/%d")}~{_we.strftime("%m/%d")}）'
+        f'&nbsp; 工單明細 &nbsp;— 共 {len(all_rows)} 張</div>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
-    for _, row in short_rows.sort_values("出貨日").iterrows():
+    if all_rows.empty:
+        st.info("該週無出貨工單")
+    else:
+        # 建立顯示表：工單 / 成品料號 / 預計產量 / 出貨日 / 料況 / 到料日 / 提示
+        disp = all_rows[["工單","成品料號","預計產量","出貨日_顯示","料況狀態","預計齊料日","重點提示"]].copy()
+        disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","到料日","重點提示"]
+        disp["到料日"] = disp["到料日"].apply(
+            lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v,'strftime') else (str(v) if pd.notna(v) else "—")
+        )
+        def _sr(r):
+            if r["料況狀態"]=="已齊料":    return ["background:#f0fdf9;color:#15803d"]*len(r)
+            elif r["料況狀態"]=="完全缺料": return ["background:#fff1f2;color:#be123c"]*len(r)
+            else:                           return ["background:#fffbeb;color:#b45309"]*len(r)
+        st.dataframe(disp.style.apply(_sr,axis=1),
+                     use_container_width=True, hide_index=True,
+                     height=min(500, 50+len(disp)*38))
+
+    short_rows = wk["short_rows"]  # 缺料工單（用於下方卡片展示，若有）
+    if short_rows.empty:
+        st.markdown("</div>", unsafe_allow_html=True)
+        # 跳出，不顯示個別缺料卡片
+    else:
+     for _, row in short_rows.sort_values("出貨日").iterrows():
         ship_d = row["出貨日"].strftime('%m/%d') if pd.notna(row["出貨日"]) else "未定"
         qty    = int(row["預計產量"]) if pd.notna(row["預計產量"]) else "?"
         hint   = row.get("重點提示","") or ""
@@ -422,120 +451,6 @@ if sel is not None and weeks[sel]["n_short"] > 0:
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════
-# SECTION 2：三週大卡片（可點擊出貨筆數展開明細）
-# ══════════════════════════════════════════════════════
-if "detail_week" not in st.session_state:
-    st.session_state["detail_week"] = None
-
-card_l, card_r, card_r2 = st.columns(3)
-
-def _big_card(wk):
-    tq=wk["tq"]; rq=wk["rq"]; lq=wk["lq"]
-    n=wk["n"]; pct=int(rq/tq*100) if tq else 0
-    cap=wk["cap"]; wdays=wk["wdays_left"]
-    need_days=round(tq/DAILY_CAP,1) if tq else 0
-    if tq==0:      ac,bc,icon,msg="#94a3b8","#e2e8f0","—","無出貨工單"; sb,sc="#f8fafc","#64748b"
-    elif lq==0:    ac,bc,icon,msg="#16A085","#b2dfdb","✓","全數已齊料，可如期出貨"; sb,sc="#f0fdf9","#16A085"
-    elif cap>=lq:  ac,bc,icon,msg="#d97706","#fde68a","!",f"缺料 {lq:,} pcs，產能尚足"; sb,sc="#fffbeb","#b45309"
-    else:          ac,bc,icon,msg="#E74C5B","#fecdd3","!",f"缺料 {lq:,} pcs，產能不足"; sb,sc="#fff1f2","#be123c"
-    return (
-        f'<div style="background:#ffffff;border:1px solid {bc};border-top:4px solid {ac};'
-        f'border-radius:14px;padding:20px 22px;box-shadow:0 2px 16px rgba(18,58,92,0.09)">'
-        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:10px">'
-        f'{wk["label"]} &nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
-        f'<div style="display:inline-block;background:{sb};color:{sc};border:1px solid {bc};'
-        f'border-radius:6px;padding:4px 14px;font-size:15px;font-weight:700;margin-bottom:16px">'
-        f'{icon} {msg}</div>'
-        f'<div style="display:flex;gap:0;margin-bottom:16px">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
-        f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
-        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
-        f'</div>'
-        + "".join([
-            f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
-            f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
-            f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
-            for v,vc,lb in [
-                (f"{tq:,}",     "#123A5C", "總量 pcs"),
-                (f"{rq:,}",     "#16A085", "已齊料 pcs"),
-                (f"{lq:,}",     "#E74C5B", "缺料 pcs"),
-                (str(need_days), "#2A9DF4", f"需天數({DAILY_CAP}/天)"),
-            ]
-        ]) +
-        f'</div>'
-        f'<div style="font-size:14px;color:#607080;margin-bottom:6px">'
-        f'齊料進度 <b style="color:{ac}">{pct}%</b>'
-        f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
-        f'<div style="background:#EEF2F7;border-radius:6px;height:8px;overflow:hidden">'
-        f'<div style="width:{pct}%;height:100%;background:linear-gradient(90deg,#16A085,#1abc9c)"></div>'
-        f'</div></div>'
-    )
-
-for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
-    _wk = weeks[_wi]
-    _is_sel = (st.session_state["detail_week"] == _wi)
-    with _col:
-        # ① 按鈕先渲染（成為欄位第一個子元素），CSS把它絕對定位到右上角
-        if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}"):
-            st.session_state["detail_week"] = None if _is_sel else _wi
-            st.rerun()
-        # ② 完整卡片 HTML（原始外框完整保留）
-        st.markdown(_big_card(_wk), unsafe_allow_html=True)
-
-# ── 展開明細表 ────────────────────────────────────────
-_dw = st.session_state.get("detail_week")
-if _dw is not None and 0 <= _dw <= 2:
-    _wk = weeks[_dw]
-    _ws = _wk["start"]; _we = _wk["end"]
-    # 從原始 df 取出該週有出貨日的工單
-    _detail = df[
-        df["出貨日"].notna() &
-        (df["出貨日"] >= _ws) &
-        (df["出貨日"] <= _we)
-    ].drop_duplicates("工單").sort_values("出貨日").copy()
-
-    st.markdown(
-        f'<div style="background:#ffffff;border:1px solid #B9DDF5;'
-        f'border-left:4px solid #2A9DF4;border-radius:10px;'
-        f'padding:12px 18px;margin:10px 0 6px;'
-        f'box-shadow:0 2px 10px rgba(18,58,92,0.08);'
-        f'display:flex;justify-content:space-between;align-items:center">'
-        f'<span style="color:#123A5C;font-size:15px;font-weight:800">'
-        f'📋 {_wk["label"]}（{_ws.strftime("%m/%d")}~{_we.strftime("%m/%d")}）工單明細'
-        f'&nbsp;— 共 {len(_detail)} 張</span>'
-        f'<span style="color:#607080;font-size:13px">再按數字可收起</span>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-
-    if _detail.empty:
-        st.info("該週無出貨工單")
-    else:
-        _show = _detail[["工單","成品料號","預計產量","出貨日_顯示","料況狀態","距出貨工作天","重點提示"]].copy()
-        _show.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","剩餘工作天","重點提示"]
-        _show["剩餘工作天"] = _show["剩餘工作天"].apply(
-            lambda v: f"{int(v)} 天" if pd.notna(v) else "—"
-        )
-
-        def _style_row(row):
-            if row["料況狀態"] == "已齊料":
-                return ["background:#f0fdf9;color:#15803d"] * len(row)
-            elif row["料況狀態"] == "完全缺料":
-                return ["background:#fff1f2;color:#be123c"] * len(row)
-            else:
-                return ["background:#fffbeb;color:#b45309"] * len(row)
-
-        st.dataframe(
-            _show.style.apply(_style_row, axis=1),
-            use_container_width=True,
-            hide_index=True,
-            height=min(400, 45 + len(_show) * 38),
-        )
-
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 
