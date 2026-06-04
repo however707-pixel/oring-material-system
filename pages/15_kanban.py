@@ -40,17 +40,26 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 週卡片欄位需要 relative 定位，讓按鈕可以 absolute 覆蓋 */
+/* 欄位 relative 定位，讓按鈕容器能 absolute 覆蓋 */
 [data-testid="column"] { position:relative !important; }
-/* 透明按鈕：opacity:0 完全看不見，精確覆蓋在「2」的位置 */
-[data-testid="stMarkdownContainer"]:has(.wk-btn-marker) ~ [data-testid="stButton"] > button {
+/* 按鈕整個容器：absolute 定位在「2」的位置，完全透明，不佔版面空間 */
+div:has(> .wk-btn-marker) ~ div:has([data-testid="stButton"]),
+div:has(> .wk-btn-marker) ~ div:has([data-testid="stButton"]) * {
     opacity:0 !important;
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+}
+div:has(> .wk-btn-marker) ~ div:has([data-testid="stButton"]) {
     position:absolute !important;
     top:116px !important; left:0 !important;
     width:20% !important; height:72px !important;
-    cursor:pointer !important; z-index:100 !important;
-    border:none !important; background:transparent !important;
-    box-shadow:none !important; padding:0 !important;
+    z-index:100 !important; margin:0 !important;
+    padding:0 !important; cursor:pointer !important;
+}
+div:has(> .wk-btn-marker) ~ div:has([data-testid="stButton"]) button {
+    cursor:pointer !important; width:100% !important;
+    height:100% !important;
 }
 </style>
 """, unsafe_allow_html=True)
