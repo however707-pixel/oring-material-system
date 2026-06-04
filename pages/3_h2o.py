@@ -506,11 +506,11 @@ with st.spinner("分析中，請稍候..."):
         # 預計進料日 & 預計數量（不限分析區間，有就全顯示）
         incoming_date, incoming_qty = get_incoming(pno)
 
-        # ── 最早開工日：供需表中第一筆預計結存為負值的日期 ──────────
+        # ── 最早開工日：各廠供需表第一筆預計結存為負值的日期 ──────────
         t_first = first_deficit_date(pno, TANG) if t_deficit > 0 else None
         k_first = first_deficit_date(pno, KUO)  if k_deficit > 0 else None
-        _dates  = [d for d in [t_first, k_first] if d is not None]
-        earliest_start = min(_dates).date() if _dates else None
+        t_earliest = t_first.date() if t_first is not None else None
+        k_earliest = k_first.date() if k_first is not None else None
 
         rows.append({
             '料號':              pno,
@@ -530,7 +530,8 @@ with st.spinner("分析中，請稍候..."):
                             k_pending if insufficient and k_net > 0 else None),
             '國智代工倉 待調撥量':    k_pending if (has_transfer and k_deficit > 0) else None,
             '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
-            '最早開工日':            earliest_start,
+            '唐佑 最早開工日':        t_earliest,
+            '國智 最早開工日':        k_earliest,
             '合計委外缺料':          int(t_qty + k_qty) if (t_qty + k_qty) else None,
             '預計進料日':            incoming_date or None,
             '預計數量':              incoming_qty,
