@@ -266,7 +266,7 @@ for i in range(5):
     label = f"W{ws.isocalendar()[1]}"
     short_rows = sub_orig[sub_orig["料況狀態"]!="已齊料"].drop_duplicates("工單")
     weeks.append(dict(
-        label=label, start=ws, end=we,
+        idx=i, label=label, start=ws, end=we,
         n=n, tq=tq, rq=rq, lq=tq-rq,
         n_ready=n_ready, n_short=n_short,
         wdays_left=wdays_left, cap=wdays_left*DAILY_CAP,
@@ -399,8 +399,9 @@ st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════
 # SECTION 2：三週大卡片（可點擊出貨筆數展開明細）
 # ══════════════════════════════════════════════════════
-if "detail_week" not in st.session_state:
-    st.session_state["detail_week"] = None
+# 用 query_params 記錄選中的週次（點擊數字後 URL 加 ?dw=N）
+_dw_raw = st.query_params.get("dw", None)
+_detail_week = int(_dw_raw) if _dw_raw is not None else None
 
 card_l, card_r, card_r2 = st.columns(3)
 
@@ -432,12 +433,18 @@ def _big_card(wk):
         f'border:1px solid {bc};border-radius:6px;padding:4px 14px;'
         f'font-size:15px;font-weight:700;margin-bottom:16px">{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
+        # 出貨筆數：<a> 連結，點擊後 URL 加 ?dw=wi 展開明細
+        f'<a href="?dw={wk["idx"]}" style="text-decoration:none;flex:1;text-align:center;'
+        f'border-right:1px solid #EEF2F7;padding:4px 0;display:block;cursor:pointer" '
+        f'title="點擊查看該週工單明細">'
+        f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
+        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
+        f'</a>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
             f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
             f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
             for v,vc,lb in [
-                (str(n),         "#123A5C", "出貨筆數"),
                 (f"{tq:,}",     "#123A5C", "總量 pcs"),
                 (f"{rq:,}",     "#16A085", "已齊料 pcs"),
                 (f"{lq:,}",     "#E74C5B", "缺料 pcs"),
@@ -455,24 +462,12 @@ def _big_card(wk):
         f'</div></div></div>'
     )
 
-for _ci, (_col, _wi) in enumerate(zip([card_l, card_r, card_r2], [0, 1, 2])):
-    _wk = weeks[_wi]
+for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     with _col:
-        # 原始卡片 HTML（介面完全不變）
-        st.markdown(_big_card(_wk), unsafe_allow_html=True)
-        # 透明按鈕：用負 margin 覆蓋在「出貨筆數」數字上方，視覺透明但可點擊
-        if _wk["n"] > 0:
-            st.markdown('<div class="click-overlay">', unsafe_allow_html=True)
-            _is_sel = (st.session_state["detail_week"] == _wi)
-            if st.button(".", key=f"big_detail_{_wi}",
-                         use_container_width=False,
-                         help="點擊查看該週工單明細"):
-                st.session_state["detail_week"] = None if _is_sel else _wi
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(_big_card(weeks[_wi]), unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
-_dw = st.session_state.get("detail_week")
+_dw = _detail_week
 if _dw is not None and 0 <= _dw <= 2:
     _wk = weeks[_dw]
     _ws = _wk["start"]; _we = _wk["end"]
@@ -487,10 +482,13 @@ if _dw is not None and 0 <= _dw <= 2:
         f'<div style="background:#ffffff;border:1px solid #B9DDF5;'
         f'border-left:4px solid #2A9DF4;border-radius:10px;'
         f'padding:12px 18px;margin:10px 0 6px;'
-        f'box-shadow:0 2px 10px rgba(18,58,92,0.08)">'
+        f'box-shadow:0 2px 10px rgba(18,58,92,0.08);'
+        f'display:flex;justify-content:space-between;align-items:center">'
         f'<span style="color:#123A5C;font-size:15px;font-weight:800">'
         f'📋 {_wk["label"]}（{_ws.strftime("%m/%d")}~{_we.strftime("%m/%d")}）工單明細'
-        f'&nbsp;— 共 {len(_detail)} 張</span></div>',
+        f'&nbsp;— 共 {len(_detail)} 張</span>'
+        f'<a href="?" style="color:#607080;font-size:14px;text-decoration:none">✕ 關閉</a>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
