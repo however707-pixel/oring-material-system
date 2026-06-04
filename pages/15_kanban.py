@@ -50,27 +50,26 @@ div[data-testid="stButton"] > button[kind="secondary"] {
 div[data-testid="stButton"] > button[kind="secondary"]:hover {
     background:#F4F8FB !important;
 }
-/* 週卡片：::before 偽元素做白色卡片底層（不受欄位CSS限制）*/
-[data-testid="column"]:has(.wk-col-marker) {
+/* 三週大卡片：按鈕是欄位第一個子元素，用:first-child定位到右上角 */
+[data-testid="stHorizontalBlock"] > [data-testid="column"] {
     position:relative !important;
-    padding:16px 18px !important;
 }
-[data-testid="column"]:has(.wk-col-marker)::before {
-    content:'' !important;
+[data-testid="stHorizontalBlock"] > [data-testid="column"] > div:first-child {
     position:absolute !important;
-    inset:0 !important;
-    background:#ffffff !important;
-    border-radius:14px !important;
-    border:1px solid #EEF2F7 !important;
-    box-shadow:0 2px 16px rgba(18,58,92,0.09) !important;
-    z-index:0 !important;
-    pointer-events:none !important;
+    top:12px !important; right:12px !important;
+    width:auto !important; z-index:20 !important;
+    margin:0 !important; padding:0 !important;
 }
-[data-testid="column"]:has(.wk-col-marker) > * { position:relative !important; z-index:1 !important; }
-[data-testid="column"]:has(.wk-ready-marker)::before  { border-top:4px solid #16A085 !important; }
-[data-testid="column"]:has(.wk-warn-marker)::before   { border-top:4px solid #d97706 !important; }
-[data-testid="column"]:has(.wk-danger-marker)::before { border-top:4px solid #E74C5B !important; }
-[data-testid="column"]:has(.wk-none-marker)::before   { border-top:4px solid #94a3b8 !important; }
+[data-testid="stHorizontalBlock"] > [data-testid="column"] > div:first-child button {
+    all:unset !important;
+    cursor:pointer !important; font-size:14px !important;
+    color:#94a3b8 !important; padding:3px 9px !important;
+    background:#ffffff !important; border:1px solid #e2e8f0 !important;
+    border-radius:5px !important; line-height:1.3 !important;
+}
+[data-testid="stHorizontalBlock"] > [data-testid="column"] > div:first-child button:hover {
+    color:#2A9DF4 !important; border-color:#B9DDF5 !important;
+}
 /* ▼ 按鈕在卡片標題右側：secondary 小白按鈕 */
 [data-testid="column"]:has(.wk-col-marker) [data-testid="stButton"] > button {
     all:unset !important; cursor:pointer !important;
@@ -478,60 +477,14 @@ def _big_card(wk):
 
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     _wk = weeks[_wi]
-    tq=_wk["tq"]; rq=_wk["rq"]; lq=_wk["lq"]
-    n=_wk["n"]; pct=int(rq/tq*100) if tq else 0
-    cap=_wk["cap"]; wdays=_wk["wdays_left"]
-    need_days=round(tq/DAILY_CAP,1) if tq else 0
-    if tq==0:      ac,cls,icon,msg="#94a3b8","wk-none-marker","—","無出貨工單"
-    elif lq==0:    ac,cls,icon,msg="#16A085","wk-ready-marker","✓","全數已齊料，可如期出貨"
-    elif cap>=lq:  ac,cls,icon,msg="#d97706","wk-warn-marker","!",f"缺料 {lq:,} pcs，產能尚足"
-    else:          ac,cls,icon,msg="#E74C5B","wk-danger-marker","!",f"缺料 {lq:,} pcs，產能不足"
-    sb={"wk-ready-marker":"#f0fdf9","wk-warn-marker":"#fffbeb","wk-danger-marker":"#fff1f2","wk-none-marker":"#f8fafc"}[cls]
-    sc={"wk-ready-marker":"#16A085","wk-warn-marker":"#b45309","wk-danger-marker":"#be123c","wk-none-marker":"#64748b"}[cls]
     _is_sel = (st.session_state["detail_week"] == _wi)
-
     with _col:
-        # 標記（讓CSS識別此欄位為週卡片 + 狀態色）
-        st.markdown(f'<span class="wk-col-marker {cls}" style="display:none"></span>',
-                    unsafe_allow_html=True)
-        # 標題行：週次 + ▼ 按鈕（自然在右側）
-        _h1, _h2 = st.columns([8, 1])
-        with _h1:
-            st.markdown(
-                f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:6px">'
-                f'{_wk["label"]} &nbsp; {_wk["start"].strftime("%m/%d")} ~ {_wk["end"].strftime("%m/%d")}</div>'
-                f'<div style="display:inline-block;background:{sb};color:{sc};border:1px solid {ac}33;'
-                f'border-radius:6px;padding:3px 12px;font-size:14px;font-weight:700;margin-bottom:10px">'
-                f'{icon} {msg}</div>',
-                unsafe_allow_html=True
-            )
-        with _h2:
-            if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}"):
-                st.session_state["detail_week"] = None if _is_sel else _wi
-                st.rerun()
-        # 數字行
-        st.markdown(
-            f'<div style="display:flex;gap:0;margin-bottom:12px;border-top:1px solid #EEF2F7;padding-top:10px">'
-            + "".join([
-                f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:2px 0">'
-                f'<div style="font-size:42px;font-weight:900;color:{vc};line-height:1">{v}</div>'
-                f'<div style="font-size:12px;color:#607080;margin-top:3px">{lb}</div></div>'
-                for v,vc,lb in [
-                    (str(n),"#123A5C","出貨筆數"),
-                    (f"{tq:,}","#123A5C","總量 pcs"),
-                    (f"{rq:,}","#16A085","已齊料 pcs"),
-                    (f"{lq:,}","#E74C5B","缺料 pcs"),
-                    (str(need_days),"#2A9DF4",f"需天數({DAILY_CAP}/天)"),
-                ]
-            ]) + f'</div>'
-            f'<div style="font-size:13px;color:#607080;margin-bottom:5px">'
-            f'齊料進度 <b style="color:{ac}">{pct}%</b>'
-            f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
-            f'<div style="background:#EEF2F7;border-radius:4px;height:7px;overflow:hidden">'
-            f'<div style="width:{pct}%;height:100%;background:linear-gradient(90deg,#16A085,#1abc9c)"></div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        # ① 按鈕先渲染（成為欄位第一個子元素），CSS把它絕對定位到右上角
+        if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}"):
+            st.session_state["detail_week"] = None if _is_sel else _wi
+            st.rerun()
+        # ② 完整卡片 HTML（原始外框完整保留）
+        st.markdown(_big_card(_wk), unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
