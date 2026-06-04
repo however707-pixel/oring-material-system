@@ -540,22 +540,25 @@ st.markdown(
 _wd0 = TODAY.weekday()
 this_mon = TODAY - timedelta(days=_wd0)
 
-week_short = []   # 短標籤（表格用）
-week_labels = []  # 長標籤（圖表用）
+week_short   = []   # 短標籤（表格用）
+week_labels  = []   # 長標籤（圖表用）
 week_b, week_i = [], []
+week_workdays = []  # 各週工作日數
 
 for w in range(4, -1, -1):
     wk_start = this_mon - timedelta(weeks=w)
-    wk_end   = wk_start + timedelta(days=6)
+    wk_end   = wk_start + timedelta(days=4)   # Mon~Fri
     wnum = wk_start.isocalendar()[1]
-    lbl = f"W{wnum}"
+    lbl  = f"W{wnum}"
     mask = (diao['完成日'].notna() &
             (diao['完成日'].dt.date >= wk_start) &
             (diao['完成日'].dt.date <= wk_end))
+    wd   = _workdays_in_week(wk_start, min(wk_end, TODAY))  # 本週只算到今天
     week_short.append(f"{lbl}\n{wk_start.strftime('%m/%d')}")
     week_labels.append(f"{lbl}<br>{wk_start.strftime('%m/%d')}~{wk_end.strftime('%m/%d')}")
     week_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
     week_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
+    week_workdays.append(wd)
 
 def _bar_chart(labels, values, color_fill, color_line, height=240):
     fig = go.Figure(go.Bar(
@@ -576,24 +579,47 @@ def _bar_chart(labels, values, color_fill, color_line, height=240):
     )
     return fig
 
-def _mini_table(row_label, labels, values, val_color):
-    """HTML 小表格，一行標題 + 一行數值"""
-    th_style = (f'style="background:#1D2B3A;color:#ffffff;padding:8px 14px;'
-                f'font-size:14px;font-weight:700;text-align:center;'
+def _workdays_in_week(wk_start, wk_end):
+    """計算週內工作日數（排除週六日）"""
+    count = 0
+    d = wk_start
+    while d <= wk_end:
+        if d.weekday() < 5:
+            count += 1
+        d += timedelta(days=1)
+    return max(count, 1)
+
+def _mini_table(row_label, labels, values, val_color, workdays=None):
+    """HTML 小表格：完成筆數 + 每日平均"""
+    th_style = (f'style="background:#1D2B3A;color:#ffffff;padding:8px 12px;'
+                f'font-size:13px;font-weight:700;text-align:center;'
                 f'border:1px solid #E6D8B8;font-family:Microsoft JhengHei"')
-    td_label_style = (f'style="background:#fdfaf5;color:#1D2B3A;padding:8px 14px;'
-                      f'font-size:13px;font-weight:700;border:1px solid #E6D8B8;'
-                      f'text-align:center;font-family:Microsoft JhengHei"')
-    td_val_style = (f'style="background:#ffffff;color:{val_color};padding:8px 14px;'
-                    f'font-size:15px;font-weight:900;border:1px solid #E6D8B8;'
-                    f'text-align:center;font-family:Microsoft JhengHei"')
-    ths = "".join(f"<th {th_style}>{l}</th>" for l in labels)
-    tds = "".join(f"<td {td_val_style}>{v:,}</td>" for v in values)
+    td_label = (f'style="background:#fdfaf5;color:#1D2B3A;padding:8px 12px;'
+                f'font-size:13px;font-weight:700;border:1px solid #E6D8B8;'
+                f'text-align:center;font-family:Microsoft JhengHei;white-space:nowrap"')
+    td_val   = (f'style="background:#ffffff;color:{val_color};padding:8px 12px;'
+                f'font-size:15px;font-weight:900;border:1px solid #E6D8B8;'
+                f'text-align:center;font-family:Microsoft JhengHei"')
+    td_avg   = (f'style="background:#fdfaf5;color:#C9A45C;padding:8px 12px;'
+                f'font-size:14px;font-weight:700;border:1px solid #E6D8B8;'
+                f'text-align:center;font-family:Microsoft JhengHei"')
+
+    ths  = "".join(f"<th {th_style}>{l}</th>" for l in labels)
+    tds  = "".join(f"<td {td_val}>{v:,}</td>" for v in values)
+
+    avg_row = ""
+    if workdays:
+        avgs = [round(v / wd, 1) if wd > 0 else 0
+                for v, wd in zip(values, workdays)]
+        tda  = "".join(f"<td {td_avg}>{a}</td>" for a in avgs)
+        avg_row = f'<tr><td {td_label}>每日平均</td>{tda}</tr>'
+
     return (
         f'<div style="overflow-x:auto;margin-top:6px">'
         f'<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden">'
-        f'<tr><th {td_label_style}>{row_label}</th>{ths}</tr>'
-        f'<tr><td {td_label_style}>完成筆數</td>{tds}</tr>'
+        f'<tr><th {td_label}>{row_label}</th>{ths}</tr>'
+        f'<tr><td {td_label}>完成筆數</td>{tds}</tr>'
+        f'{avg_row}'
         f'</table></div>'
     )
 
@@ -605,8 +631,8 @@ with col_w1:
     st.plotly_chart(_bar_chart(week_labels, week_b,
                                "rgba(46,157,112,0.75)", "#2E9D70"),
                     use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table("近5週", week_short, week_b, "#2E9D70"),
-                unsafe_allow_html=True)
+    st.markdown(_mini_table("近5週", week_short, week_b, "#2E9D70",
+                            workdays=week_workdays), unsafe_allow_html=True)
 
 with col_w2:
     st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
@@ -614,8 +640,8 @@ with col_w2:
     st.plotly_chart(_bar_chart(week_labels, week_i,
                                "rgba(178,58,72,0.70)", "#B23A48"),
                     use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table("近5週", week_short, week_i, "#B23A48"),
-                unsafe_allow_html=True)
+    st.markdown(_mini_table("近5週", week_short, week_i, "#B23A48",
+                            workdays=week_workdays), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
 
@@ -638,6 +664,18 @@ for m in range(1, 13):
     month_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
     month_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
 
+# 各月工作日數
+def _workdays_in_month(year, m):
+    from calendar import monthrange
+    _, last = monthrange(year, m)
+    d0 = date(year, m, 1)
+    end = date(year, m, last)
+    if end > TODAY: end = TODAY  # 當月只算到今天
+    if end < d0: return 1
+    return _workdays_in_week(d0, end)
+
+month_workdays = [_workdays_in_month(TODAY.year, m) for m in range(1, 13)]
+
 col_m1, col_m2 = st.columns(2)
 
 with col_m1:
@@ -646,8 +684,8 @@ with col_m1:
     st.plotly_chart(_bar_chart(month_labels_long, month_b,
                                "rgba(46,157,112,0.75)", "#2E9D70", height=260),
                     use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_b, "#2E9D70"),
-                unsafe_allow_html=True)
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_b, "#2E9D70",
+                            workdays=month_workdays), unsafe_allow_html=True)
 
 with col_m2:
     st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
@@ -655,8 +693,8 @@ with col_m2:
     st.plotly_chart(_bar_chart(month_labels_long, month_i,
                                "rgba(178,58,72,0.70)", "#B23A48", height=260),
                     use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_i, "#B23A48"),
-                unsafe_allow_html=True)
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_i, "#B23A48",
+                            workdays=month_workdays), unsafe_allow_html=True)
 
 # 頁尾
 st.markdown(
