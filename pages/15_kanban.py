@@ -22,13 +22,15 @@ st.markdown("""
 ::-webkit-scrollbar-track { background:#020918; }
 ::-webkit-scrollbar-thumb { background:#1e3a8a; border-radius:3px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
+/* 全域字體放大 */
+html, body, [class*="css"] { font-size: 17px !important; }
 /* 明細按鈕樣式 */
 div[data-testid="stButton"] > button {
     width:100%; background:rgba(30,58,138,0.4) !important;
     border:1px solid rgba(56,189,248,0.35) !important;
-    color:#7dd3fc !important; font-size:13px !important;
-    border-radius:6px !important; padding:4px 8px !important;
-    margin-top:6px !important;
+    color:#7dd3fc !important; font-size:16px !important;
+    border-radius:6px !important; padding:6px 10px !important;
+    margin-top:8px !important;
 }
 div[data-testid="stButton"] > button:hover {
     background:rgba(56,189,248,0.2) !important;
@@ -175,7 +177,7 @@ st.markdown(
     f'display:flex;justify-content:space-between;align-items:center">'
     f'<div>'
     f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 生管 PC</div>'
-    f'<div style="color:#f0f9ff;font-size:30px;font-weight:900;margin-top:3px;'
+    f'<div style="color:#f0f9ff;font-size:42px;font-weight:900;margin-top:3px;'
     f'text-shadow:0 0 20px rgba(56,189,248,0.6)">📺 &nbsp;工單進度看板</div>'
     f'</div>'
     f'<div style="text-align:center">'
@@ -274,18 +276,18 @@ for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
         st.markdown(
             f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.9),rgba(8,18,45,0.9));'
             f'border:1px solid {ac};border-radius:12px;padding:18px 14px;{border_extra}text-align:center">'
-            f'<div style="color:#94a3b8;font-size:13px;letter-spacing:1px;margin-bottom:8px">'
+            f'<div style="color:#94a3b8;font-size:16px;letter-spacing:1px;margin-bottom:8px">'
             f'{wk["label"]}&nbsp; {wk["start"].strftime("%m/%d")}~{wk["end"].strftime("%m/%d")}</div>'
-            f'<div style="color:{ac};font-size:52px;font-weight:900;line-height:1;'
+            f'<div style="color:{ac};font-size:72px;font-weight:900;line-height:1;'
             f'text-shadow:0 0 20px {gc}">{n}</div>'
-            f'<div style="color:#64748b;font-size:13px;margin-top:4px;margin-bottom:14px">'
+            f'<div style="color:#64748b;font-size:16px;margin-top:4px;margin-bottom:14px">'
             f'張工單 &nbsp;／&nbsp; {tq:,} pcs</div>'
             f'<div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px">'
-            f'<div><div style="color:#4ade80;font-size:30px;font-weight:900">{n_ready}</div>'
-            f'<div style="color:#374151;font-size:12px">已齊料</div></div>'
+            f'<div><div style="color:#4ade80;font-size:42px;font-weight:900">{n_ready}</div>'
+            f'<div style="color:#374151;font-size:15px">已齊料</div></div>'
             f'<div style="color:#1e3a5f;font-size:26px;line-height:2">｜</div>'
-            f'<div><div style="color:#f87171;font-size:30px;font-weight:900">{n_short}</div>'
-            f'<div style="color:#374151;font-size:12px">缺料</div></div>'
+            f'<div><div style="color:#f87171;font-size:42px;font-weight:900">{n_short}</div>'
+            f'<div style="color:#374151;font-size:15px">缺料</div></div>'
             f'</div>'
             f'<div style="background:rgba(255,255,255,0.05);border-radius:3px;height:5px;overflow:hidden">'
             f'<div style="display:flex;height:100%">'
@@ -347,13 +349,13 @@ if sel is not None and weeks[sel]["n_short"] > 0:
             f'border-left:4px solid #f87171;border-radius:8px;padding:12px 16px;margin-bottom:10px">'
             f'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
             f'<div>'
-            f'<span style="color:#fca5a5;font-size:15px;font-weight:800">{urg_tag} {row["工單"]}</span>'
-            f'<span style="color:#64748b;font-size:13px;margin-left:10px">{row["成品料號"]} × {qty}</span>'
+            f'<span style="color:#fca5a5;font-size:18px;font-weight:800">{urg_tag} {row["工單"]}</span>'
+            f'<span style="color:#64748b;font-size:16px;margin-left:10px">{row["成品料號"]} × {qty}</span>'
             f'</div>'
             f'<div style="text-align:right">'
             f'<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);'
-            f'border-radius:4px;padding:2px 10px;font-size:13px;font-weight:700">{row["料況狀態"]}</span>'
-            f'<span style="color:#fbbf24;font-size:13px;margin-left:8px">出貨 {ship_d} &nbsp;{wday_s}</span>'
+            f'border-radius:4px;padding:2px 10px;font-size:16px;font-weight:700">{row["料況狀態"]}</span>'
+            f'<span style="color:#fbbf24;font-size:16px;margin-left:8px">出貨 {ship_d} &nbsp;{wday_s}</span>'
             f'</div></div>'
             + (f'<div style="color:#94a3b8;font-size:12px;margin-bottom:8px">💬 {hint}</div>' if hint else '')
             + f'<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;'
@@ -386,12 +388,12 @@ def _big_card(wk):
         f'box-shadow:0 0 28px {gc};height:100%">'
         f'<div style="color:#94a3b8;font-size:13px;letter-spacing:2px;margin-bottom:4px">{wk["label"]}'
         f'&nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
-        f'<div style="color:{ac};font-size:19px;font-weight:800;margin-bottom:14px">{icon} {msg}</div>'
+        f'<div style="color:{ac};font-size:22px;font-weight:800;margin-bottom:14px">{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:14px">'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
-            f'<div style="font-size:36px;font-weight:900;color:{vc};text-shadow:0 0 16px {gc}">{v}</div>'
-            f'<div style="font-size:12px;color:#64748b;margin-top:2px">{lb}</div></div>'
+            f'<div style="font-size:50px;font-weight:900;color:{vc};text-shadow:0 0 16px {gc}">{v}</div>'
+            f'<div style="font-size:15px;color:#64748b;margin-top:2px">{lb}</div></div>'
             for v,vc,lb in [
                 (str(n), ac, "出貨筆數"),
                 (f"{tq:,}", ac, "總量 pcs"),
@@ -401,7 +403,7 @@ def _big_card(wk):
             ]
         ]) +
         f'</div>'
-        f'<div style="font-size:13px;color:#64748b;margin-bottom:5px">'
+        f'<div style="font-size:15px;color:#64748b;margin-bottom:5px">'
         f'齊料進度 <b style="color:{ac}">{pct}%</b>'
         f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#7dd3fc">{cap:,} pcs</b>（{wdays} 工作天）</div>'
         f'<div style="background:rgba(255,255,255,0.06);border-radius:4px;height:8px;overflow:hidden">'
@@ -445,18 +447,18 @@ with card_mat:
         f'box-shadow:0 0 20px rgba(56,189,248,0.12);height:100%;text-align:center">'
         f'<div style="color:#38bdf8;font-size:13px;letter-spacing:2px;margin-bottom:12px">'
         f'🚚 今日預計來料（{TODAY.strftime("%m/%d")}）</div>'
-        f'<div style="color:#38bdf8;font-size:58px;font-weight:900;line-height:1;'
+        f'<div style="color:#38bdf8;font-size:80px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 24px rgba(56,189,248,0.6)">{total_mat}</div>'
-        f'<div style="color:#64748b;font-size:13px;margin-top:4px;margin-bottom:16px">項料號</div>'
+        f'<div style="color:#64748b;font-size:16px;margin-top:4px;margin-bottom:16px">項料號</div>'
         f'<div style="display:flex;gap:0">'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
-        f'<div style="color:#fb923c;font-size:32px;font-weight:900;'
+        f'<div style="color:#fb923c;font-size:46px;font-weight:900;'
         f'text-shadow:0 0 14px rgba(249,115,22,0.5)">{urg_mat}</div>'
-        f'<div style="color:#374151;font-size:12px;margin-top:2px">🚨 急件</div></div>'
+        f'<div style="color:#374151;font-size:15px;margin-top:2px">🚨 急件</div></div>'
         f'<div style="flex:1;text-align:center">'
-        f'<div style="color:#4ade80;font-size:32px;font-weight:900;'
+        f'<div style="color:#4ade80;font-size:46px;font-weight:900;'
         f'text-shadow:0 0 14px rgba(74,222,128,0.4)">{norm_mat}</div>'
-        f'<div style="color:#374151;font-size:12px;margin-top:2px">📦 不急件</div></div>'
+        f'<div style="color:#374151;font-size:15px;margin-top:2px">📦 不急件</div></div>'
         f'</div>{ok_note}</div>',
         unsafe_allow_html=True
     )
@@ -516,7 +518,7 @@ st.markdown(
     f'border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:12px 20px;margin-bottom:14px;'
     f'box-shadow:0 0 16px rgba(239,68,68,0.1);display:flex;align-items:center;gap:20px">'
     f'<span style="color:#fca5a5;font-size:16px;font-weight:800">🚨 &nbsp;兩週內急件缺料</span>'
-    f'<span style="color:#f87171;font-size:36px;font-weight:900;'
+    f'<span style="color:#f87171;font-size:50px;font-weight:900;'
     f'text-shadow:0 0 16px rgba(239,68,68,0.5)">{len(urgent_lack)}</span>'
     f'<span style="color:#64748b;font-size:14px">張工單（出貨剩 ≤10 工作天且尚未齊料）</span>'
     f'</div>',
