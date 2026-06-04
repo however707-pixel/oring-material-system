@@ -211,15 +211,16 @@ b_pend = int(b_pend_rows['需求筆數'].sum())
 b_total = b_done + b_pend
 b_rate  = b_done / b_total if b_total else 0
 
-# ── 入庫（入庫單據）────────────────────────────────────
-# 已完成：I欄（完成日）= 昨日 → 加總 G欄（筆數）
-ib_done_rows = inbound[
-    inbound['完成日'].notna() &
-    (inbound['完成日'].dt.date == YESTERDAY)
+# ── 入庫 ────────────────────────────────────────────────
+# 已完成：調撥單 M欄=上架 且 K欄=昨日 → 加總 H欄（完成筆數）
+ib_done_rows = diao[
+    (diao['狀態'] == '上架') &
+    diao['完成日'].notna() &
+    (diao['完成日'].dt.date == YESTERDAY)
 ]
-i_done = int(ib_done_rows['筆數'].sum())
+i_done = int(ib_done_rows['完成筆數'].sum())
 
-# 待完成：I欄（完成日）空白 → 加總 G欄
+# 待完成：入庫單據 I欄（完成日）空白 → 加總 G欄（筆數）
 ib_pend_rows = inbound[inbound['完成日'].isna()]
 i_pend = int(ib_pend_rows['筆數'].sum())
 
@@ -232,11 +233,11 @@ b_by_person = (
     b_done_rows.groupby('備料人員')['需求筆數'].sum()
     .rename('備料').reset_index().rename(columns={'備料人員':'人員'})
 )
-# 入庫：昨日各人員完成筆數
+# 入庫：昨日各人員上架筆數（從調撥單，備料人員欄）
 i_by_person = (
-    ib_done_rows.groupby('入庫人員')['筆數'].sum()
-    .rename('入庫').reset_index().rename(columns={'入庫人員':'人員'})
-) if '入庫人員' in inbound.columns and not ib_done_rows.empty else pd.DataFrame(columns=['人員','入庫'])
+    ib_done_rows.groupby('備料人員')['完成筆數'].sum()
+    .rename('入庫').reset_index().rename(columns={'備料人員':'人員'})
+) if not ib_done_rows.empty else pd.DataFrame(columns=['人員','入庫'])
 
 person_df = (
     b_by_person.merge(i_by_person, on='人員', how='outer')
