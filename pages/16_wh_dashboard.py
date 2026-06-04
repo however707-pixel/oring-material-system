@@ -460,106 +460,133 @@ with col_alert:
 st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 3：近5週備料 + 入庫
+# SECTION 3：近5週 — 備料 / 入庫 各自獨立圖表＋表格
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
-    '📅 近5週備料 / 入庫完成筆數</div>',
-    unsafe_allow_html=True
+    '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:14px">'
+    '📅 近5週完成筆數</div>', unsafe_allow_html=True
 )
 
-# 計算本週一
+# 計算本週一 & 各週數據
 _wd0 = TODAY.weekday()
 this_mon = TODAY - timedelta(days=_wd0)
 
-week_labels, week_b, week_i = [], [], []
-for w in range(4, -1, -1):   # 從4週前到本週
+week_short = []   # 短標籤（表格用）
+week_labels = []  # 長標籤（圖表用）
+week_b, week_i = [], []
+
+for w in range(4, -1, -1):
     wk_start = this_mon - timedelta(weeks=w)
     wk_end   = wk_start + timedelta(days=6)
-    label = "本週" if w == 0 else (f"上週" if w == 1 else f"-{w}週")
+    lbl = "本週" if w==0 else ("上週" if w==1 else f"-{w}週")
+    mask = (diao['完成日'].notna() &
+            (diao['完成日'].dt.date >= wk_start) &
+            (diao['完成日'].dt.date <= wk_end))
+    week_short.append(f"{lbl}\n{wk_start.strftime('%m/%d')}")
+    week_labels.append(f"{lbl}<br>{wk_start.strftime('%m/%d')}~{wk_end.strftime('%m/%d')}")
+    week_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
+    week_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
 
-    mask = diao['完成日'].notna() & \
-           (diao['完成日'].dt.date >= wk_start) & \
-           (diao['完成日'].dt.date <= wk_end)
-    b_val = int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum())
-    i_val = int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum())
+def _bar_chart(labels, values, color_fill, color_line, height=240):
+    fig = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker=dict(color=color_fill, line=dict(color=color_line, width=1.5)),
+        text=[f"{v:,}" if v else "0" for v in values],
+        textposition="outside",
+        textfont=dict(color=color_line, size=14, family="Microsoft JhengHei"),
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
+                   family="Microsoft JhengHei")),
+        yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
+                   tickfont=dict(color="#6B7280", size=12), zeroline=False),
+        margin=dict(l=10, r=10, t=36, b=10), height=height,
+    )
+    return fig
 
-    week_labels.append(f"{label}<br>{wk_start.strftime('%m/%d')}~{wk_end.strftime('%m/%d')}")
-    week_b.append(b_val)
-    week_i.append(i_val)
+def _mini_table(row_label, labels, values, val_color):
+    """HTML 小表格，一行標題 + 一行數值"""
+    th_style = (f'style="background:#1D2B3A;color:#ffffff;padding:8px 14px;'
+                f'font-size:14px;font-weight:700;text-align:center;'
+                f'border:1px solid #E6D8B8;font-family:Microsoft JhengHei"')
+    td_label_style = (f'style="background:#fdfaf5;color:#1D2B3A;padding:8px 14px;'
+                      f'font-size:13px;font-weight:700;border:1px solid #E6D8B8;'
+                      f'text-align:center;font-family:Microsoft JhengHei"')
+    td_val_style = (f'style="background:#ffffff;color:{val_color};padding:8px 14px;'
+                    f'font-size:15px;font-weight:900;border:1px solid #E6D8B8;'
+                    f'text-align:center;font-family:Microsoft JhengHei"')
+    ths = "".join(f"<th {th_style}>{l}</th>" for l in labels)
+    tds = "".join(f"<td {td_val_style}>{v:,}</td>" for v in values)
+    return (
+        f'<div style="overflow-x:auto;margin-top:6px">'
+        f'<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden">'
+        f'<tr><th {td_label_style}>{row_label}</th>{ths}</tr>'
+        f'<tr><td {td_label_style}>完成筆數</td>{tds}</tr>'
+        f'</table></div>'
+    )
 
-fig_week = go.Figure()
-fig_week.add_trace(go.Bar(
-    name="備料", x=week_labels, y=week_b,
-    marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
-    text=[f"{v:,}" for v in week_b], textposition="outside",
-    textfont=dict(color="#2E9D70", size=13),
-))
-fig_week.add_trace(go.Bar(
-    name="入庫", x=week_labels, y=week_i,
-    marker=dict(color="rgba(178,58,72,0.75)", line=dict(color="#B23A48", width=1.5)),
-    text=[f"{v:,}" for v in week_i], textposition="outside",
-    textfont=dict(color="#B23A48", size=13),
-))
-fig_week.update_layout(
-    barmode="group",
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#6B7280", size=13, family="Microsoft JhengHei"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#6B7280", size=13)),
-    yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
-               tickfont=dict(color="#6B7280", size=13), zeroline=False),
-    margin=dict(l=20, r=20, t=40, b=20), height=280,
-)
-st.plotly_chart(fig_week, use_container_width=True, config=dict(staticPlot=True))
+col_w1, col_w2 = st.columns(2)
 
-st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
+with col_w1:
+    st.markdown('<div style="color:#2E9D70;font-size:15px;font-weight:700;margin-bottom:4px">📦 備料</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(week_labels, week_b,
+                               "rgba(46,157,112,0.75)", "#2E9D70"),
+                    use_container_width=True, config=dict(staticPlot=True))
+    st.markdown(_mini_table("近5週", week_short, week_b, "#2E9D70"),
+                unsafe_allow_html=True)
+
+with col_w2:
+    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(week_labels, week_i,
+                               "rgba(178,58,72,0.70)", "#B23A48"),
+                    use_container_width=True, config=dict(staticPlot=True))
+    st.markdown(_mini_table("近5週", week_short, week_i, "#B23A48"),
+                unsafe_allow_html=True)
+
+st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 4：1~12月備料 + 入庫
+# SECTION 4：年度月份 — 備料 / 入庫 各自獨立圖表＋表格
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#6B7280;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
-    f'📆 年度月份備料 / 入庫完成筆數（{TODAY.year}年）</div>',
-    unsafe_allow_html=True
+    f'<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:14px">'
+    f'📆 年度月份完成筆數（{TODAY.year}年）</div>', unsafe_allow_html=True
 )
 
-month_labels = [f"{m}月" for m in range(1, 13)]
+month_labels_long  = [f"{m}月" for m in range(1, 13)]
+month_labels_short = [f"{m}月" for m in range(1, 13)]
 month_b, month_i = [], []
 
 for m in range(1, 13):
-    mask = diao['完成日'].notna() & \
-           (diao['完成日'].dt.year == TODAY.year) & \
-           (diao['完成日'].dt.month == m)
-    month_b.append(int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum()))
-    month_i.append(int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum()))
+    mask = (diao['完成日'].notna() &
+            (diao['完成日'].dt.year == TODAY.year) &
+            (diao['完成日'].dt.month == m))
+    month_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
+    month_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
 
-fig_month = go.Figure()
-fig_month.add_trace(go.Bar(
-    name="備料", x=month_labels, y=month_b,
-    marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
-    text=[f"{v:,}" if v else "" for v in month_b], textposition="outside",
-    textfont=dict(color="#2E9D70", size=12),
-))
-fig_month.add_trace(go.Bar(
-    name="入庫", x=month_labels, y=month_i,
-    marker=dict(color="rgba(178,58,72,0.75)", line=dict(color="#B23A48", width=1.5)),
-    text=[f"{v:,}" if v else "" for v in month_i], textposition="outside",
-    textfont=dict(color="#B23A48", size=12),
-))
-fig_month.update_layout(
-    barmode="group",
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#6B7280", size=13, family="Microsoft JhengHei"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=13)),
-    yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
-               tickfont=dict(color="#6B7280", size=13), zeroline=False),
-    margin=dict(l=20, r=20, t=40, b=20), height=300,
-)
-st.plotly_chart(fig_month, use_container_width=True, config=dict(staticPlot=True))
+col_m1, col_m2 = st.columns(2)
+
+with col_m1:
+    st.markdown('<div style="color:#2E9D70;font-size:15px;font-weight:700;margin-bottom:4px">📦 備料</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(month_labels_long, month_b,
+                               "rgba(46,157,112,0.75)", "#2E9D70", height=260),
+                    use_container_width=True, config=dict(staticPlot=True))
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_b, "#2E9D70"),
+                unsafe_allow_html=True)
+
+with col_m2:
+    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
+                unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(month_labels_long, month_i,
+                               "rgba(178,58,72,0.70)", "#B23A48", height=260),
+                    use_container_width=True, config=dict(staticPlot=True))
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_i, "#B23A48"),
+                unsafe_allow_html=True)
 
 # 頁尾
 st.markdown(
