@@ -387,7 +387,7 @@ st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════
 # SECTION 2：本週/下週 大卡片 + 今日來料
 # ══════════════════════════════════════════════════════
-card_l, card_r, card_r2, card_mat = st.columns([2, 2, 2, 1])
+card_l, card_r, card_r2 = st.columns(3)
 
 def _big_card(wk):
     tq=wk["tq"]; rq=wk["rq"]; lq=wk["lq"]
@@ -446,49 +446,6 @@ with card_l:  st.markdown(_big_card(weeks[0]), unsafe_allow_html=True)
 with card_r:  st.markdown(_big_card(weeks[1]), unsafe_allow_html=True)
 with card_r2: st.markdown(_big_card(weeks[2]), unsafe_allow_html=True)
 
-# 今日來料
-with card_mat:
-    today_mat_rows=[]
-    for _,row in df.iterrows():
-        if row["料況狀態"]=="已齊料": continue
-        is_urg=bool(row.get("急件",False))
-        for _,arr_d,_ in row["_future"]:
-            if arr_d==TODAY: today_mat_rows.append({"急件":is_urg,"狀態":"待進料"})
-        for _,arr_d,dl in row["_delayed"]:
-            if arr_d==TODAY: today_mat_rows.append({"急件":is_urg,"狀態":"逾期"})
-    total_mat=len(today_mat_rows)
-    urg_mat=sum(1 for r in today_mat_rows if r["急件"])
-    norm_mat=total_mat-urg_mat
-    ovd_mat=sum(1 for r in today_mat_rows if r["狀態"]=="逾期")
-
-    ok_note = (
-        f'<div style="margin-top:12px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);'
-        f'border-radius:6px;padding:6px;color:#E74C5B;font-size:14px;font-weight:700">'
-        f'🔴 逾期未到 {ovd_mat} 項</div>'
-        if ovd_mat else
-        f'<div style="margin-top:12px;background:#f0fdf9;border:1px solid #b2dfdb;'
-        f'border-radius:6px;padding:6px;color:#16A085;font-size:13px">'
-        f'✅ 無逾期項目</div>'
-    )
-    st.markdown(
-        f'<div style="background:#ffffff;'
-        f'border:1px solid #B9DDF5;border-top:3px solid #2A9DF4;'
-        f'border-radius:14px;padding:20px 18px;'
-        f'box-shadow:0 2px 14px rgba(18,58,92,0.09);height:100%;text-align:center">'
-        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:12px">'
-        f'🚚 今日預計來料（{TODAY.strftime("%m/%d")}）</div>'
-        f'<div style="color:#123A5C;font-size:76px;font-weight:900;line-height:1">{total_mat}</div>'
-        f'<div style="color:#607080;font-size:15px;margin-top:4px;margin-bottom:16px">項料號</div>'
-        f'<div style="display:flex;gap:0">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7">'
-        f'<div style="color:#E74C5B;font-size:44px;font-weight:900">{urg_mat}</div>'
-        f'<div style="color:#607080;font-size:14px;margin-top:4px">急件</div></div>'
-        f'<div style="flex:1;text-align:center">'
-        f'<div style="color:#16A085;font-size:44px;font-weight:900">{norm_mat}</div>'
-        f'<div style="color:#607080;font-size:14px;margin-top:4px">不急件</div></div>'
-        f'</div>{ok_note}</div>',
-        unsafe_allow_html=True
-    )
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 
