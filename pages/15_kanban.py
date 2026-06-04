@@ -38,8 +38,20 @@ div[data-testid="stButton"] > button {
     margin-top:8px !important;
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
-div[data-testid="stButton"] > button:hover {
-    background:#1a8ad4 !important;
+div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
+/* 出貨筆數大數字按鈕 — 透明底，看起來就是一個大數字 */
+.num-btn > div[data-testid="stButton"] > button {
+    background:transparent !important; box-shadow:none !important;
+    border:none !important; margin-top:0 !important;
+    color:#123A5C !important;
+    font-size:56px !important; font-weight:900 !important;
+    line-height:1 !important; padding:2px 0 !important;
+    cursor:pointer !important; border-radius:4px !important;
+    text-decoration:underline dotted rgba(42,157,244,0.4) !important;
+}
+.num-btn > div[data-testid="stButton"] > button:hover {
+    background:rgba(42,157,244,0.07) !important;
+    color:#2A9DF4 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -410,32 +422,36 @@ def _big_card(wk):
     else:
         ac,bc,icon,msg = "#E74C5B","#fecdd3","!",f"缺料 {lq:,} pcs，產能不足"
         status_bg,status_c = "#fff1f2","#be123c"
-    return (
+    # 回傳 (top_html, bottom_html) 供外部插入按鈕
+    top = (
         f'<div style="background:#ffffff;'
-        f'border:1px solid {bc};border-top:4px solid {ac};border-radius:14px;padding:20px 22px;'
-        f'box-shadow:0 2px 16px rgba(18,58,92,0.09);height:100%">'
-        # 週別標籤
-        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:10px">'
+        f'border:1px solid {bc};border-top:4px solid {ac};border-radius:14px;'
+        f'padding:16px 20px 0 20px;box-shadow:0 2px 16px rgba(18,58,92,0.09)">'
+        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:8px">'
         f'{wk["label"]} &nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
-        # 狀態徽章
         f'<div style="display:inline-block;background:{status_bg};color:{status_c};'
-        f'border:1px solid {bc};border-radius:6px;padding:4px 14px;'
-        f'font-size:15px;font-weight:700;margin-bottom:16px">{icon} {msg}</div>'
-        f'<div style="display:flex;gap:0;margin-bottom:16px">'
+        f'border:1px solid {bc};border-radius:6px;padding:3px 12px;'
+        f'font-size:14px;font-weight:700;margin-bottom:8px">{icon} {msg}</div>'
+        f'</div>'
+    )
+    bottom = (
+        f'<div style="background:#ffffff;'
+        f'border:1px solid {bc};border-top:none;border-radius:0 0 14px 14px;'
+        f'padding:0 20px 16px 20px;box-shadow:0 2px 16px rgba(18,58,92,0.09)">'
+        f'<div style="display:flex;gap:0;margin-bottom:14px;border-top:1px solid #EEF2F7;padding-top:10px">'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
-            f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
-            f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
+            f'<div style="font-size:42px;font-weight:900;color:{vc};line-height:1">{v}</div>'
+            f'<div style="font-size:12px;color:#607080;margin-top:4px">{lb}</div></div>'
             for v,vc,lb in [
-                (str(n),       "#123A5C", "出貨筆數"),
-                (f"{tq:,}",   "#123A5C", "總量 pcs"),
-                (f"{rq:,}",   "#16A085", "已齊料 pcs"),
-                (f"{lq:,}",   "#E74C5B", "缺料 pcs"),
-                (str(need_days), "#2A9DF4", f"需天數({DAILY_CAP}/天)"),
+                (f"{tq:,}",      "#123A5C", "總量 pcs"),
+                (f"{rq:,}",      "#16A085", "已齊料 pcs"),
+                (f"{lq:,}",      "#E74C5B", "缺料 pcs"),
+                (str(need_days), "#2A9DF4",  f"需天數({DAILY_CAP}/天)"),
             ]
         ]) +
         f'</div>'
-        f'<div style="font-size:14px;color:#607080;margin-bottom:6px">'
+        f'<div style="font-size:13px;color:#607080;margin-bottom:5px">'
         f'齊料進度 <b style="color:{ac}">{pct}%</b>'
         f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
         f'<div style="background:#EEF2F7;border-radius:6px;height:8px;overflow:hidden">'
@@ -444,17 +460,27 @@ def _big_card(wk):
         f'<div style="width:{100-pct}%;background:#fecdd3"></div>'
         f'</div></div></div>'
     )
+    return top, bottom, n, ac
 
 for _ci, (_col, _wi) in enumerate(zip([card_l, card_r, card_r2], [0, 1, 2])):
+    _wk = weeks[_wi]
     with _col:
-        st.markdown(_big_card(weeks[_wi]), unsafe_allow_html=True)
-        _wk = weeks[_wi]
-        if _wk["n"] > 0:
-            _is_sel = (st.session_state["detail_week"] == _wi)
-            _btn_lbl = f"▲ 收起工單明細" if _is_sel else f"📋 查看 {_wk['n']} 張工單明細"
-            if st.button(_btn_lbl, key=f"big_detail_{_wi}", use_container_width=True):
-                st.session_state["detail_week"] = None if _is_sel else _wi
-                st.rerun()
+        _top, _btm, _n, _ac = _big_card(_wk)
+        # 上半段 card
+        st.markdown(_top, unsafe_allow_html=True)
+        # 出貨筆數：styled button 當作大數字
+        st.markdown('<div class="num-btn">', unsafe_allow_html=True)
+        _is_sel = (st.session_state["detail_week"] == _wi)
+        if st.button(str(_n), key=f"big_detail_{_wi}", use_container_width=True,
+                     help="點擊查看該週工單明細"):
+            st.session_state["detail_week"] = None if _is_sel else _wi
+            st.rerun()
+        st.markdown(
+            f'<div style="text-align:center;font-size:12px;color:#607080;margin-top:-6px;margin-bottom:2px">'
+            f'出貨筆數</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        # 下半段 card
+        st.markdown(_btm, unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
