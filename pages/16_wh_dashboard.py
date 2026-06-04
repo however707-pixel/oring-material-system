@@ -3,12 +3,16 @@ import pandas as pd
 import plotly.graph_objects as go
 import glob, os, sys
 from datetime import date, timedelta, datetime
+from streamlit_autorefresh import st_autorefresh
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import render_sidebar
 
 st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
                    layout="wide", initial_sidebar_state="expanded")
+
+# 每 20 分鐘自動刷新一次（1200000 ms）
+st_autorefresh(interval=20 * 60 * 1000, key="wh_autorefresh")
 
 st.markdown("""
 <style>
@@ -109,20 +113,16 @@ st.markdown(
 if src_file:
     fname = os.path.basename(src_file) if isinstance(src_file, str) else src_file.name
     ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else ""
-    c_info, c_btn = st.columns([5, 1])
-    with c_info:
-        st.markdown(
-            f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
-            f'border-radius:8px;padding:8px 16px;font-size:13px;color:#15803d">'
-            f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
-            f'<b style="color:#2E9D70">{fname}</b>'
-            f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span></div>',
-            unsafe_allow_html=True
-        )
-    with c_btn:
-        if st.button("🔄 重新偵測", key="wh_refresh", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+    st.markdown(
+        f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
+        f'border-radius:8px;padding:8px 16px;font-size:13px;color:#2E9D70;margin-bottom:4px">'
+        f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
+        f'<b style="color:#2E9D70">{fname}</b>'
+        f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span>'
+        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">🔄 每 20 分鐘自動更新</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
 else:
     st.markdown(
         '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);'
