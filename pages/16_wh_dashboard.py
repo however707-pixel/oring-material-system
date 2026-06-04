@@ -152,9 +152,9 @@ def load_wh(file_key):
         if c in inbound.columns:
             inbound[c] = pd.to_datetime(inbound[c], errors='coerce')
     if '筆數' in inbound.columns:
-        inbound['筆數'] = pd.to_numeric(inbound['筆數'], errors='coerce').fillna(1)
+        inbound['筆數'] = pd.to_numeric(inbound['筆數'], errors='coerce').fillna(0)
     else:
-        inbound['筆數'] = 1
+        inbound['筆數'] = 0
 
     # 工時效率-每日
     eff = pd.read_excel(xls, sheet_name='工時效率計算-每日', header=None)
