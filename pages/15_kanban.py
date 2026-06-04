@@ -30,6 +30,7 @@ html, body, [class*="css"] {
 /* 只限制段落與標籤，不蓋掉 div 的 inline 顏色 */
 p { color:#123A5C !important; }
 label { color:#607080 !important; }
+/* 一般按鈕 */
 div[data-testid="stButton"] > button {
     width:100%; background:#2A9DF4 !important;
     border:none !important; color:#ffffff !important;
@@ -39,24 +40,19 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 透明覆蓋按鈕：完全不可見，僅保留點擊區域 */
-.click-overlay { position:relative; }
-.click-overlay > div[data-testid="stButton"] {
-    position:absolute !important;
-    top:-88px !important; left:0 !important;
-    width:20% !important; height:82px !important;
-    z-index:50 !important; margin:0 !important;
-}
-.click-overlay > div[data-testid="stButton"] > button {
+/* 出貨筆數大數字按鈕：看起來就是一個可點擊的大數字 */
+.n-btn div[data-testid="stButton"] > button {
     background:transparent !important; box-shadow:none !important;
-    border:none !important; color:transparent !important;
-    font-size:1px !important; width:100% !important;
-    height:100% !important; padding:0 !important;
-    cursor:pointer !important; border-radius:4px !important;
-}
-.click-overlay > div[data-testid="stButton"] > button:hover {
-    background:rgba(42,157,244,0.08) !important;
+    border:none !important; margin:0 !important;
+    color:#123A5C !important; font-size:46px !important;
+    font-weight:900 !important; line-height:1 !important;
+    padding:4px 0 0 0 !important; width:100% !important;
+    cursor:pointer !important; text-align:center !important;
     border-radius:6px !important;
+}
+.n-btn div[data-testid="stButton"] > button:hover {
+    background:rgba(42,157,244,0.07) !important;
+    color:#2A9DF4 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -437,12 +433,8 @@ def _big_card(wk):
         f'border:1px solid {bc};border-radius:6px;padding:4px 14px;'
         f'font-size:15px;font-weight:700;margin-bottom:16px">{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
-        # 出貨筆數：靜態顯示（透明按鈕在外部覆蓋）
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer" '
-        f'title="點擊查看該週工單明細">'
-        f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
-        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
-        f'</div>'
+        # 出貨筆數格：留高度空位，由外部 st.button 填入
+        f'<div style="flex:1;border-right:1px solid #EEF2F7;min-height:72px"></div>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
             f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
@@ -466,17 +458,21 @@ def _big_card(wk):
     )
 
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
+    _wk = weeks[_wi]
     with _col:
-        st.markdown(_big_card(weeks[_wi]), unsafe_allow_html=True)
-        if weeks[_wi]["n"] > 0:
-            _is_sel = (st.session_state["detail_week"] == _wi)
-            # 透明覆蓋按鈕：絕對定位在「出貨筆數」格上，視覺不可見
-            st.markdown('<div class="click-overlay">', unsafe_allow_html=True)
-            if st.button("", key=f"bd_{_wi}",
-                         help="點擊查看/收起工單明細"):
-                st.session_state["detail_week"] = None if _is_sel else _wi
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(_big_card(_wk), unsafe_allow_html=True)
+        # 把按鈕用負 margin 拉進「出貨筆數」空位，套 n-btn 樣式讓它像大數字
+        _is_sel = (st.session_state["detail_week"] == _wi)
+        st.markdown(
+            f'<div class="n-btn" style="margin-top:-84px;margin-bottom:0;width:20%">'
+            f'<p style="text-align:center;font-size:13px;color:#607080;margin:0 0 4px">出貨筆數</p>',
+            unsafe_allow_html=True
+        )
+        if st.button(str(_wk["n"]), key=f"bd_{_wi}",
+                     help="點擊查看/收起工單明細"):
+            st.session_state["detail_week"] = None if _is_sel else _wi
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
