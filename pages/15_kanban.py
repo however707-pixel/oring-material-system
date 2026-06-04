@@ -179,6 +179,7 @@ def parse_file(path):
         rows.append({'工單':wo,'成品料號':product,'預計產量':qty,
             '出貨日':ship_date,'出貨日_顯示':ship_label,
             '料況狀態':mat_status,'重點提示':hint,'整體料齊率':rate,
+            '預計齊料日': qi_date,
             '距出貨工作天':wdays_to_ship,'急件':is_urgent,
             '_delayed':delayed,'_iqc':iqc,'_future':future})
     return pd.DataFrame(rows)
@@ -350,9 +351,15 @@ for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
             f'</div></div></div>',
             unsafe_allow_html=True
         )
-        # 有缺料才顯示按鈕
-        if n_short > 0:
-            btn_label = "▲ 收起明細" if is_sel else f"📋 查看 {n_short} 張缺料明細"
+        # 所有週都顯示按鈕（不只缺料）
+        if n > 0:
+            _total = weeks[i]["n"]
+            if is_sel:
+                btn_label = "▲ 收起明細"
+            elif n_short > 0:
+                btn_label = f"📋 查看 {_total} 張工單（含 {n_short} 缺料）"
+            else:
+                btn_label = f"📋 查看 {_total} 張工單明細"
             if st.button(btn_label, key=f"wk_btn_{i}"):
                 st.session_state["sel_week"] = None if is_sel else i
                 st.rerun()
@@ -384,11 +391,11 @@ if sel is not None:
     if all_rows.empty:
         st.info("該週無出貨工單")
     else:
-        # 建立顯示表：工單 / 成品料號 / 預計產量 / 出貨日 / 料況 / 到料日 / 提示
         disp = all_rows[["工單","成品料號","預計產量","出貨日_顯示","料況狀態","預計齊料日","重點提示"]].copy()
         disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","到料日","重點提示"]
         disp["到料日"] = disp["到料日"].apply(
-            lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v,'strftime') else (str(v) if pd.notna(v) else "—")
+            lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v,'strftime')
+                      else ("已齊料" if str(v)=="nan" else str(v) if pd.notna(v) else "—")
         )
         def _sr(r):
             if r["料況狀態"]=="已齊料":    return ["background:#f0fdf9;color:#15803d"]*len(r)
@@ -398,12 +405,7 @@ if sel is not None:
                      use_container_width=True, hide_index=True,
                      height=min(500, 50+len(disp)*38))
 
-    short_rows = wk["short_rows"]  # 缺料工單（用於下方卡片展示，若有）
-    if short_rows.empty:
-        st.markdown("</div>", unsafe_allow_html=True)
-        # 跳出，不顯示個別缺料卡片
-    else:
-     for _, row in short_rows.sort_values("出貨日").iterrows():
+    for _, row in all_rows[all_rows["料況狀態"]!="已齊料"].sort_values("出貨日").iterrows():
         ship_d = row["出貨日"].strftime('%m/%d') if pd.notna(row["出貨日"]) else "未定"
         qty    = int(row["預計產量"]) if pd.notna(row["預計產量"]) else "?"
         hint   = row.get("重點提示","") or ""
