@@ -508,12 +508,17 @@ for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
     if total > 0:
         annotations.append(dict(
             x=labels[i], y=total,
-            text=f"已齊 {rq:,}  |  缺料 {lq:,}  |  共 {total:,}",
+            text=f"共 {total:,}<br><span style='font-size:14px'>齊 {rq:,} ｜ 缺 {lq:,}</span>",
             xanchor="center", yanchor="bottom",
-            showarrow=False,
-            font=dict(size=18, color="#0f172a",
+            showarrow=True,
+            arrowhead=0, arrowcolor="rgba(0,0,0,0)",
+            ax=0, ay=-10,
+            font=dict(size=17, color="#123A5C",
                       family="Microsoft JhengHei"),
-            bgcolor="rgba(0,0,0,0)",
+            bgcolor="rgba(244,248,251,0.85)",
+            bordercolor="#B9DDF5",
+            borderwidth=1,
+            borderpad=4,
         ))
 
 fig.update_layout(
@@ -526,7 +531,7 @@ fig.update_layout(
     xaxis=dict(showgrid=False, tickfont=dict(color="#607080", size=17)),
     yaxis=dict(showgrid=True, gridcolor="#DDE9F3",
                tickfont=dict(color="#607080", size=16), zeroline=False),
-    margin=dict(l=20, r=20, t=70, b=20), height=380,
+    margin=dict(l=20, r=20, t=90, b=20), height=420,
 )
 st.plotly_chart(fig, use_container_width=True)
 
