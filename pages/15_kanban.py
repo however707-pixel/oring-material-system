@@ -491,26 +491,41 @@ lq_vals = [w["lq"] for w in weeks]
 fig = go.Figure()
 fig.add_trace(go.Bar(
     name="已齊料 pcs", x=labels, y=rq_vals,
-    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee",width=1.5)),
-    text=[f"{v:,}" for v in rq_vals], textposition="outside",
-    textfont=dict(color="#22d3ee", size=20, family="Microsoft JhengHei"),
+    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
+    text=None,
 ))
 fig.add_trace(go.Bar(
     name="缺料 pcs", x=labels, y=lq_vals,
-    marker=dict(color="rgba(248,113,113,0.6)", line=dict(color="#f87171",width=1.5)),
-    text=[f"{v:,}" if v else "" for v in lq_vals], textposition="outside",
-    textfont=dict(color="#f87171", size=20, family="Microsoft JhengHei"),
+    marker=dict(color="rgba(248,113,113,0.6)", line=dict(color="#f87171", width=1.5)),
+    text=None,
 ))
+
+# 在每個長條最上方顯示：已齊料 / 總量，字夠大夠清楚
+annotations = []
+for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
+    total = rq + lq
+    if total > 0:
+        annotations.append(dict(
+            x=labels[i], y=total,
+            text=f"<b>已齊 {rq:,}</b> / 共 {total:,}",
+            xanchor="center", yanchor="bottom",
+            showarrow=False,
+            font=dict(size=18, color="#f0f9ff",
+                      family="Microsoft JhengHei"),
+            bgcolor="rgba(0,0,0,0)",
+        ))
+
 fig.update_layout(
     barmode="stack",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     font=dict(color="#a8c4e0", family="Microsoft JhengHei", size=18),
+    annotations=annotations,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                 font=dict(color="#dde6f5", size=18), bgcolor="rgba(0,0,0,0)"),
     xaxis=dict(showgrid=False, tickfont=dict(color="#a8c4e0", size=17)),
     yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
                tickfont=dict(color="#a8c4e0", size=16), zeroline=False),
-    margin=dict(l=20, r=20, t=60, b=20), height=360,
+    margin=dict(l=20, r=20, t=70, b=20), height=380,
 )
 st.plotly_chart(fig, use_container_width=True)
 
