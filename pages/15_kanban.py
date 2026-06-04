@@ -30,8 +30,8 @@ html, body, [class*="css"] {
 /* 只限制段落與標籤，不蓋掉 div 的 inline 顏色 */
 p { color:#123A5C !important; }
 label { color:#607080 !important; }
-/* 一般按鈕 */
-div[data-testid="stButton"] > button {
+/* 一般藍色按鈕 */
+div[data-testid="stButton"] > button[kind="primary"] {
     width:100%; background:#2A9DF4 !important;
     border:none !important; color:#ffffff !important;
     font-size:15px !important; font-weight:700 !important;
@@ -39,26 +39,35 @@ div[data-testid="stButton"] > button {
     margin-top:8px !important;
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
-div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* ▼/▲ 查看明細箭頭按鈕：完全透明，只顯示符號 */
-.wk-arrow-btn div[data-testid="stButton"] > button {
+div[data-testid="stButton"] > button[kind="primary"]:hover { background:#1a8ad4 !important; }
+div[data-testid="stButton"] > button[kind="secondary"] {
+    background:#ffffff !important; color:#2A9DF4 !important;
+    border:1px solid #B9DDF5 !important;
+    border-radius:8px !important; font-size:15px !important;
+    padding:7px 16px !important; margin-top:8px !important;
+    box-shadow:none !important; width:100% !important;
+}
+div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    background:#F4F8FB !important;
+}
+/* ▼/▲ 箭頭按鈕：白底灰字，只顯示符號，定位在出貨筆數下方 */
+div[data-testid="stButton"] > button[kind="tertiary"] {
     all:unset !important;
-    cursor:pointer !important; font-size:18px !important;
-    color:#94a3b8 !important; padding:0 6px !important;
-    display:inline-block !important; border-radius:4px !important;
-    line-height:1.2 !important;
+    cursor:pointer !important; font-size:16px !important;
+    color:#94a3b8 !important; padding:2px 8px !important;
+    display:block !important; border-radius:4px !important;
+    background:#ffffff !important; width:auto !important;
+    border:1px solid #e2e8f0 !important; margin-top:0 !important;
 }
-.wk-arrow-btn div[data-testid="stButton"] > button:hover {
-    color:#2A9DF4 !important;
-    background:rgba(42,157,244,0.08) !important;
+div[data-testid="stButton"] > button[kind="tertiary"]:hover {
+    color:#2A9DF4 !important; border-color:#B9DDF5 !important;
 }
-/* 把 wk-arrow-btn 整個往左移，貼著「出貨筆數」標籤右側 */
+/* 箭頭按鈕容器：拉進卡片內的出貨筆數位置 */
 .wk-arrow-btn {
-    margin-top:-30px !important;
-    margin-left:0 !important;
+    margin-top:-120px !important;
+    width:20% !important;
     padding:0 !important;
     text-align:center !important;
-    width:20% !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -459,7 +468,7 @@ for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
         st.markdown(_big_card(_wk), unsafe_allow_html=True)
         _is_sel = (st.session_state["detail_week"] == _wi)
         st.markdown('<div class="wk-arrow-btn">', unsafe_allow_html=True)
-        if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}"):
+        if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}", type="tertiary"):
             st.session_state["detail_week"] = None if _is_sel else _wi
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
