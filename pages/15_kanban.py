@@ -40,23 +40,8 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 欄位 relative 定位 */
-[data-testid="column"] { position:relative !important; }
-/* 精準取緊接在 marker 之後的一個 div（按鈕容器），完全清除樣式後絕對定位 */
-div:has(.wk-btn-marker) + div {
-    all:unset !important;
-    position:absolute !important;
-    top:116px !important; left:0 !important;
-    width:20% !important; height:72px !important;
-    opacity:0 !important; z-index:200 !important;
-    cursor:pointer !important; pointer-events:all !important;
-}
-div:has(.wk-btn-marker) + div * {
-    all:unset !important;
-    display:block !important;
-    width:100% !important; height:100% !important;
-    cursor:pointer !important; pointer-events:all !important;
-}
+/* 隱藏 Streamlit 按鈕，完全消失不佔空間 */
+.wk-hidden-btn { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -426,12 +411,16 @@ def _big_card(wk):
         f'border-radius:6px;padding:4px 14px;font-size:15px;font-weight:700;margin-bottom:16px">'
         f'{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
+        # 出貨筆數：onclick 直接觸發隱藏的 Streamlit 按鈕
+        f'<div onclick="var b=document.querySelectorAll(\'.wk-hidden-btn button\');if(b[{wk["idx"]}])b[{wk["idx"]}].click();" '
+        f'style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer">'
+        f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
+        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div></div>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
             f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
             f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
             for v,vc,lb in [
-                (str(n),         "#123A5C", "出貨筆數"),
                 (f"{tq:,}",     "#123A5C", "總量 pcs"),
                 (f"{rq:,}",     "#16A085", "已齊料 pcs"),
                 (f"{lq:,}",     "#E74C5B", "缺料 pcs"),
@@ -450,14 +439,15 @@ def _big_card(wk):
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     _wk = weeks[_wi]
     with _col:
-        # 原始卡片（外觀完全不變）
+        # 原始卡片（外觀完全不變，「2」有 onclick 直接觸發下方隱藏按鈕）
         st.markdown(_big_card(_wk), unsafe_allow_html=True)
-        # 標記 + 透明按鈕（opacity:0，絕對定位覆蓋在「出貨筆數」數字上）
+        # 隱藏按鈕：display:none 完全消失，被 HTML onclick 觸發
         _is_sel = (st.session_state["detail_week"] == _wi)
-        st.markdown('<span class="wk-btn-marker"></span>', unsafe_allow_html=True)
-        if st.button(" ", key=f"bd_{_wi}", help="點擊查看/收起工單明細"):
+        st.markdown('<div class="wk-hidden-btn">', unsafe_allow_html=True)
+        if st.button("x", key=f"bd_{_wi}"):
             st.session_state["detail_week"] = None if _is_sel else _wi
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
