@@ -531,6 +531,17 @@ st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════
 # SECTION 3：近5週 — 備料 / 入庫 各自獨立圖表＋表格
 # ══════════════════════════════════════════════════════
+
+def _workdays_in_week(wk_start, wk_end):
+    """計算日期區間內的工作日數（排除週六日）"""
+    count = 0
+    d = wk_start
+    while d <= wk_end:
+        if d.weekday() < 5:
+            count += 1
+        d += timedelta(days=1)
+    return max(count, 1)
+
 st.markdown(
     '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:14px">'
     '📅 近5週完成筆數</div>', unsafe_allow_html=True
@@ -578,16 +589,6 @@ def _bar_chart(labels, values, color_fill, color_line, height=240):
         margin=dict(l=10, r=10, t=36, b=10), height=height,
     )
     return fig
-
-def _workdays_in_week(wk_start, wk_end):
-    """計算週內工作日數（排除週六日）"""
-    count = 0
-    d = wk_start
-    while d <= wk_end:
-        if d.weekday() < 5:
-            count += 1
-        d += timedelta(days=1)
-    return max(count, 1)
 
 def _mini_table(row_label, labels, values, val_color, workdays=None):
     """HTML 小表格：完成筆數 + 每日平均"""
