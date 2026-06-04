@@ -40,9 +40,25 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* ▼查看明細按鈕：小型、不搶眼 */
-div[data-testid="stButton"] > button[kind="secondary"] {
-    /* 讓週卡片下的按鈕不顯眼 */
+/* ▼/▲ 查看明細箭頭按鈕：完全透明，只顯示符號 */
+.wk-arrow-btn div[data-testid="stButton"] > button {
+    all:unset !important;
+    cursor:pointer !important; font-size:18px !important;
+    color:#94a3b8 !important; padding:0 6px !important;
+    display:inline-block !important; border-radius:4px !important;
+    line-height:1.2 !important;
+}
+.wk-arrow-btn div[data-testid="stButton"] > button:hover {
+    color:#2A9DF4 !important;
+    background:rgba(42,157,244,0.08) !important;
+}
+/* 把 wk-arrow-btn 整個往左移，貼著「出貨筆數」標籤右側 */
+.wk-arrow-btn {
+    margin-top:-30px !important;
+    margin-left:0 !important;
+    padding:0 !important;
+    text-align:center !important;
+    width:20% !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -442,13 +458,11 @@ for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     with _col:
         st.markdown(_big_card(_wk), unsafe_allow_html=True)
         _is_sel = (st.session_state["detail_week"] == _wi)
-        if st.button(
-            f"{'▲ 收起' if _is_sel else '▼ 查看工單明細'}",
-            key=f"bd_{_wi}",
-            use_container_width=True,
-        ):
+        st.markdown('<div class="wk-arrow-btn">', unsafe_allow_html=True)
+        if st.button("▲" if _is_sel else "▼", key=f"bd_{_wi}"):
             st.session_state["detail_week"] = None if _is_sel else _wi
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
