@@ -40,10 +40,10 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 隱藏 x 按鈕 - 用最廣的選擇器，不依賴特定 data-testid */
-*:has(> .wk-hidden-btn) + * { display:none !important; }
-*:has(.wk-hidden-btn) ~ * button { display:none !important; }
-.wk-hidden-btn ~ * { display:none !important; }
+/* ▼查看明細按鈕：小型、不搶眼 */
+div[data-testid="stButton"] > button[kind="secondary"] {
+    /* 讓週卡片下的按鈕不顯眼 */
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -416,7 +416,6 @@ def _big_card(wk):
         f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
         f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
         f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
-        f'<div class="wk-hidden-btn" style="display:none"></div>'
         f'</div>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
