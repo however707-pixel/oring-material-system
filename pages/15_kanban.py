@@ -492,14 +492,14 @@ fig = go.Figure()
 fig.add_trace(go.Bar(
     name="已齊料 pcs", x=labels, y=rq_vals,
     marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee",width=1.5)),
-    text=[f"{v:,}" for v in rq_vals], textposition="inside",
-    textfont=dict(color="white", size=20, family="Microsoft JhengHei"),
+    text=[f"{v:,}" for v in rq_vals], textposition="outside",
+    textfont=dict(color="#22d3ee", size=20, family="Microsoft JhengHei"),
 ))
 fig.add_trace(go.Bar(
     name="缺料 pcs", x=labels, y=lq_vals,
     marker=dict(color="rgba(248,113,113,0.6)", line=dict(color="#f87171",width=1.5)),
-    text=[f"{v:,}" if v else "" for v in lq_vals], textposition="inside",
-    textfont=dict(color="white", size=20, family="Microsoft JhengHei"),
+    text=[f"{v:,}" if v else "" for v in lq_vals], textposition="outside",
+    textfont=dict(color="#f87171", size=20, family="Microsoft JhengHei"),
 ))
 fig.update_layout(
     barmode="stack",
@@ -510,7 +510,7 @@ fig.update_layout(
     xaxis=dict(showgrid=False, tickfont=dict(color="#a8c4e0", size=17)),
     yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
                tickfont=dict(color="#a8c4e0", size=16), zeroline=False),
-    margin=dict(l=20, r=20, t=40, b=20), height=320,
+    margin=dict(l=20, r=20, t=60, b=20), height=360,
 )
 st.plotly_chart(fig, use_container_width=True)
 
