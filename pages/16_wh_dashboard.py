@@ -485,7 +485,8 @@ week_b, week_i = [], []
 for w in range(4, -1, -1):
     wk_start = this_mon - timedelta(weeks=w)
     wk_end   = wk_start + timedelta(days=6)
-    lbl = "本週" if w==0 else ("上週" if w==1 else f"-{w}週")
+    wnum = wk_start.isocalendar()[1]
+    lbl = f"W{wnum}"
     mask = (diao['完成日'].notna() &
             (diao['完成日'].dt.date >= wk_start) &
             (diao['完成日'].dt.date <= wk_end))
