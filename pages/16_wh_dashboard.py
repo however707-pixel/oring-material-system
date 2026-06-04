@@ -381,6 +381,7 @@ with col_person:
         )
     else:
         max_val = person_today['完成筆數'].max()
+        max_val = person_today['完成筆數'].max()
         fig_p = go.Figure(go.Bar(
             x=person_today['完成筆數'],
             y=person_today['人員'],
@@ -393,14 +394,20 @@ with col_person:
             textposition="outside",
             textfont=dict(color="#1D2B3A", size=14,
                           family="Microsoft JhengHei"),
+            cliponaxis=False,
         ))
         fig_p.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(showgrid=True, gridcolor="#EDE5CF",
-                      tickfont=dict(color="#6B7280", size=13), zeroline=False),
+            xaxis=dict(
+                showgrid=True, gridcolor="#EDE5CF",
+                tickfont=dict(color="#6B7280", size=13),
+                zeroline=False, dtick=20,
+                range=[0, max_val * 1.25],
+                automargin=True,
+            ),
             yaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=14,
                        family="Microsoft JhengHei")),
-            margin=dict(l=10, r=90, t=10, b=10),
+            margin=dict(l=10, r=20, t=10, b=10),
             height=max(200, len(person_today) * 52),
             font=dict(color="#6B7280", family="Microsoft JhengHei"),
         )
