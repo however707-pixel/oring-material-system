@@ -385,8 +385,11 @@ if sel is not None and weeks[sel]["n_short"] > 0:
 st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 2：本週/下週 大卡片 + 今日來料
+# SECTION 2：三週大卡片（可點擊出貨筆數展開明細）
 # ══════════════════════════════════════════════════════
+if "detail_week" not in st.session_state:
+    st.session_state["detail_week"] = None
+
 card_l, card_r, card_r2 = st.columns(3)
 
 def _big_card(wk):
@@ -442,9 +445,63 @@ def _big_card(wk):
         f'</div></div></div>'
     )
 
-with card_l:  st.markdown(_big_card(weeks[0]), unsafe_allow_html=True)
-with card_r:  st.markdown(_big_card(weeks[1]), unsafe_allow_html=True)
-with card_r2: st.markdown(_big_card(weeks[2]), unsafe_allow_html=True)
+for _ci, (_col, _wi) in enumerate(zip([card_l, card_r, card_r2], [0, 1, 2])):
+    with _col:
+        st.markdown(_big_card(weeks[_wi]), unsafe_allow_html=True)
+        _wk = weeks[_wi]
+        if _wk["n"] > 0:
+            _is_sel = (st.session_state["detail_week"] == _wi)
+            _btn_lbl = f"▲ 收起工單明細" if _is_sel else f"📋 查看 {_wk['n']} 張工單明細"
+            if st.button(_btn_lbl, key=f"big_detail_{_wi}", use_container_width=True):
+                st.session_state["detail_week"] = None if _is_sel else _wi
+                st.rerun()
+
+# ── 展開明細表 ────────────────────────────────────────
+_dw = st.session_state.get("detail_week")
+if _dw is not None and 0 <= _dw <= 2:
+    _wk = weeks[_dw]
+    _ws = _wk["start"]; _we = _wk["end"]
+    # 從原始 df 取出該週有出貨日的工單
+    _detail = df[
+        df["出貨日"].notna() &
+        (df["出貨日"] >= _ws) &
+        (df["出貨日"] <= _we)
+    ].drop_duplicates("工單").sort_values("出貨日").copy()
+
+    st.markdown(
+        f'<div style="background:#ffffff;border:1px solid #B9DDF5;'
+        f'border-left:4px solid #2A9DF4;border-radius:10px;'
+        f'padding:12px 18px;margin:10px 0 6px;'
+        f'box-shadow:0 2px 10px rgba(18,58,92,0.08)">'
+        f'<span style="color:#123A5C;font-size:15px;font-weight:800">'
+        f'📋 {_wk["label"]}（{_ws.strftime("%m/%d")}~{_we.strftime("%m/%d")}）工單明細'
+        f'&nbsp;— 共 {len(_detail)} 張</span></div>',
+        unsafe_allow_html=True
+    )
+
+    if _detail.empty:
+        st.info("該週無出貨工單")
+    else:
+        _show = _detail[["工單","成品料號","預計產量","出貨日_顯示","料況狀態","距出貨工作天","重點提示"]].copy()
+        _show.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","剩餘工作天","重點提示"]
+        _show["剩餘工作天"] = _show["剩餘工作天"].apply(
+            lambda v: f"{int(v)} 天" if pd.notna(v) else "—"
+        )
+
+        def _style_row(row):
+            if row["料況狀態"] == "已齊料":
+                return ["background:#f0fdf9;color:#15803d"] * len(row)
+            elif row["料況狀態"] == "完全缺料":
+                return ["background:#fff1f2;color:#be123c"] * len(row)
+            else:
+                return ["background:#fffbeb;color:#b45309"] * len(row)
+
+        st.dataframe(
+            _show.style.apply(_style_row, axis=1),
+            use_container_width=True,
+            hide_index=True,
+            height=min(400, 45 + len(_show) * 38),
+        )
 
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
