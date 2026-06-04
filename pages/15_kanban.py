@@ -390,39 +390,51 @@ def _big_card(wk):
     n=wk["n"]; pct=int(rq/tq*100) if tq else 0
     cap=wk["cap"]; wdays=wk["wdays_left"]
     need_days=round(tq/DAILY_CAP,1) if tq else 0
-    if tq==0:      ac,gc,icon,msg="#475569","rgba(71,85,105,0.3)","⬜","無出貨工單"
-    elif lq==0:    ac,gc,icon,msg="#22d3ee","rgba(34,211,238,0.25)","✅","全數已齊料，可如期出貨"
-    elif cap>=lq:  ac,gc,icon,msg="#fbbf24","rgba(251,191,36,0.25)","⚠️",f"缺料 {lq:,} pcs，產能尚足"
-    else:          ac,gc,icon,msg="#E74C5B","rgba(248,113,113,0.3)","🔴",f"缺料 {lq:,} pcs，產能不足！"
+    # 主題色：全部使用冰川白主題色碼
+    if tq==0:
+        ac,bc,icon,msg = "#94a3b8","#e2e8f0","—","無出貨工單"
+        status_bg,status_c = "#f8fafc","#64748b"
+    elif lq==0:
+        ac,bc,icon,msg = "#16A085","#b2dfdb","✓","全數已齊料，可如期出貨"
+        status_bg,status_c = "#f0fdf9","#16A085"
+    elif cap>=lq:
+        ac,bc,icon,msg = "#d97706","#fde68a","!",f"缺料 {lq:,} pcs，產能尚足"
+        status_bg,status_c = "#fffbeb","#b45309"
+    else:
+        ac,bc,icon,msg = "#E74C5B","#fecdd3","!",f"缺料 {lq:,} pcs，產能不足"
+        status_bg,status_c = "#fff1f2","#be123c"
     return (
-        f'<div style="background:#ffffff);'
-        f'border:1px solid {ac};border-radius:16px;padding:20px 22px;'
-        f'box-shadow:0 0 28px {gc};height:100%">'
-        f'<div style="color:#607080;font-size:13px;letter-spacing:2px;margin-bottom:4px">{wk["label"]}'
-        f'&nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
-        f'<div style="color:{ac};font-size:22px;font-weight:800;margin-bottom:14px">{icon} {msg}</div>'
-        f'<div style="display:flex;gap:0;margin-bottom:14px">'
+        f'<div style="background:#ffffff;'
+        f'border:1px solid {bc};border-top:4px solid {ac};border-radius:14px;padding:20px 22px;'
+        f'box-shadow:0 2px 16px rgba(18,58,92,0.09);height:100%">'
+        # 週別標籤
+        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:10px">'
+        f'{wk["label"]} &nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
+        # 狀態徽章
+        f'<div style="display:inline-block;background:{status_bg};color:{status_c};'
+        f'border:1px solid {bc};border-radius:6px;padding:4px 14px;'
+        f'font-size:15px;font-weight:700;margin-bottom:16px">{icon} {msg}</div>'
+        f'<div style="display:flex;gap:0;margin-bottom:16px">'
         + "".join([
-            f'<div style="flex:1;text-align:center;border-right:1px solid #DDE9F3">'
-            f'<div style="font-size:50px;font-weight:900;color:{vc};text-shadow:0 0 16px {gc}">{v}</div>'
-            f'<div style="font-size:15px;color:#607080;margin-top:2px">{lb}</div></div>'
+            f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
+            f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
+            f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
             for v,vc,lb in [
-                (str(n), ac, "出貨筆數"),
-                (f"{tq:,}", ac, "總量 pcs"),
-                (f"{rq:,}", "#16A085", "已齊料 pcs"),
-                (f"{lq:,}", "#E74C5B", "缺料 pcs"),
-                (str(need_days), ac, f"需天數({DAILY_CAP}/天)"),
+                (str(n),       "#123A5C", "出貨筆數"),
+                (f"{tq:,}",   "#123A5C", "總量 pcs"),
+                (f"{rq:,}",   "#16A085", "已齊料 pcs"),
+                (f"{lq:,}",   "#E74C5B", "缺料 pcs"),
+                (str(need_days), "#2A9DF4", f"需天數({DAILY_CAP}/天)"),
             ]
         ]) +
         f'</div>'
-        f'<div style="font-size:15px;color:#607080;margin-bottom:5px">'
+        f'<div style="font-size:14px;color:#607080;margin-bottom:6px">'
         f'齊料進度 <b style="color:{ac}">{pct}%</b>'
-        f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#7dd3fc">{cap:,} pcs</b>（{wdays} 工作天）</div>'
-        f'<div style="background:#DDE9F3;border-radius:6px;height:8px;overflow:hidden">'
+        f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
+        f'<div style="background:#EEF2F7;border-radius:6px;height:8px;overflow:hidden">'
         f'<div style="display:flex;height:100%">'
-        f'<div style="width:{pct}%;background:linear-gradient(90deg,#22d3ee,#06b6d4);'
-        f'box-shadow:0 0 8px rgba(34,211,238,0.6)"></div>'
-        f'<div style="width:{100-pct}%;background:#f0a0a8"></div>'
+        f'<div style="width:{pct}%;background:linear-gradient(90deg,#16A085,#1abc9c)"></div>'
+        f'<div style="width:{100-pct}%;background:#fecdd3"></div>'
         f'</div></div></div>'
     )
 
