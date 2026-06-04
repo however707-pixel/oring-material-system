@@ -40,17 +40,10 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 隱藏 x 按鈕：針對有 wk-hidden-btn 的欄位，讓按鈕高度為0不可見 */
-[data-testid="column"]:has(.wk-hidden-btn) [data-testid="stButton"] {
-    visibility:hidden !important;
-    height:0 !important; max-height:0 !important;
-    overflow:hidden !important; padding:0 !important;
-    margin:0 !important; border:none !important;
-    font-size:0 !important; line-height:0 !important;
-}
-[data-testid="column"]:has(.wk-hidden-btn) [data-testid="stButton"] > * {
-    display:none !important;
-}
+/* 隱藏 x 按鈕 - 用最廣的選擇器，不依賴特定 data-testid */
+*:has(> .wk-hidden-btn) + * { display:none !important; }
+*:has(.wk-hidden-btn) ~ * button { display:none !important; }
+.wk-hidden-btn ~ * { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -420,21 +413,11 @@ def _big_card(wk):
         f'border-radius:6px;padding:4px 14px;font-size:15px;font-weight:700;margin-bottom:16px">'
         f'{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
-        # img onerror：延遲100ms後隱藏按鈕（等React渲染完）
-        # onclick：用dispatchEvent觸發React合成事件
-        f'<img src="" id="wki{wk["idx"]}" onerror="setTimeout(function(){{'
-        f'var c=document.getElementById(\'wki{wk["idx"]}\');'
-        f'while(c&&(!c.getAttribute||c.getAttribute(\'data-testid\')!==\'column\'))c=c.parentElement;'
-        f'if(c){{var p=c.querySelector(\'[data-testid=stButton]\');'
-        f'if(p&&p.parentElement)p.parentElement.style.cssText=\'position:absolute;height:0;overflow:hidden;opacity:0;\';}}}},'
-        f'300)" style="display:none">'
-        f'<div onclick="var c=this;'
-        f'while(c&&(!c.getAttribute||c.getAttribute(\'data-testid\')!==\'column\'))c=c.parentElement;'
-        f'if(c){{var b=c.querySelector(\'button\');'
-        f'if(b)b.dispatchEvent(new MouseEvent(\'click\',{{bubbles:true,cancelable:true}}))}}"'
-        f' style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer">'
+        f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
         f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
-        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div></div>'
+        f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
+        f'<div class="wk-hidden-btn" style="display:none"></div>'
+        f'</div>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
             f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
@@ -458,15 +441,15 @@ def _big_card(wk):
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     _wk = weeks[_wi]
     with _col:
-        # 原始卡片（外觀完全不變，「2」有 onclick 直接觸發下方隱藏按鈕）
         st.markdown(_big_card(_wk), unsafe_allow_html=True)
-        # 隱藏按鈕：display:none 完全消失，被 HTML onclick 觸發
         _is_sel = (st.session_state["detail_week"] == _wi)
-        st.markdown('<div class="wk-hidden-btn">', unsafe_allow_html=True)
-        if st.button("x", key=f"bd_{_wi}"):
+        if st.button(
+            f"{'▲ 收起' if _is_sel else '▼ 查看工單明細'}",
+            key=f"bd_{_wi}",
+            use_container_width=True,
+        ):
             st.session_state["detail_week"] = None if _is_sel else _wi
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
