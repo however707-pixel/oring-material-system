@@ -50,18 +50,27 @@ div[data-testid="stButton"] > button[kind="secondary"] {
 div[data-testid="stButton"] > button[kind="secondary"]:hover {
     background:#F4F8FB !important;
 }
-/* 週卡片：用:has(.wk-col-marker)讓欄位看起來像卡片 */
+/* 週卡片：::before 偽元素做白色卡片底層（不受欄位CSS限制）*/
 [data-testid="column"]:has(.wk-col-marker) {
+    position:relative !important;
+    padding:16px 18px !important;
+}
+[data-testid="column"]:has(.wk-col-marker)::before {
+    content:'' !important;
+    position:absolute !important;
+    inset:0 !important;
     background:#ffffff !important;
     border-radius:14px !important;
     border:1px solid #EEF2F7 !important;
-    padding:16px 18px !important;
     box-shadow:0 2px 16px rgba(18,58,92,0.09) !important;
+    z-index:0 !important;
+    pointer-events:none !important;
 }
-[data-testid="column"]:has(.wk-ready-marker)  { border-top:4px solid #16A085 !important; }
-[data-testid="column"]:has(.wk-warn-marker)   { border-top:4px solid #d97706 !important; }
-[data-testid="column"]:has(.wk-danger-marker) { border-top:4px solid #E74C5B !important; }
-[data-testid="column"]:has(.wk-none-marker)   { border-top:4px solid #94a3b8 !important; }
+[data-testid="column"]:has(.wk-col-marker) > * { position:relative !important; z-index:1 !important; }
+[data-testid="column"]:has(.wk-ready-marker)::before  { border-top:4px solid #16A085 !important; }
+[data-testid="column"]:has(.wk-warn-marker)::before   { border-top:4px solid #d97706 !important; }
+[data-testid="column"]:has(.wk-danger-marker)::before { border-top:4px solid #E74C5B !important; }
+[data-testid="column"]:has(.wk-none-marker)::before   { border-top:4px solid #94a3b8 !important; }
 /* ▼ 按鈕在卡片標題右側：secondary 小白按鈕 */
 [data-testid="column"]:has(.wk-col-marker) [data-testid="stButton"] > button {
     all:unset !important; cursor:pointer !important;
