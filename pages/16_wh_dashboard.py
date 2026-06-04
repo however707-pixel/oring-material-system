@@ -40,7 +40,7 @@ with st.sidebar:
 
     nas_dir = st.text_input(
         "NAS 資料夾路徑",
-        value=r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\倉管部",
+        value=r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\資材部\每日調撥與送燒ic(NEW)\3月-6月進貨資料表\調件備料統計表",
         key="wh_nas_dir"
     )
     file_prefix = st.text_input("檔名關鍵字", value="調件備料統計", key="wh_prefix")
