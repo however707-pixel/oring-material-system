@@ -387,7 +387,7 @@ st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════
 # SECTION 2：本週/下週 大卡片 + 今日來料
 # ══════════════════════════════════════════════════════
-card_l, card_r, card_mat = st.columns([2, 2, 1])
+card_l, card_r, card_r2, card_mat = st.columns([2, 2, 2, 1])
 
 def _big_card(wk):
     tq=wk["tq"]; rq=wk["rq"]; lq=wk["lq"]
@@ -442,8 +442,9 @@ def _big_card(wk):
         f'</div></div></div>'
     )
 
-with card_l: st.markdown(_big_card(weeks[0]), unsafe_allow_html=True)
-with card_r: st.markdown(_big_card(weeks[1]), unsafe_allow_html=True)
+with card_l:  st.markdown(_big_card(weeks[0]), unsafe_allow_html=True)
+with card_r:  st.markdown(_big_card(weeks[1]), unsafe_allow_html=True)
+with card_r2: st.markdown(_big_card(weeks[2]), unsafe_allow_html=True)
 
 # 今日來料
 with card_mat:
