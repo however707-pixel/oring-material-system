@@ -172,24 +172,34 @@ data_ts=src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
 
 st.markdown(
     f'<div style="background:linear-gradient(90deg,#0d1f4e 0%,#0f2d6b 40%,#0d1f4e 100%);'
-    f'border:1px solid rgba(56,189,248,0.35);border-radius:14px;padding:16px 28px;margin-bottom:18px;'
+    f'border:1px solid rgba(56,189,248,0.35);border-radius:14px;padding:18px 28px;margin-bottom:18px;'
     f'box-shadow:0 0 30px rgba(14,165,233,0.15);'
-    f'display:flex;justify-content:space-between;align-items:center">'
-    f'<div>'
-    f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 生管 PC</div>'
-    f'<div style="color:#f0f9ff;font-size:42px;font-weight:900;margin-top:3px;'
-    f'text-shadow:0 0 20px rgba(56,189,248,0.6)">📺 &nbsp;工單進度看板</div>'
+    f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
+
+    f'<div style="text-align:left">'
+    f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:4px">'
+    f'ORing &nbsp;·&nbsp; 生管 PC</div>'
+    f'<div style="color:#94a3b8;font-size:14px">'
+    f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 每 20 分鐘自動更新</div>'
+    f'<div style="color:#64748b;font-size:13px;margin-top:2px">資料：{data_ts}</div>'
     f'</div>'
+
     f'<div style="text-align:center">'
-    f'<div style="color:#7dd3fc;font-size:14px;letter-spacing:1px">PRODUCTION SCHEDULING MONITOR</div>'
-    f'<div style="color:#94a3b8;font-size:13px;margin-top:4px">'
-    f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 每 20 分鐘自動更新 &nbsp;｜&nbsp; 資料：{data_ts}'
-    f'</div></div>'
+    f'<div style="color:#f0f9ff;font-size:42px;font-weight:900;line-height:1.15;'
+    f'text-shadow:0 0 30px rgba(56,189,248,0.7);letter-spacing:2px">'
+    f'生產出貨即時監控</div>'
+    f'<div style="color:#38bdf8;font-size:16px;font-weight:600;letter-spacing:4px;margin-top:5px;'
+    f'text-shadow:0 0 12px rgba(56,189,248,0.5)">'
+    f'PRODUCTION &amp; SHIPPING LIVE MONITOR</div>'
+    f'</div>'
+
     f'<div style="text-align:right">'
-    f'<div style="color:#f0f9ff;font-size:34px;font-weight:900;text-shadow:0 0 20px rgba(56,189,248,0.5)">'
-    f'{TODAY.strftime("%Y / %m / %d")}</div>'
-    f'<div style="color:#38bdf8;font-size:18px;font-weight:700;margin-top:2px">（週{wday}）</div>'
-    f'</div></div>',
+    f'<div style="color:#f0f9ff;font-size:34px;font-weight:900;'
+    f'text-shadow:0 0 20px rgba(56,189,248,0.5)">{TODAY.strftime("%Y / %m / %d")}</div>'
+    f'<div style="color:#38bdf8;font-size:20px;font-weight:700;margin-top:2px">（週{wday}）</div>'
+    f'</div>'
+
+    f'</div>',
     unsafe_allow_html=True
 )
 
