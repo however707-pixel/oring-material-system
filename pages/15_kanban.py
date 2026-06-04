@@ -13,38 +13,32 @@ st.set_page_config(page_title="工單進度看板", page_icon="📺",
 
 st.markdown("""
 <style>
-/* ══ 工單看板：冰藍商務風 ══ */
-.stApp {
-    background: linear-gradient(150deg, #cfe0f5 0%, #ddeeff 50%, #e8f4ff 100%) !important;
-}
+/* ══ 工單看板：深海軍藍 × 純白專業風 ══ */
+.stApp { background:#eef2f7 !important; }
 [data-testid="stHeader"]  { background:transparent !important; }
-[data-testid="stSidebar"] { background:#f0f7ff !important; }
-.block-container { padding:0.6rem 1.2rem 2rem !important; max-width:100% !important; }
+[data-testid="stSidebar"] { background:#ffffff !important; }
+.block-container { padding:0.5rem 1.2rem 2rem !important; max-width:100% !important; }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
 ::-webkit-scrollbar { width:6px; }
-::-webkit-scrollbar-track { background:#dde8f5; }
-::-webkit-scrollbar-thumb { background:#5b9bd5; border-radius:4px; }
+::-webkit-scrollbar-track { background:#dce6f0; }
+::-webkit-scrollbar-thumb { background:#3b82f6; border-radius:4px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
 html, body, [class*="css"] {
     font-size:18px !important;
     font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
+    color:#1e293b !important;
 }
-p, div, span, label { color:#1a2e4a !important; }
-/* 卡片通用 */
-div[data-testid="stHorizontalBlock"] { gap:16px; }
-/* 按鈕 */
+p, div, span, label { color:#1e293b !important; }
 div[data-testid="stButton"] > button {
-    width:100%;
-    background:linear-gradient(135deg,#2563eb,#3b82f6) !important;
+    width:100%; background:#1d4ed8 !important;
     border:none !important; color:#ffffff !important;
-    font-size:16px !important; font-weight:700 !important;
-    border-radius:20px !important; padding:8px 14px !important;
-    margin-top:8px !important;
-    box-shadow:0 4px 12px rgba(37,99,235,0.25) !important;
+    font-size:15px !important; font-weight:700 !important;
+    border-radius:8px !important; padding:7px 14px !important;
+    margin-top:8px !important; letter-spacing:0.5px !important;
+    box-shadow:0 2px 8px rgba(29,78,216,0.3) !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background:linear-gradient(135deg,#1d4ed8,#2563eb) !important;
-    box-shadow:0 6px 16px rgba(37,99,235,0.35) !important;
+    background:#1e40af !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -181,9 +175,9 @@ next_ref=20-(NOW.minute%20)
 data_ts=src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
 
 st.markdown(
-    f'<div style="background:linear-gradient(90deg,#1e40af 0%,#2563eb 40%,#1e40af 100%);'
-    f'border:1px solid rgba(56,189,248,0.35);border-radius:14px;padding:18px 28px;margin-bottom:18px;'
-    f'box-shadow:0 0 30px rgba(14,165,233,0.15);'
+    f'<div style="background:linear-gradient(90deg,#0f2356 0%,#1e3a8a 50%,#0f2356 100%);'
+    f'border:none;border-radius:14px;padding:18px 28px;margin-bottom:20px;'
+    f'box-shadow:0 4px 20px rgba(15,35,86,0.25);'
     f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
 
     f'<div style="text-align:left">'
@@ -273,7 +267,7 @@ for i in range(5):
 # SECTION 1：5週 KPI 卡片 + 點擊明細
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#1e40af;font-size:16px;font-weight:700;letter-spacing:1px;'
+    '<div style="color:#1e3a8a;font-size:16px;font-weight:800;letter-spacing:0.5px;'
     'margin-bottom:12px">📦 出貨工單概況（今日 ~ +4週）</div>',
     unsafe_allow_html=True
 )
@@ -411,7 +405,7 @@ def _big_card(wk):
         f'<div style="color:{ac};font-size:22px;font-weight:800;margin-bottom:14px">{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:14px">'
         + "".join([
-            f'<div style="flex:1;text-align:center;border-right:1px solid #e2e8f0">'
+            f'<div style="flex:1;text-align:center;border-right:1px solid #f1f5f9">'
             f'<div style="font-size:50px;font-weight:900;color:{vc};text-shadow:0 0 16px {gc}">{v}</div>'
             f'<div style="font-size:15px;color:#475569;margin-top:2px">{lb}</div></div>'
             for v,vc,lb in [
@@ -426,7 +420,7 @@ def _big_card(wk):
         f'<div style="font-size:15px;color:#475569;margin-bottom:5px">'
         f'齊料進度 <b style="color:{ac}">{pct}%</b>'
         f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#7dd3fc">{cap:,} pcs</b>（{wdays} 工作天）</div>'
-        f'<div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">'
+        f'<div style="background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden">'
         f'<div style="display:flex;height:100%">'
         f'<div style="width:{pct}%;background:linear-gradient(90deg,#22d3ee,#06b6d4);'
         f'box-shadow:0 0 8px rgba(34,211,238,0.6)"></div>'
@@ -471,7 +465,7 @@ with card_mat:
         f'text-shadow:0 0 24px rgba(56,189,248,0.6)">{total_mat}</div>'
         f'<div style="color:#475569;font-size:16px;margin-top:4px;margin-bottom:16px">項料號</div>'
         f'<div style="display:flex;gap:0">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #e2e8f0">'
+        f'<div style="flex:1;text-align:center;border-right:1px solid #f1f5f9">'
         f'<div style="color:#fb923c;font-size:46px;font-weight:900;'
         f'text-shadow:0 0 14px rgba(249,115,22,0.5)">{urg_mat}</div>'
         f'<div style="color:#334155;font-size:15px;margin-top:2px">🚨 急件</div></div>'
@@ -489,7 +483,7 @@ st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 # SECTION 3：4週出貨量趨勢圖
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#1e40af;font-size:20px;font-weight:700;letter-spacing:1px;'
+    '<div style="color:#1e3a8a;font-size:18px;font-weight:800;letter-spacing:0.5px;'
     'margin-bottom:10px">📊 4週出貨量趨勢（pcs）</div>',
     unsafe_allow_html=True
 )
@@ -527,12 +521,12 @@ for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
 fig.update_layout(
     barmode="stack",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#334155", family="Microsoft JhengHei", size=18),
+    font=dict(color="#334155", family="Microsoft JhengHei", size=16),
     annotations=annotations,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                 font=dict(color="#334155", size=18), bgcolor="rgba(0,0,0,0)"),
     xaxis=dict(showgrid=False, tickfont=dict(color="#475569", size=17)),
-    yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.07)",
+    yaxis=dict(showgrid=True, gridcolor="#e2e8f0",
                tickfont=dict(color="#475569", size=16), zeroline=False),
     margin=dict(l=20, r=20, t=70, b=20), height=380,
 )
@@ -553,7 +547,7 @@ st.markdown(
     f'border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:12px 20px;margin-bottom:14px;'
     f'box-shadow:0 0 16px rgba(239,68,68,0.1);display:flex;align-items:center;gap:20px">'
     f'<span style="color:#fca5a5;font-size:16px;font-weight:800">🚨 &nbsp;兩週內急件缺料</span>'
-    f'<span style="color:#dc2626;font-size:50px;font-weight:900;'
+    f'<span style="color:#b91c1c;font-size:50px;font-weight:900;'
     f'text-shadow:0 0 16px rgba(239,68,68,0.5)">{len(urgent_lack)}</span>'
     f'<span style="color:#475569;font-size:14px">張工單（出貨剩 ≤10 工作天且尚未齊料）</span>'
     f'</div>',
