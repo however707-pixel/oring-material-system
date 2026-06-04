@@ -325,12 +325,37 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-def _kpi_card(title, done, pend, rate, icon):
+def _kpi_card(title, done, pend, rate, icon, daily_target=None):
     total = done + pend
     pct   = int(rate * 100)
     if rate >= 0.8:   status_txt,status_c = "達標",    "#2E9D70"
     elif rate >= 0.5: status_txt,status_c = "持續推進", "#d97706"
     else:             status_txt,status_c = "進度落後", "#B23A48"
+
+    # Q3 目標比較區塊
+    q3_block = ""
+    if daily_target:
+        diff     = done - daily_target
+        diff_c   = "#2E9D70" if diff >= 0 else "#B23A48"
+        diff_sym = "▲" if diff >= 0 else "▼"
+        diff_lbl = "達標" if diff >= 0 else "未達標"
+        bar_pct  = min(int(done / daily_target * 100), 100)
+        q3_block = (
+            f'<div style="margin-top:14px;border-top:1px dashed #E6D8B8;padding-top:10px">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+            f'<span style="color:#6B7280;font-size:13px;font-weight:600">🎯 第3季每日指標：{daily_target:,} 筆</span>'
+            f'<span style="color:{diff_c};font-size:13px;font-weight:700">'
+            f'{diff_sym} {abs(diff)} &nbsp;{diff_lbl}</span>'
+            f'</div>'
+            f'<div style="display:flex;align-items:center;gap:10px">'
+            f'<div style="flex:1;background:#f5ede0;border-radius:4px;height:7px;overflow:hidden">'
+            f'<div style="width:{bar_pct}%;height:100%;'
+            f'background:{"linear-gradient(90deg,#2E9D70,#3bb892)" if diff>=0 else "linear-gradient(90deg,#B23A48,#e05a6a)"}"></div>'
+            f'</div>'
+            f'<span style="color:{diff_c};font-size:13px;font-weight:700;min-width:36px">{bar_pct}%</span>'
+            f'</div></div>'
+        )
+
     return (
         f'<div style="background:#FFFFFF;'
         f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
@@ -358,7 +383,8 @@ def _kpi_card(title, done, pend, rate, icon):
         f'<div style="width:{100-pct}%;background:#f5c6cc"></div>'
         f'</div></div>'
         f'<div style="color:#6B7280;font-size:13px;margin-top:6px;text-align:right">'
-        f'目標總筆數：{total:,}</div></div>'
+        f'目標總筆數：{total:,}</div>'
+        f'{q3_block}</div>'
     )
 
 # 第三卡片：備料最高 / 入庫最高 分開顯示
@@ -395,8 +421,8 @@ def _top_person_card():
     )
 
 c1, c2, c3 = st.columns(3)
-c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate, "📦"), unsafe_allow_html=True)
-c2.markdown(_kpi_card("入庫", i_done, i_pend, i_rate, "🏭"), unsafe_allow_html=True)
+c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate, "📦", daily_target=200), unsafe_allow_html=True)
+c2.markdown(_kpi_card("入庫", i_done, i_pend, i_rate, "🏭", daily_target=100), unsafe_allow_html=True)
 c3.markdown(_top_person_card(), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
