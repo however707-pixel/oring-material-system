@@ -398,133 +398,158 @@ with col_person:
         st.plotly_chart(fig_p, use_container_width=True)
 
 with col_alert:
+    # ── 今日即時訊息 ────────────────────────────────────
+    today_b_rows = diao[
+        (diao['狀態'] == '已完成') &
+        diao['完成日'].notna() &
+        (diao['完成日'].dt.date == TODAY)
+    ]
+    today_i_rows = diao[
+        (diao['狀態'] == '上架') &
+        diao['完成日'].notna() &
+        (diao['完成日'].dt.date == TODAY)
+    ]
+    today_b_cnt = int(today_b_rows['需求筆數'].sum())
+    today_i_cnt = int(today_i_rows['完成筆數'].sum())
+
     st.markdown(
-        '<div style="color:#f87171;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
-        '⚠️ 入庫單延遲警示</div>',
+        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'border:1px solid rgba(56,189,248,0.4);border-radius:12px;padding:16px 18px;height:100%">'
+        f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+        f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
+        f'<div style="display:flex;gap:0">'
+        f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07);padding:10px 0">'
+        f'<div style="color:#22d3ee;font-size:52px;font-weight:900;line-height:1;'
+        f'text-shadow:0 0 20px rgba(34,211,238,0.6)">{today_b_cnt:,}</div>'
+        f'<div style="color:#374151;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
+        f'<div style="flex:1;text-align:center;padding:10px 0">'
+        f'<div style="color:#818cf8;font-size:52px;font-weight:900;line-height:1;'
+        f'text-shadow:0 0 20px rgba(129,140,248,0.6)">{today_i_cnt:,}</div>'
+        f'<div style="color:#374151;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
+        f'</div>'
+        f'<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">'
+        f'<div style="color:#64748b;font-size:13px;margin-bottom:6px">今日備料人員</div>',
         unsafe_allow_html=True
     )
-    overdue_ib = inbound[
-        inbound['完成日'].isna() &
-        inbound['預計完成日'].notna() &
-        (inbound['預計完成日'].dt.date < TODAY)
-    ].copy()
-    overdue_ib['逾期天數'] = (pd.Timestamp(TODAY) - overdue_ib['預計完成日']).dt.days
-
-    if overdue_ib.empty:
-        st.markdown(
-            '<div style="background:rgba(6,78,59,0.2);border:1px solid rgba(34,211,238,0.3);'
-            'border-radius:8px;padding:16px;text-align:center;color:#6ee7b7;font-size:15px">'
-            '✅ 目前無逾期入庫單</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            f'<div style="background:rgba(127,29,29,0.2);border:1px solid rgba(239,68,68,0.3);'
-            f'border-radius:8px;padding:8px 14px;margin-bottom:8px;color:#fca5a5;font-size:13px">'
-            f'共 <b style="font-size:20px;color:#f87171">{len(overdue_ib)}</b> 筆入庫單逾期未完成</div>',
-            unsafe_allow_html=True
-        )
-        for _, row in overdue_ib.sort_values('逾期天數', ascending=False).head(8).iterrows():
-            days = int(row['逾期天數'])
-            no   = str(row.get('編號', row.get('單號', '—')))
-            staff = str(row.get('入庫人員', '—'))
-            pred = row['預計完成日'].strftime('%m/%d') if pd.notna(row['預計完成日']) else '—'
-            sev  = "#ef4444" if days >= 5 else "#f97316"
+    if not today_b_rows.empty:
+        by_p = today_b_rows.groupby('備料人員')['需求筆數'].sum().sort_values(ascending=False)
+        for person, cnt in by_p.items():
             st.markdown(
-                f'<div style="background:rgba(8,15,40,0.7);border:1px solid rgba(239,68,68,0.25);'
-                f'border-left:4px solid {sev};border-radius:6px;padding:8px 12px;margin-bottom:5px">'
-                f'<div style="display:flex;justify-content:space-between;align-items:center">'
-                f'<span style="color:#fca5a5;font-size:13px;font-weight:700">{no}</span>'
-                f'<span style="color:{sev};font-size:13px;font-weight:800">逾期 {days} 天</span>'
-                f'</div>'
-                f'<div style="color:#475569;font-size:12px;margin-top:3px">'
-                f'預計完成 {pred} &nbsp;｜&nbsp; 負責：{staff}</div>'
+                f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
+                f'border-bottom:1px solid rgba(255,255,255,0.04)">'
+                f'<span style="color:#94a3b8;font-size:13px">{person}</span>'
+                f'<span style="color:#22d3ee;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
+    else:
+        st.markdown('<div style="color:#374151;font-size:13px">— 今日尚無備料完成記錄 —</div>',
+                    unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
-st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 3：每日趨勢折線圖
+# SECTION 3：近5週備料 + 入庫
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:10px">'
-    '📈 每日備料 / 入庫完成筆數趨勢（近30日）</div>',
+    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+    '📅 近5週備料 / 入庫完成筆數</div>',
     unsafe_allow_html=True
 )
 
-cutoff = pd.Timestamp(TODAY - timedelta(days=30))
-eff_b_recent = eff_biao[eff_biao['日期'] >= cutoff].dropna(subset=['日期']).sort_values('日期')
-eff_i_recent = eff_in[eff_in['日期'] >= cutoff].dropna(subset=['日期']).sort_values('日期')
+# 計算本週一
+_wd0 = TODAY.weekday()
+this_mon = TODAY - timedelta(days=_wd0)
 
-fig_trend = go.Figure()
-if not eff_b_recent.empty:
-    fig_trend.add_trace(go.Scatter(
-        x=eff_b_recent['日期'], y=eff_b_recent['備料筆數'],
-        name="備料完成筆數",
-        line=dict(color="#22d3ee", width=2.5),
-        mode="lines+markers",
-        marker=dict(size=6, color="#22d3ee"),
-        fill="tozeroy", fillcolor="rgba(34,211,238,0.06)"
-    ))
-if not eff_i_recent.empty:
-    fig_trend.add_trace(go.Scatter(
-        x=eff_i_recent['日期'], y=eff_i_recent['入庫筆數'],
-        name="入庫完成筆數",
-        line=dict(color="#818cf8", width=2.5),
-        mode="lines+markers",
-        marker=dict(size=6, color="#818cf8"),
-        fill="tozeroy", fillcolor="rgba(129,140,248,0.06)"
-    ))
-fig_trend.update_layout(
+week_labels, week_b, week_i = [], [], []
+for w in range(4, -1, -1):   # 從4週前到本週
+    wk_start = this_mon - timedelta(weeks=w)
+    wk_end   = wk_start + timedelta(days=6)
+    label = "本週" if w == 0 else (f"上週" if w == 1 else f"-{w}週")
+
+    mask = diao['完成日'].notna() & \
+           (diao['完成日'].dt.date >= wk_start) & \
+           (diao['完成日'].dt.date <= wk_end)
+    b_val = int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum())
+    i_val = int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum())
+
+    week_labels.append(f"{label}<br>{wk_start.strftime('%m/%d')}~{wk_end.strftime('%m/%d')}")
+    week_b.append(b_val)
+    week_i.append(i_val)
+
+fig_week = go.Figure()
+fig_week.add_trace(go.Bar(
+    name="備料", x=week_labels, y=week_b,
+    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
+    text=[f"{v:,}" for v in week_b], textposition="outside",
+    textfont=dict(color="#22d3ee", size=13),
+))
+fig_week.add_trace(go.Bar(
+    name="入庫", x=week_labels, y=week_i,
+    marker=dict(color="rgba(129,140,248,0.7)", line=dict(color="#818cf8", width=1.5)),
+    text=[f"{v:,}" for v in week_i], textposition="outside",
+    textfont=dict(color="#818cf8", size=13),
+))
+fig_week.update_layout(
+    barmode="group",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     font=dict(color="#94a3b8", size=13),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                 font=dict(color="#cbd5e1", size=13), bgcolor="rgba(0,0,0,0)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=12),
-               tickformat="%m/%d"),
+    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=12)),
     yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
                tickfont=dict(color="#64748b", size=12), zeroline=False),
-    margin=dict(l=20, r=20, t=30, b=20),
-    height=260,
+    margin=dict(l=20, r=20, t=40, b=20), height=280,
 )
-st.plotly_chart(fig_trend, use_container_width=True)
+st.plotly_chart(fig_week, use_container_width=True)
+
+st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 4：錯料追蹤（未結案）
+# SECTION 4：1~12月備料 + 入庫
 # ══════════════════════════════════════════════════════
-open_err = err_df[err_df['結案日期'].isna()].copy() if '結案日期' in err_df.columns else pd.DataFrame()
+st.markdown(
+    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+    f'📆 年度月份備料 / 入庫完成筆數（{TODAY.year}年）</div>',
+    unsafe_allow_html=True
+)
 
-if not open_err.empty:
-    st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
-    st.markdown(
-        f'<div style="background:linear-gradient(90deg,rgba(120,53,15,0.5),rgba(80,30,5,0.3));'
-        f'border:1px solid rgba(251,191,36,0.4);border-radius:10px;padding:10px 18px;margin-bottom:12px;'
-        f'box-shadow:0 0 14px rgba(251,191,36,0.1)">'
-        f'<span style="color:#fde68a;font-size:15px;font-weight:800">'
-        f'🔶 &nbsp;錯料歸還追蹤（未結案）&nbsp; — 共 {len(open_err)} 筆</span>'
-        f'</div>',
-        unsafe_allow_html=True
-    )
-    cols_e = st.columns(min(4, len(open_err)))
-    for i, (_, row) in enumerate(open_err.iterrows()):
-        if i >= 8: break
-        with cols_e[i % 4]:
-            pno  = str(row.get('料號','—'))
-            qty  = row.get('數量','—')
-            noti = row['通知日期'].strftime('%m/%d') if pd.notna(row.get('通知日期')) else '—'
-            note = str(row.get('備註','')) or ''
-            st.markdown(
-                f'<div style="background:rgba(8,15,40,0.7);border:1px solid rgba(251,191,36,0.25);'
-                f'border-left:4px solid #fbbf24;border-radius:6px;padding:10px 12px;margin-bottom:8px">'
-                f'<div style="color:#fde68a;font-size:13px;font-weight:700;margin-bottom:4px">{pno}</div>'
-                f'<div style="color:#94a3b8;font-size:12px">數量：{qty}</div>'
-                f'<div style="color:#475569;font-size:12px">通知日：{noti}</div>'
-                + (f'<div style="color:#64748b;font-size:11px;margin-top:4px">{note[:40]}</div>' if note else '')
-                + f'</div>',
-                unsafe_allow_html=True
-            )
+month_labels = [f"{m}月" for m in range(1, 13)]
+month_b, month_i = [], []
+
+for m in range(1, 13):
+    mask = diao['完成日'].notna() & \
+           (diao['完成日'].dt.year == TODAY.year) & \
+           (diao['完成日'].dt.month == m)
+    month_b.append(int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum()))
+    month_i.append(int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum()))
+
+fig_month = go.Figure()
+fig_month.add_trace(go.Bar(
+    name="備料", x=month_labels, y=month_b,
+    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
+    text=[f"{v:,}" if v else "" for v in month_b], textposition="outside",
+    textfont=dict(color="#22d3ee", size=12),
+))
+fig_month.add_trace(go.Bar(
+    name="入庫", x=month_labels, y=month_i,
+    marker=dict(color="rgba(129,140,248,0.7)", line=dict(color="#818cf8", width=1.5)),
+    text=[f"{v:,}" if v else "" for v in month_i], textposition="outside",
+    textfont=dict(color="#818cf8", size=12),
+))
+fig_month.update_layout(
+    barmode="group",
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#94a3b8", size=13),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                font=dict(color="#cbd5e1", size=13), bgcolor="rgba(0,0,0,0)"),
+    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=13)),
+    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+               tickfont=dict(color="#64748b", size=12), zeroline=False),
+    margin=dict(l=20, r=20, t=40, b=20), height=300,
+)
+st.plotly_chart(fig_month, use_container_width=True)
 
 # 頁尾
 st.markdown(
