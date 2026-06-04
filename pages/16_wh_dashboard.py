@@ -12,20 +12,21 @@ st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
 
 st.markdown("""
 <style>
-.stApp { background:linear-gradient(160deg,#020918 0%,#061228 55%,#0a1a35 100%) !important; }
+/* ── 底色：中深藍，不再是純黑 ── */
+.stApp { background:linear-gradient(160deg,#0e1f3f 0%,#152848 55%,#112038 100%) !important; }
 [data-testid="stHeader"]  { background:transparent !important; }
-[data-testid="stSidebar"] { background:#050e22 !important; }
+[data-testid="stSidebar"] { background:#0e1a33 !important; }
 .block-container { padding:0.6rem 1.4rem 2rem !important; max-width:100% !important; }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
-/* 隱藏側邊欄與展開按鈕，全畫面看板 */
 [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none !important; }
 .block-container { padding-left:1.4rem !important; }
 ::-webkit-scrollbar { width:5px; }
-::-webkit-scrollbar-track { background:#020918; }
-::-webkit-scrollbar-thumb { background:#1e3a8a; border-radius:3px; }
+::-webkit-scrollbar-track { background:#0e1f3f; }
+::-webkit-scrollbar-thumb { background:#2563eb; border-radius:3px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
-html, body, [class*="css"] { font-size:16px !important; }
-div[data-testid="stSidebarContent"] label { color:#94a3b8 !important; }
+/* ── 全域字體放大，基準18px ── */
+html, body, [class*="css"] { font-size:18px !important; }
+p, div, span, label { color:#dde6f5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,7 +76,7 @@ st.markdown(
     f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
     f'<div>'
     f'<div style="color:#38bdf8;font-size:13px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
-    f'<div style="color:#94a3b8;font-size:13px;margin-top:4px">'
+    f'<div style="color:#a8c4e0;font-size:13px;margin-top:4px">'
     f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 資料：{data_ts}</div>'
     f'</div>'
     f'<div style="text-align:center">'
@@ -103,7 +104,7 @@ if src_file:
             f'border-radius:8px;padding:8px 16px;font-size:13px;color:#6ee7b7">'
             f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
             f'<b style="color:#22d3ee">{fname}</b>'
-            f'<span style="color:#475569;margin-left:8px">（{ts_str}）</span></div>',
+            f'<span style="color:#8aabd4;margin-left:8px">（{ts_str}）</span></div>',
             unsafe_allow_html=True
         )
     with c_btn:
@@ -272,25 +273,25 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
     elif rate >= 0.5: status = "🟡 持續推進"
     else:             status = "🔴 進度落後"
     return (
-        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
         f'border:1px solid {accent};border-radius:16px;padding:22px 24px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
-        f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px">{icon} {title}</div>'
-        f'<div style="color:#64748b;font-size:13px">{status}</div></div>'
+        f'<div style="color:#a8c4e0;font-size:14px;font-weight:700;letter-spacing:2px">{icon} {title}</div>'
+        f'<div style="color:#8aabd4;font-size:13px">{status}</div></div>'
         f'<div style="display:flex;gap:0;margin-bottom:18px">'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
         f'<div style="color:#4ade80;font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(74,222,128,0.5)">{done:,}</div>'
-        f'<div style="color:#374151;font-size:14px;margin-top:6px">已完成</div></div>'
+        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">已完成</div></div>'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
         f'<div style="color:#f87171;font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(248,113,113,0.4)">{pend:,}</div>'
-        f'<div style="color:#374151;font-size:14px;margin-top:6px">待完成</div></div>'
+        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">待完成</div></div>'
         f'<div style="flex:1;text-align:center">'
         f'<div style="color:{accent};font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px {glow}">{pct}%</div>'
-        f'<div style="color:#374151;font-size:14px;margin-top:6px">完成率</div></div>'
+        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">完成率</div></div>'
         f'</div>'
         f'<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden">'
         f'<div style="display:flex;height:100%">'
@@ -298,7 +299,7 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'box-shadow:0 0 8px rgba(74,222,128,0.6)"></div>'
         f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4)"></div>'
         f'</div></div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:6px;text-align:right">'
+        f'<div style="color:#7b9ec8;font-size:13px;margin-top:6px;text-align:right">'
         f'目標總筆數：{total:,}</div></div>'
     )
 
@@ -311,15 +312,15 @@ def _top_person_card():
         return (
             f'<div style="flex:1;padding:14px 16px;'
             f'background:rgba(255,255,255,0.03);border-radius:10px">'
-            f'<div style="color:#64748b;font-size:12px;letter-spacing:1px;margin-bottom:8px">{label}</div>'
+            f'<div style="color:#8aabd4;font-size:12px;letter-spacing:1px;margin-bottom:8px">{label}</div>'
             f'<div style="color:{color};font-size:32px;font-weight:900;line-height:1;'
             f'text-shadow:0 0 18px {color}66">{name}</div>'
             f'<div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">'
             f'<span style="color:{color};font-size:40px;font-weight:900">{cnt:,}</span>'
-            f'<span style="color:#374151;font-size:14px">筆</span>'
+            f'<span style="color:#7b9ec8;font-size:14px">筆</span>'
             f'<span style="color:{ac};font-size:18px;font-weight:700;margin-left:6px">{pct}%</span>'
             f'</div>'
-            f'<div style="color:#374151;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
+            f'<div style="color:#7b9ec8;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
             f'<div style="background:rgba(255,255,255,0.05);border-radius:3px;height:5px;overflow:hidden;margin-top:8px">'
             f'<div style="width:{bar_w}%;height:100%;background:{bar_color};'
             f'box-shadow:0 0 6px {bar_color}99"></div></div>'
@@ -327,10 +328,10 @@ def _top_person_card():
         )
 
     return (
-        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
         f'border:1px solid {ac};border-radius:16px;padding:20px 22px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
-        f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:14px">'
+        f'<div style="color:#a8c4e0;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:14px">'
         f'🏆 前日最高績效</div>'
         f'<div style="display:flex;gap:10px">'
         + _half("📦 備料", top_b_name, top_b_cnt, top_b_pct, "#22d3ee", "#22d3ee")
@@ -369,7 +370,7 @@ with col_person:
     if person_today.empty:
         st.markdown(
             '<div style="background:rgba(15,23,42,0.6);border:1px solid rgba(51,65,85,0.4);'
-            'border-radius:8px;padding:20px;text-align:center;color:#475569">— 今日尚無完成記錄 —</div>',
+            'border-radius:8px;padding:20px;text-align:center;color:#8aabd4">— 今日尚無完成記錄 —</div>',
             unsafe_allow_html=True
         )
     else:
@@ -413,7 +414,7 @@ with col_alert:
     today_i_cnt = int(today_i_rows['完成筆數'].sum())
 
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
         f'border:1px solid rgba(56,189,248,0.4);border-radius:12px;padding:16px 18px;height:100%">'
         f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
         f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
@@ -421,14 +422,14 @@ with col_alert:
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07);padding:10px 0">'
         f'<div style="color:#22d3ee;font-size:52px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(34,211,238,0.6)">{today_b_cnt:,}</div>'
-        f'<div style="color:#374151;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
+        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
         f'<div style="flex:1;text-align:center;padding:10px 0">'
         f'<div style="color:#818cf8;font-size:52px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(129,140,248,0.6)">{today_i_cnt:,}</div>'
-        f'<div style="color:#374151;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
+        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
         f'</div>'
         f'<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">'
-        f'<div style="color:#64748b;font-size:13px;margin-bottom:6px">今日備料人員</div>',
+        f'<div style="color:#8aabd4;font-size:13px;margin-bottom:6px">今日備料人員</div>',
         unsafe_allow_html=True
     )
     if not today_b_rows.empty:
@@ -437,13 +438,13 @@ with col_alert:
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
                 f'border-bottom:1px solid rgba(255,255,255,0.04)">'
-                f'<span style="color:#94a3b8;font-size:13px">{person}</span>'
+                f'<span style="color:#a8c4e0;font-size:13px">{person}</span>'
                 f'<span style="color:#22d3ee;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
     else:
-        st.markdown('<div style="color:#374151;font-size:13px">— 今日尚無備料完成記錄 —</div>',
+        st.markdown('<div style="color:#7b9ec8;font-size:13px">— 今日尚無備料完成記錄 —</div>',
                     unsafe_allow_html=True)
     st.markdown('</div></div>', unsafe_allow_html=True)
 
