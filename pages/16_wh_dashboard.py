@@ -32,33 +32,23 @@ TODAY = date.today()
 NOW   = datetime.now()
 
 # ══════════════════════════════════════════════════════
-# 側邊欄：NAS 設定 & 上傳
+# NAS 設定（固定路徑，自動載入）
 # ══════════════════════════════════════════════════════
-with st.sidebar:
-    st.markdown("---")
-    st.markdown("**📂 倉儲備料看板 資料來源**")
+_NAS_DIR    = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\資材部\每日調撥與送燒ic(NEW)\3月-6月進貨資料表\調件備料統計表"
+_FILE_PFX   = "調件備料統計"
 
-    nas_dir = st.text_input(
-        "NAS 資料夾路徑",
-        value=r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\資材部\每日調撥與送燒ic(NEW)\3月-6月進貨資料表\調件備料統計表",
-        key="wh_nas_dir"
-    )
-    file_prefix = st.text_input("檔名關鍵字", value="調件備料統計", key="wh_prefix")
-
-    uploaded = st.file_uploader(
-        "手動上傳（NAS 離線時）", type=["xlsx","xls"], key="wh_upload"
-    )
-
-# ══════════════════════════════════════════════════════
-# 找最新檔案
-# ══════════════════════════════════════════════════════
 def find_latest_wh():
     try:
-        pat = os.path.join(nas_dir, f"**/*{file_prefix}*.xlsx")
-        files = glob.glob(pat, recursive=True)
+        # 先找直接在資料夾內的檔案
+        files = [
+            os.path.join(_NAS_DIR, f)
+            for f in os.listdir(_NAS_DIR)
+            if not f.startswith('~$') and _FILE_PFX in f
+            and f.lower().endswith(('.xlsx','.xls'))
+        ]
         if not files:
-            pat2 = os.path.join(nas_dir, f"*{file_prefix}*.xlsx")
-            files = glob.glob(pat2)
+            # 遞迴搜尋子資料夾
+            files = glob.glob(os.path.join(_NAS_DIR, f"**/*{_FILE_PFX}*.xlsx"), recursive=True)
         if not files: return None, None
         files.sort(key=os.path.getmtime, reverse=True)
         f = files[0]
@@ -67,12 +57,8 @@ def find_latest_wh():
     except Exception:
         return None, None
 
-src_file, src_mtime = None, None
-if uploaded:
-    src_file  = uploaded
-    src_mtime = pd.Timestamp.now()
-else:
-    src_file, src_mtime = find_latest_wh()
+# 自動抓 NAS；NAS 離線才需要手動上傳
+src_file, src_mtime = find_latest_wh()
 
 # ══════════════════════════════════════════════════════
 # HEADER
@@ -105,15 +91,40 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-if src_file is None:
+# ── NAS 狀態列 + 離線時顯示上傳按鈕 ──────────────────
+if src_file:
+    fname = os.path.basename(src_file) if isinstance(src_file, str) else src_file.name
+    ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else ""
+    c_info, c_btn = st.columns([5, 1])
+    with c_info:
+        st.markdown(
+            f'<div style="background:rgba(6,78,59,0.2);border:1px solid rgba(34,211,238,0.3);'
+            f'border-radius:8px;padding:8px 16px;font-size:13px;color:#6ee7b7">'
+            f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
+            f'<b style="color:#22d3ee">{fname}</b>'
+            f'<span style="color:#475569;margin-left:8px">（{ts_str}）</span></div>',
+            unsafe_allow_html=True
+        )
+    with c_btn:
+        if st.button("🔄 重新偵測", key="wh_refresh", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+else:
     st.markdown(
-        f'<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.5);'
-        f'border-radius:10px;padding:24px;text-align:center;color:#fca5a5;font-size:18px">'
-        f'⚠️ &nbsp; 找不到資料檔案<br>'
-        f'<span style="font-size:14px;color:#64748b;margin-top:8px;display:block">'
-        f'請確認左側 NAS 路徑正確，或手動上傳「調件備料統計」Excel 檔</span></div>',
+        '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);'
+        'border-radius:8px;padding:10px 16px;margin-bottom:8px;color:#fca5a5;font-size:14px">'
+        '⚠️ &nbsp;NAS 離線，請手動上傳「調件備料統計」Excel 檔</div>',
         unsafe_allow_html=True
     )
+    uploaded = st.file_uploader(
+        "上傳 調件備料統計 Excel", type=["xlsx","xls"], key="wh_upload",
+        label_visibility="collapsed"
+    )
+    if uploaded:
+        src_file  = uploaded
+        src_mtime = pd.Timestamp.now()
+
+if src_file is None:
     st.stop()
 
 # ══════════════════════════════════════════════════════
