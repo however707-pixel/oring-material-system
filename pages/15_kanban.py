@@ -40,8 +40,8 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 隱藏 Streamlit 按鈕，完全消失不佔空間 */
-.wk-hidden-btn { display:none !important; }
+/* 隱藏 x 按鈕：把 .wk-hidden-btn 之後緊接的 div（Streamlit 按鈕容器）隱藏 */
+div:has(> .wk-hidden-btn) + div { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
