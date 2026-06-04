@@ -76,6 +76,53 @@ def find_latest_wh():
     except Exception:
         return None, None
 
+# ── 排程資料（工單出貨週報）──────────────────────────────
+_SCHED_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
+_SCHED_FILE = "簡版-工單缺料狀況.xlsx"
+
+def find_latest_sched():
+    try:
+        files = glob.glob(os.path.join(_SCHED_DIR, "**", _SCHED_FILE), recursive=True)
+        if not files: return None
+        files.sort(key=os.path.getmtime, reverse=True)
+        return files[0]
+    except Exception: return None
+
+@st.cache_data(ttl=20*60, show_spinner=False)
+def load_sched(path):
+    try:
+        df = pd.read_excel(path, sheet_name='LIST', header=0)
+        rows = []
+        for _, r in df.iterrows():
+            wo = str(r.iloc[1]).strip() if pd.notna(r.iloc[1]) else ''
+            qty = r.iloc[3]
+            rate = float(r.iloc[5]) if pd.notna(r.iloc[5]) else 0.0
+            if not wo or wo == 'nan': continue
+            raw_ship = r.iloc[12]
+            ship_date = None
+            if pd.notna(raw_ship):
+                s = str(raw_ship).strip()
+                if s not in ('','nan','None','TBD','試產','00:00:00'):
+                    try:
+                        ship_date = pd.to_datetime(s).date()
+                    except Exception:
+                        import re as _re
+                        found = _re.findall(r'(\d{1,2})/(\d{1,2})', s)
+                        if found:
+                            m2, d2 = int(found[0][0]), int(found[0][1])
+                            try: ship_date = date(TODAY.year, m2, d2)
+                            except Exception: pass
+            hint_qi = any(k in str(r.iloc[8]) for k in ('已發料','已齊料','已發放','齊料'))
+            if rate >= 1.0 or hint_qi: status = '已齊料'
+            elif rate == 0.0: status = '完全缺料'
+            else: status = f'缺料 {rate:.0%}'
+            rows.append({'出貨日': ship_date, '料況狀態': status, '預計產量': qty})
+        return pd.DataFrame(rows)
+    except Exception: return pd.DataFrame()
+
+_sched_path = find_latest_sched()
+sched_df = load_sched(_sched_path) if _sched_path else pd.DataFrame()
+
 # 自動抓 NAS；NAS 離線才需要手動上傳
 src_file, src_mtime = find_latest_wh()
 
@@ -361,57 +408,72 @@ col_person, col_alert = st.columns([3, 2])
 
 with col_person:
     st.markdown(
-        f'<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
-        f'👤 人員前日完成筆數（備料 · {YESTERDAY.strftime("%m/%d")}）</div>',
+        '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
+        '📦 預計出貨量（5週 pcs）</div>',
         unsafe_allow_html=True
     )
-    person_today = (
-        b_done_rows.groupby('備料人員')['需求筆數'].sum()
-        .sort_values(ascending=False)
-        .reset_index()
-    )
-    person_today.columns = ['人員', '完成筆數']
-    person_today = person_today[person_today['人員'].notna()]
-
-    if person_today.empty:
+    if sched_df.empty:
         st.markdown(
-            '<div style="background:#fdfaf5;border:1px solid #E6D8B8;'
-            'border-radius:8px;padding:20px;text-align:center;color:#6B7280">— 今日尚無完成記錄 —</div>',
+            '<div style="background:#fdfaf5;border:1px solid #E6D8B8;border-radius:8px;'
+            'padding:20px;text-align:center;color:#6B7280">— 無法讀取排程資料 —</div>',
             unsafe_allow_html=True
         )
     else:
-        max_val = person_today['完成筆數'].max()
-        max_val = person_today['完成筆數'].max()
-        fig_p = go.Figure(go.Bar(
-            x=person_today['完成筆數'],
-            y=person_today['人員'],
-            orientation='h',
-            marker=dict(
-                color=[f"rgba(46,157,112,{0.45 + 0.55*(v/max_val):.2f})" for v in person_today['完成筆數']],
-                line=dict(color="#2E9D70", width=1),
-            ),
-            text=person_today['完成筆數'].astype(int).astype(str) + " 筆",
-            textposition="outside",
-            textfont=dict(color="#1D2B3A", size=14,
-                          family="Microsoft JhengHei"),
-            cliponaxis=False,
+        # 計算5週數據（同工單看板邏輯）
+        _wd_s  = TODAY.weekday()
+        _wmon  = TODAY - timedelta(days=_wd_s)
+        _slabs, _srq, _slq = [], [], []
+        for _wi in range(5):
+            _ws = _wmon + timedelta(weeks=_wi)
+            _we = _ws + timedelta(days=4)
+            _wn = _ws.isocalendar()[1]
+            _sub = sched_df[
+                sched_df['出貨日'].notna() &
+                (sched_df['出貨日'] >= _ws) &
+                (sched_df['出貨日'] <= _we)
+            ]
+            _tq = int(_sub['預計產量'].dropna().sum())
+            _rq = int(_sub[_sub['料況狀態']=='已齊料']['預計產量'].dropna().sum())
+            _slabs.append(f"W{_wn}<br>{_ws.strftime('%m/%d')}~{_we.strftime('%m/%d')}")
+            _srq.append(_rq)
+            _slq.append(_tq - _rq)
+
+        fig_ship = go.Figure()
+        fig_ship.add_trace(go.Bar(
+            name="已齊料 pcs", x=_slabs, y=_srq,
+            marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
         ))
-        fig_p.update_layout(
+        fig_ship.add_trace(go.Bar(
+            name="缺料 pcs", x=_slabs, y=_slq,
+            marker=dict(color="rgba(178,58,72,0.70)", line=dict(color="#B23A48", width=1.5)),
+        ))
+        # 頂部標籤
+        _annots = []
+        for _i, (_rq2, _lq2) in enumerate(zip(_srq, _slq)):
+            _tot = _rq2 + _lq2
+            if _tot > 0:
+                _annots.append(dict(
+                    x=_slabs[_i], y=_tot,
+                    text=f"<b>共 {_tot:,}</b><br><span style='font-size:12px'>齊 {_rq2:,} ｜ 缺 {_lq2:,}</span>",
+                    xanchor="center", yanchor="bottom", showarrow=False,
+                    font=dict(size=13, color="#1D2B3A", family="Microsoft JhengHei"),
+                    bgcolor="rgba(253,250,245,0.9)",
+                    bordercolor="#E6D8B8", borderwidth=1, borderpad=4,
+                ))
+        fig_ship.update_layout(
+            barmode="stack",
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(
-                showgrid=True, gridcolor="#EDE5CF",
-                tickfont=dict(color="#6B7280", size=13),
-                zeroline=False, dtick=20,
-                range=[0, max_val * 1.25],
-                automargin=True,
-            ),
-            yaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=14,
+            annotations=_annots,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
+            xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
                        family="Microsoft JhengHei")),
-            margin=dict(l=10, r=20, t=10, b=10),
-            height=max(200, len(person_today) * 52),
-            font=dict(color="#6B7280", family="Microsoft JhengHei"),
+            yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
+                       tickfont=dict(color="#6B7280", size=12), zeroline=False),
+            margin=dict(l=10, r=10, t=60, b=10), height=320,
+            font=dict(family="Microsoft JhengHei"),
         )
-        st.plotly_chart(fig_p, use_container_width=True,
+        st.plotly_chart(fig_ship, use_container_width=True,
                         config=dict(staticPlot=True))
 
 with col_alert:
