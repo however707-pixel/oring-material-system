@@ -83,9 +83,9 @@ wday   = wday_names[TODAY.weekday()]
 data_ts = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
 
 st.markdown(
-    f'<div style="background:linear-gradient(90deg,#1a1508 0%,#2d2210 40%,#1a1508 100%);'
-    f'border:1px solid rgba(201,148,58,0.5);border-radius:14px;padding:16px 28px;margin-bottom:18px;'
-    f'box-shadow:0 4px 24px rgba(180,130,50,0.2);'
+    f'<div style="background:linear-gradient(90deg,#1D2B3A 0%,#253444 50%,#1D2B3A 100%);'
+    f'border:none;border-bottom:3px solid #C9A45C;border-radius:14px;padding:18px 28px;margin-bottom:18px;'
+    f'box-shadow:0 4px 20px rgba(29,43,58,0.18);'
     f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
     f'<div>'
     f'<div style="color:#C9A45C;font-size:13px;font-weight:600;letter-spacing:1.5px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
@@ -112,10 +112,10 @@ if src_file:
     c_info, c_btn = st.columns([5, 1])
     with c_info:
         st.markdown(
-            f'<div style="background:#f0fdf4;border:1px solid #86efac;'
+            f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
             f'border-radius:8px;padding:8px 16px;font-size:13px;color:#15803d">'
             f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
-            f'<b style="color:#16a34a">{fname}</b>'
+            f'<b style="color:#2E9D70">{fname}</b>'
             f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span></div>',
             unsafe_allow_html=True
         )
@@ -309,7 +309,7 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'<div style="display:flex;height:100%">'
         f'<div style="width:{pct}%;background:linear-gradient(90deg,#4ade80,#22c55e);'
         f'box-shadow:0 0 8px rgba(74,222,128,0.6)"></div>'
-        f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4)"></div>'
+        f'<div style="width:{100-pct}%;background:#fecdd3"></div>'
         f'</div></div>'
         f'<div style="color:#6B7280;font-size:13px;margin-top:6px;text-align:right">'
         f'目標總筆數：{total:,}</div></div>'
@@ -393,7 +393,7 @@ with col_person:
             orientation='h',
             marker=dict(
                 color=[f"rgba(34,211,238,{0.4 + 0.6*(v/max_val):.2f})" for v in person_today['完成筆數']],
-                line=dict(color="#22d3ee", width=1),
+                line=dict(color="#2E9D70", width=1),
             ),
             text=person_today['完成筆數'].astype(int).astype(str) + " 筆",
             textposition="outside",
@@ -432,7 +432,7 @@ with col_alert:
         f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
         f'<div style="display:flex;gap:0">'
         f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
-        f'<div style="color:#16a34a;font-size:52px;font-weight:900;line-height:1;'
+        f'<div style="color:#2E9D70;font-size:52px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(34,211,238,0.6)">{today_b_cnt:,}</div>'
         f'<div style="color:#6B7280;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
         f'<div style="flex:1;text-align:center;padding:10px 0">'
@@ -451,7 +451,7 @@ with col_alert:
                 f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
                 f'border-bottom:1px solid rgba(255,255,255,0.04)">'
                 f'<span style="color:#a8c4e0;font-size:13px">{person}</span>'
-                f'<span style="color:#16a34a;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
+                f'<span style="color:#2E9D70;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -494,15 +494,15 @@ for w in range(4, -1, -1):   # 從4週前到本週
 fig_week = go.Figure()
 fig_week.add_trace(go.Bar(
     name="備料", x=week_labels, y=week_b,
-    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
+    marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
     text=[f"{v:,}" for v in week_b], textposition="outside",
-    textfont=dict(color="#22d3ee", size=13),
+    textfont=dict(color="#2E9D70", size=13),
 ))
 fig_week.add_trace(go.Bar(
     name="入庫", x=week_labels, y=week_i,
-    marker=dict(color="rgba(129,140,248,0.7)", line=dict(color="#818cf8", width=1.5)),
+    marker=dict(color="rgba(178,58,72,0.75)", line=dict(color="#B23A48", width=1.5)),
     text=[f"{v:,}" for v in week_i], textposition="outside",
-    textfont=dict(color="#818cf8", size=13),
+    textfont=dict(color="#B23A48", size=13),
 ))
 fig_week.update_layout(
     barmode="group",
@@ -541,15 +541,15 @@ for m in range(1, 13):
 fig_month = go.Figure()
 fig_month.add_trace(go.Bar(
     name="備料", x=month_labels, y=month_b,
-    marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee", width=1.5)),
+    marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
     text=[f"{v:,}" if v else "" for v in month_b], textposition="outside",
-    textfont=dict(color="#22d3ee", size=12),
+    textfont=dict(color="#2E9D70", size=12),
 ))
 fig_month.add_trace(go.Bar(
     name="入庫", x=month_labels, y=month_i,
-    marker=dict(color="rgba(129,140,248,0.7)", line=dict(color="#818cf8", width=1.5)),
+    marker=dict(color="rgba(178,58,72,0.75)", line=dict(color="#B23A48", width=1.5)),
     text=[f"{v:,}" if v else "" for v in month_i], textposition="outside",
-    textfont=dict(color="#818cf8", size=12),
+    textfont=dict(color="#B23A48", size=12),
 ))
 fig_month.update_layout(
     barmode="group",
