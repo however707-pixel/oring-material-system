@@ -17,6 +17,9 @@ st.markdown("""
 [data-testid="stSidebar"] { background:#050e22 !important; }
 .block-container { padding:0.6rem 1.4rem 2rem !important; max-width:100% !important; }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
+/* 隱藏側邊欄與展開按鈕，全畫面看板 */
+[data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none !important; }
+.block-container { padding-left:1.4rem !important; }
 ::-webkit-scrollbar { width:5px; }
 ::-webkit-scrollbar-track { background:#020918; }
 ::-webkit-scrollbar-thumb { background:#1e3a8a; border-radius:3px; }
@@ -25,8 +28,6 @@ html, body, [class*="css"] { font-size:16px !important; }
 div[data-testid="stSidebarContent"] label { color:#94a3b8 !important; }
 </style>
 """, unsafe_allow_html=True)
-
-render_sidebar()
 
 TODAY = date.today()
 NOW   = datetime.now()
