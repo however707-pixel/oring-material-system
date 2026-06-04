@@ -421,8 +421,18 @@ def _big_card(wk):
         f'{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
         # 出貨筆數：onclick 直接觸發隱藏的 Streamlit 按鈕
-        f'<div onclick="var c=this;while(c&&c.getAttribute(\'data-testid\')!==\'column\')c=c.parentElement;if(c){{var b=c.querySelector(\'button\');if(b)b.click();}}" '
-        f'style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer">'
+        # img onerror 隱藏按鈕 + onclick 觸發按鈕（用 id 標記欄位位置）
+        f'<img src id="wk-img-{wk["idx"]}" onerror="'
+        f'(function(){{var c=document.getElementById(\'wk-img-{wk["idx"]}\');'
+        f'for(var i=0;i<15;i++){{c=c.parentElement;if(!c)break;'
+        f'if(c.getAttribute&&c.getAttribute(\'data-testid\')==\'column\'){{'
+        f'var b=c.querySelector(\'[data-testid=stButton]\');'
+        f'if(b){{b.style.cssText=\'position:absolute;height:0;width:0;overflow:hidden;visibility:hidden;padding:0;margin:0;\';}}break;}}}}}})()"'
+        f' style="display:none">'
+        f'<div onclick="'
+        f'(function(el){{for(var i=0;i<15;i++){{el=el.parentElement;if(!el)break;'
+        f'if(el.getAttribute&&el.getAttribute(\'data-testid\')==\'column\'){{var b=el.querySelector(\'button\');if(b)b.click();break;}}}}}})(this)"'
+        f' style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer">'
         f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
         f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div></div>'
         + "".join([
