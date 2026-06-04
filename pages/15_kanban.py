@@ -40,31 +40,17 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 週卡片欄位：用:has()讓包含.wk-card的欄位看起來像卡片 */
-[data-testid="column"]:has(.wk-card) {
-    background:#ffffff !important;
-    border-radius:14px !important;
-    border:1px solid #EEF2F7 !important;
-    padding:20px 22px !important;
-    box-shadow:0 2px 16px rgba(18,58,92,0.09) !important;
-}
-[data-testid="column"]:has(.wk-ready)  { border-top:4px solid #16A085 !important; }
-[data-testid="column"]:has(.wk-warn)   { border-top:4px solid #d97706 !important; }
-[data-testid="column"]:has(.wk-danger) { border-top:4px solid #E74C5B !important; }
-[data-testid="column"]:has(.wk-none)   { border-top:4px solid #94a3b8 !important; }
-/* 出貨筆數大數字按鈕：在卡片欄內，看起來就是可點擊的大數字 */
-[data-testid="column"]:has(.wk-card) [data-testid="stButton"] > button {
-    background:transparent !important; box-shadow:none !important;
-    border:none !important; margin:0 !important;
-    color:#123A5C !important; font-size:46px !important;
-    font-weight:900 !important; line-height:1.1 !important;
-    padding:0 !important; width:100% !important;
-    cursor:pointer !important; text-align:center !important;
-    border-radius:4px !important;
-}
-[data-testid="column"]:has(.wk-card) [data-testid="stButton"] > button:hover {
-    background:rgba(42,157,244,0.07) !important;
-    color:#2A9DF4 !important;
+/* 週卡片欄位需要 relative 定位，讓按鈕可以 absolute 覆蓋 */
+[data-testid="column"] { position:relative !important; }
+/* 透明按鈕：opacity:0 完全看不見，精確覆蓋在「2」的位置 */
+[data-testid="stMarkdownContainer"]:has(.wk-btn-marker) ~ [data-testid="stButton"] > button {
+    opacity:0 !important;
+    position:absolute !important;
+    top:116px !important; left:0 !important;
+    width:20% !important; height:72px !important;
+    cursor:pointer !important; z-index:100 !important;
+    border:none !important; background:transparent !important;
+    box-shadow:none !important; padding:0 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -417,64 +403,56 @@ if "detail_week" not in st.session_state:
 
 card_l, card_r, card_r2 = st.columns(3)
 
+def _big_card(wk):
+    tq=wk["tq"]; rq=wk["rq"]; lq=wk["lq"]
+    n=wk["n"]; pct=int(rq/tq*100) if tq else 0
+    cap=wk["cap"]; wdays=wk["wdays_left"]
+    need_days=round(tq/DAILY_CAP,1) if tq else 0
+    if tq==0:      ac,bc,icon,msg="#94a3b8","#e2e8f0","—","無出貨工單"; sb,sc="#f8fafc","#64748b"
+    elif lq==0:    ac,bc,icon,msg="#16A085","#b2dfdb","✓","全數已齊料，可如期出貨"; sb,sc="#f0fdf9","#16A085"
+    elif cap>=lq:  ac,bc,icon,msg="#d97706","#fde68a","!",f"缺料 {lq:,} pcs，產能尚足"; sb,sc="#fffbeb","#b45309"
+    else:          ac,bc,icon,msg="#E74C5B","#fecdd3","!",f"缺料 {lq:,} pcs，產能不足"; sb,sc="#fff1f2","#be123c"
+    return (
+        f'<div style="background:#ffffff;border:1px solid {bc};border-top:4px solid {ac};'
+        f'border-radius:14px;padding:20px 22px;box-shadow:0 2px 16px rgba(18,58,92,0.09)">'
+        f'<div style="color:#607080;font-size:13px;letter-spacing:1px;margin-bottom:10px">'
+        f'{wk["label"]} &nbsp; {wk["start"].strftime("%m/%d")} ~ {wk["end"].strftime("%m/%d")}</div>'
+        f'<div style="display:inline-block;background:{sb};color:{sc};border:1px solid {bc};'
+        f'border-radius:6px;padding:4px 14px;font-size:15px;font-weight:700;margin-bottom:16px">'
+        f'{icon} {msg}</div>'
+        f'<div style="display:flex;gap:0;margin-bottom:16px">'
+        + "".join([
+            f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
+            f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
+            f'<div style="font-size:13px;color:#607080;margin-top:4px">{lb}</div></div>'
+            for v,vc,lb in [
+                (str(n),         "#123A5C", "出貨筆數"),
+                (f"{tq:,}",     "#123A5C", "總量 pcs"),
+                (f"{rq:,}",     "#16A085", "已齊料 pcs"),
+                (f"{lq:,}",     "#E74C5B", "缺料 pcs"),
+                (str(need_days), "#2A9DF4", f"需天數({DAILY_CAP}/天)"),
+            ]
+        ]) +
+        f'</div>'
+        f'<div style="font-size:14px;color:#607080;margin-bottom:6px">'
+        f'齊料進度 <b style="color:{ac}">{pct}%</b>'
+        f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
+        f'<div style="background:#EEF2F7;border-radius:6px;height:8px;overflow:hidden">'
+        f'<div style="width:{pct}%;height:100%;background:linear-gradient(90deg,#16A085,#1abc9c)"></div>'
+        f'</div></div>'
+    )
+
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     _wk = weeks[_wi]
-    tq=_wk["tq"]; rq=_wk["rq"]; lq=_wk["lq"]
-    n=_wk["n"]; pct=int(rq/tq*100) if tq else 0
-    cap=_wk["cap"]; wdays=_wk["wdays_left"]
-    need_days=round(tq/DAILY_CAP,1) if tq else 0
-    if tq==0:      ac,icon,msg,cls="#94a3b8","—","無出貨工單","wk-none"
-    elif lq==0:    ac,icon,msg,cls="#16A085","✓","全數已齊料，可如期出貨","wk-ready"
-    elif cap>=lq:  ac,icon,msg,cls="#d97706","!",f"缺料 {lq:,} pcs，產能尚足","wk-warn"
-    else:          ac,icon,msg,cls="#E74C5B","!",f"缺料 {lq:,} pcs，產能不足","wk-danger"
-    status_c={"wk-ready":"#16A085","wk-warn":"#b45309","wk-danger":"#be123c","wk-none":"#64748b"}[cls]
-    status_bg={"wk-ready":"#f0fdf9","wk-warn":"#fffbeb","wk-danger":"#fff1f2","wk-none":"#f8fafc"}[cls]
-
     with _col:
-        # 標記：讓 CSS :has() 識別此欄位，同時決定上邊框顏色
-        st.markdown(f'<span class="wk-card {cls}" style="display:none"></span>',
-                    unsafe_allow_html=True)
-        # 週標籤 + 狀態
-        st.markdown(
-            f'<div style="color:#607080;font-size:13px;margin-bottom:8px">'
-            f'{_wk["label"]} &nbsp; {_wk["start"].strftime("%m/%d")} ~ {_wk["end"].strftime("%m/%d")}</div>'
-            f'<div style="display:inline-block;background:{status_bg};color:{status_c};'
-            f'border:1px solid {ac}33;border-radius:6px;padding:4px 14px;'
-            f'font-size:15px;font-weight:700;margin-bottom:14px">{icon} {msg}</div>',
-            unsafe_allow_html=True
-        )
-        # 數字行：按鈕（出貨筆數）+ 其他4個數字
-        _nc, _c2, _c3, _c4, _c5 = st.columns(5)
-        with _nc:
-            _is_sel = (st.session_state["detail_week"] == _wi)
-            if st.button(str(n), key=f"bd_{_wi}", help="點擊查看/收起工單明細"):
-                st.session_state["detail_week"] = None if _is_sel else _wi
-                st.rerun()
-            st.markdown('<div style="text-align:center;font-size:13px;color:#607080;margin-top:2px">出貨筆數</div>',
-                        unsafe_allow_html=True)
-        for _c, (v,vc,lb) in zip([_c2,_c3,_c4,_c5],[
-            (f"{tq:,}", "#123A5C","總量 pcs"),
-            (f"{rq:,}", "#16A085","已齊料 pcs"),
-            (f"{lq:,}", "#E74C5B","缺料 pcs"),
-            (str(need_days),"#2A9DF4",f"需天數({DAILY_CAP}/天)"),
-        ]):
-            with _c:
-                st.markdown(
-                    f'<div style="text-align:center;border-left:1px solid #EEF2F7;padding:4px 0">'
-                    f'<div style="font-size:42px;font-weight:900;color:{vc};line-height:1">{v}</div>'
-                    f'<div style="font-size:12px;color:#607080;margin-top:4px">{lb}</div></div>',
-                    unsafe_allow_html=True
-                )
-        # 進度條 + 頁尾
-        st.markdown(
-            f'<div style="font-size:13px;color:#607080;margin:10px 0 5px">'
-            f'齊料進度 <b style="color:{ac}">{pct}%</b>'
-            f' &nbsp;｜&nbsp; 剩餘產能 <b style="color:#2A9DF4">{cap:,} pcs</b>（{wdays} 工作天）</div>'
-            f'<div style="background:#EEF2F7;border-radius:6px;height:8px;overflow:hidden">'
-            f'<div style="width:{pct}%;height:100%;background:linear-gradient(90deg,#16A085,#1abc9c)"></div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+        # 原始卡片（外觀完全不變）
+        st.markdown(_big_card(_wk), unsafe_allow_html=True)
+        # 標記 + 透明按鈕（opacity:0，絕對定位覆蓋在「出貨筆數」數字上）
+        _is_sel = (st.session_state["detail_week"] == _wi)
+        st.markdown('<span class="wk-btn-marker"></span>', unsafe_allow_html=True)
+        if st.button(" ", key=f"bd_{_wi}", help="點擊查看/收起工單明細"):
+            st.session_state["detail_week"] = None if _is_sel else _wi
+            st.rerun()
 
 # ── 展開明細表 ────────────────────────────────────────
 _dw = st.session_state.get("detail_week")
