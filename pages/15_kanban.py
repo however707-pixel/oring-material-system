@@ -391,12 +391,17 @@ if sel is not None:
     if all_rows.empty:
         st.info("該週無出貨工單")
     else:
-        disp = all_rows[["工單","成品料號","預計產量","出貨日_顯示","料況狀態","預計齊料日","重點提示"]].copy()
-        disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","到料日","重點提示"]
-        disp["到料日"] = disp["到料日"].apply(
-            lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v,'strftime')
-                      else ("已齊料" if str(v)=="nan" else str(v) if pd.notna(v) else "—")
-        )
+        _base_cols = ["工單","成品料號","預計產量","出貨日_顯示","料況狀態","重點提示"]
+        if "預計齊料日" in all_rows.columns:
+            disp = all_rows[_base_cols[:5] + ["預計齊料日"] + [_base_cols[5]]].copy()
+            disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","到料日","重點提示"]
+            disp["到料日"] = disp["到料日"].apply(
+                lambda v: v.strftime('%m/%d') if pd.notna(v) and hasattr(v,'strftime') else "—"
+            )
+        else:
+            disp = all_rows[_base_cols].copy()
+            disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","重點提示"]
+            disp.insert(5, "到料日", "—")
         def _sr(r):
             if r["料況狀態"]=="已齊料":    return ["background:#f0fdf9;color:#15803d"]*len(r)
             elif r["料況狀態"]=="完全缺料": return ["background:#fff1f2;color:#be123c"]*len(r)
