@@ -480,11 +480,11 @@ st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 # SECTION 3：4週出貨量趨勢圖
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;'
+    '<div style="color:#38bdf8;font-size:20px;font-weight:700;letter-spacing:2px;'
     'margin-bottom:10px">📊 4週出貨量趨勢（pcs）</div>',
     unsafe_allow_html=True
 )
-labels  = [f'{w["label"]}<br>{w["start"].strftime("%m/%d")}~{w["end"].strftime("%m/%d")}' for w in weeks]
+labels  = [f'{w["label"]}  {w["start"].strftime("%m/%d")}~{w["end"].strftime("%m/%d")}' for w in weeks]
 rq_vals = [w["rq"] for w in weeks]
 lq_vals = [w["lq"] for w in weeks]
 
@@ -493,24 +493,24 @@ fig.add_trace(go.Bar(
     name="已齊料 pcs", x=labels, y=rq_vals,
     marker=dict(color="rgba(34,211,238,0.7)", line=dict(color="#22d3ee",width=1.5)),
     text=[f"{v:,}" for v in rq_vals], textposition="inside",
-    textfont=dict(color="white", size=13, family="Arial Black"),
+    textfont=dict(color="white", size=20, family="Microsoft JhengHei"),
 ))
 fig.add_trace(go.Bar(
     name="缺料 pcs", x=labels, y=lq_vals,
     marker=dict(color="rgba(248,113,113,0.6)", line=dict(color="#f87171",width=1.5)),
     text=[f"{v:,}" if v else "" for v in lq_vals], textposition="inside",
-    textfont=dict(color="white", size=13, family="Arial Black"),
+    textfont=dict(color="white", size=20, family="Microsoft JhengHei"),
 ))
 fig.update_layout(
     barmode="stack",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#94a3b8", family="Arial", size=13),
+    font=dict(color="#a8c4e0", family="Microsoft JhengHei", size=18),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#cbd5e1", size=13), bgcolor="rgba(0,0,0,0)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=13)),
+                font=dict(color="#dde6f5", size=18), bgcolor="rgba(0,0,0,0)"),
+    xaxis=dict(showgrid=False, tickfont=dict(color="#a8c4e0", size=17)),
     yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-               tickfont=dict(color="#64748b", size=12), zeroline=False),
-    margin=dict(l=20, r=20, t=20, b=20), height=280,
+               tickfont=dict(color="#a8c4e0", size=16), zeroline=False),
+    margin=dict(l=20, r=20, t=40, b=20), height=320,
 )
 st.plotly_chart(fig, use_container_width=True)
 
