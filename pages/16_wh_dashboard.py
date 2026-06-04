@@ -187,73 +187,95 @@ with st.spinner("載入資料中…"):
     diao, inbound, eff_biao, eff_in, err_df = load_wh(file_key)
 
 # ══════════════════════════════════════════════════════
-# 計算今日 KPI
+# 計算 KPI（顯示前一日數值）
 # ══════════════════════════════════════════════════════
-today_ts = pd.Timestamp(TODAY)
+YESTERDAY = TODAY - timedelta(days=1)
 
-DONE_STATUS  = {'已完成', '上架', '上架W'}
-PEND_STATUS  = {'待備料', '備料中'}
-
-# 備料
-diao_done = diao[
+# ── 備料（調撥單）──────────────────────────────────────
+# 已完成：K欄（完成日）= 昨日 → 加總 G欄（需求筆數）
+b_done_rows = diao[
     diao['完成日'].notna() &
-    (diao['完成日'].dt.date == TODAY) &
-    (diao['狀態'].isin(DONE_STATUS))
+    (diao['完成日'].dt.date == YESTERDAY)
 ]
-diao_pend = diao[diao['狀態'].isin(PEND_STATUS)]
+b_done = int(b_done_rows['需求筆數'].sum())
 
-b_done = int(diao_done['完成筆數'].sum())
-b_pend = int(diao_pend['需求筆數'].sum())
+# 待完成：F欄（需求日）有值 且 <= 昨日 且 K欄（完成日）空白 → 加總 G欄
+b_pend_rows = diao[
+    diao['需求日'].notna() &
+    (diao['需求日'].dt.date <= YESTERDAY) &
+    diao['完成日'].isna()
+]
+b_pend = int(b_pend_rows['需求筆數'].sum())
+
 b_total = b_done + b_pend
 b_rate  = b_done / b_total if b_total else 0
 
-# 入庫
-ib_done = inbound[
+# ── 入庫（入庫單據）────────────────────────────────────
+# 已完成：I欄（完成日）= 昨日 → 加總 G欄（筆數）
+ib_done_rows = inbound[
     inbound['完成日'].notna() &
-    (inbound['完成日'].dt.date == TODAY)
+    (inbound['完成日'].dt.date == YESTERDAY)
 ]
-ib_pend = inbound[
-    inbound['完成日'].isna() &
-    (inbound['驗畢日期'].notna())
-]
-i_done  = int(ib_done['筆數'].sum()) if not ib_done.empty else len(ib_done)
-i_pend  = len(ib_pend)
+i_done = int(ib_done_rows['筆數'].sum())
+
+# 待完成：I欄（完成日）空白 → 加總 G欄
+ib_pend_rows = inbound[inbound['完成日'].isna()]
+i_pend = int(ib_pend_rows['筆數'].sum())
+
 i_total = i_done + i_pend
 i_rate  = i_done / i_total if i_total else 0
 
-# 合計
-t_done  = b_done + i_done
-t_pend  = b_pend + i_pend
-t_total = t_done + t_pend
-t_rate  = t_done / t_total if t_total else 0
+# ── 合計：前日最高績效人員 & 佔比 ─────────────────────
+# 備料：昨日各人員完成筆數
+b_by_person = (
+    b_done_rows.groupby('備料人員')['需求筆數'].sum()
+    .rename('備料').reset_index().rename(columns={'備料人員':'人員'})
+)
+# 入庫：昨日各人員完成筆數
+i_by_person = (
+    ib_done_rows.groupby('入庫人員')['筆數'].sum()
+    .rename('入庫').reset_index().rename(columns={'入庫人員':'人員'})
+) if '入庫人員' in inbound.columns and not ib_done_rows.empty else pd.DataFrame(columns=['人員','入庫'])
+
+person_df = (
+    b_by_person.merge(i_by_person, on='人員', how='outer')
+    .fillna(0)
+)
+person_df['合計'] = person_df.get('備料', 0) + person_df.get('入庫', 0)
+grand_total = int(person_df['合計'].sum())
+
+if not person_df.empty and grand_total > 0:
+    top_row   = person_df.loc[person_df['合計'].idxmax()]
+    top_name  = str(top_row['人員'])
+    top_total = int(top_row['合計'])
+    top_b     = int(top_row.get('備料', 0))
+    top_i     = int(top_row.get('入庫', 0))
+    top_pct   = round(top_total / grand_total * 100, 1)
+else:
+    top_name = "—"; top_total = 0; top_b = 0; top_i = 0; top_pct = 0.0
 
 # ══════════════════════════════════════════════════════
 # SECTION 1：早會 KPI 三卡片
 # ══════════════════════════════════════════════════════
 st.markdown(
     f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
-    f'📊 今日進度概況（{TODAY.strftime("%m/%d")}）</div>',
+    f'📊 前日進度概況（{YESTERDAY.strftime("%m/%d")}）</div>',
     unsafe_allow_html=True
 )
 
 def _kpi_card(title, done, pend, rate, accent, glow, icon):
     total = done + pend
     pct   = int(rate * 100)
-    bar_d = pct
-    bar_p = 100 - pct
-
     if rate >= 0.8:   status = "🟢 進度良好"
     elif rate >= 0.5: status = "🟡 持續推進"
     else:             status = "🔴 進度落後"
-
     return (
         f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
         f'border:1px solid {accent};border-radius:16px;padding:22px 24px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
         f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px">{icon} {title}</div>'
-        f'<div style="color:#64748b;font-size:13px">{status}</div>'
-        f'</div>'
+        f'<div style="color:#64748b;font-size:13px">{status}</div></div>'
         f'<div style="display:flex;gap:0;margin-bottom:18px">'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
         f'<div style="color:#4ade80;font-size:56px;font-weight:900;line-height:1;'
@@ -270,13 +292,48 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'</div>'
         f'<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden">'
         f'<div style="display:flex;height:100%">'
-        f'<div style="width:{bar_d}%;background:linear-gradient(90deg,#4ade80,#22c55e);'
+        f'<div style="width:{pct}%;background:linear-gradient(90deg,#4ade80,#22c55e);'
         f'box-shadow:0 0 8px rgba(74,222,128,0.6)"></div>'
-        f'<div style="width:{bar_p}%;background:rgba(248,113,113,0.4)"></div>'
+        f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4)"></div>'
         f'</div></div>'
         f'<div style="color:#374151;font-size:13px;margin-top:6px;text-align:right">'
-        f'目標總筆數：{total:,}</div>'
+        f'目標總筆數：{total:,}</div></div>'
+    )
+
+# 第三卡片：前日最高績效人員
+def _top_person_card():
+    ac="#fbbf24"; glow="rgba(251,191,36,0.25)"
+    return (
+        f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
+        f'border:1px solid {ac};border-radius:16px;padding:22px 24px;'
+        f'box-shadow:0 0 28px {glow};height:100%">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+        f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px">🏆 前日最高績效</div>'
+        f'<div style="color:#64748b;font-size:13px">備料＋入庫合計</div></div>'
+        # 人員名稱大字
+        f'<div style="text-align:center;margin-bottom:16px">'
+        f'<div style="color:{ac};font-size:42px;font-weight:900;'
+        f'text-shadow:0 0 24px {glow}">{top_name}</div>'
+        f'<div style="color:#374151;font-size:13px;margin-top:4px">前日最高完成人員</div></div>'
+        # 三個數字
+        f'<div style="display:flex;gap:0;margin-bottom:14px">'
+        f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
+        f'<div style="color:#22d3ee;font-size:36px;font-weight:900">{top_b:,}</div>'
+        f'<div style="color:#374151;font-size:13px;margin-top:4px">備料筆數</div></div>'
+        f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
+        f'<div style="color:#818cf8;font-size:36px;font-weight:900">{top_i:,}</div>'
+        f'<div style="color:#374151;font-size:13px;margin-top:4px">入庫筆數</div></div>'
+        f'<div style="flex:1;text-align:center">'
+        f'<div style="color:{ac};font-size:36px;font-weight:900">{top_pct}%</div>'
+        f'<div style="color:#374151;font-size:13px;margin-top:4px">佔全隊總量</div></div>'
         f'</div>'
+        # 進度條
+        f'<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden">'
+        f'<div style="width:{min(top_pct,100):.0f}%;height:100%;'
+        f'background:linear-gradient(90deg,#fbbf24,#f59e0b);'
+        f'box-shadow:0 0 8px rgba(251,191,36,0.6)"></div></div>'
+        f'<div style="color:#374151;font-size:13px;margin-top:6px;text-align:right">'
+        f'全隊前日總完成：{grand_total:,} 筆</div></div>'
     )
 
 c1, c2, c3 = st.columns(3)
@@ -284,8 +341,7 @@ c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate,
     "#22d3ee","rgba(34,211,238,0.25)","📦"), unsafe_allow_html=True)
 c2.markdown(_kpi_card("入庫", i_done, i_pend, i_rate,
     "#818cf8","rgba(129,140,248,0.25)","🏭"), unsafe_allow_html=True)
-c3.markdown(_kpi_card("合計", t_done, t_pend, t_rate,
-    "#fbbf24","rgba(251,191,36,0.25)","📋"), unsafe_allow_html=True)
+c3.markdown(_top_person_card(), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
 
@@ -297,12 +353,11 @@ col_person, col_alert = st.columns([3, 2])
 with col_person:
     st.markdown(
         f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
-        f'👤 人員今日完成筆數（備料）</div>',
+        f'👤 人員前日完成筆數（備料 · {YESTERDAY.strftime("%m/%d")}）</div>',
         unsafe_allow_html=True
     )
     person_today = (
-        diao[diao['完成日'].notna() & (diao['完成日'].dt.date == TODAY)]
-        .groupby('備料人員')['完成筆數'].sum()
+        b_done_rows.groupby('備料人員')['需求筆數'].sum()
         .sort_values(ascending=False)
         .reset_index()
     )
