@@ -192,10 +192,11 @@ with st.spinner("載入資料中…"):
 YESTERDAY = TODAY - timedelta(days=1)
 
 # ── 備料（調撥單）──────────────────────────────────────
-# 已完成：K欄（完成日）= 昨日 → 加總 G欄（需求筆數）
+# 已完成：K欄（完成日）= 昨日 且 M欄（狀態）= 已完成 → 加總 G欄（需求筆數）
 b_done_rows = diao[
     diao['完成日'].notna() &
-    (diao['完成日'].dt.date == YESTERDAY)
+    (diao['完成日'].dt.date == YESTERDAY) &
+    (diao['狀態'] == '已完成')
 ]
 b_done = int(b_done_rows['需求筆數'].sum())
 
