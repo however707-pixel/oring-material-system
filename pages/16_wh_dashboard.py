@@ -28,7 +28,8 @@ html, body, [class*="css"] {
     font-size:18px !important;
     font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
 }
-p, div, span, label { color:#1D2B3A !important; }
+p { color:#1D2B3A !important; }
+label { color:#6B7280 !important; }
 div[data-testid="stButton"] > button {
     background:#C9A45C !important;
     border:none !important; color:#ffffff !important;

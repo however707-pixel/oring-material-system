@@ -27,7 +27,9 @@ html, body, [class*="css"] {
     font-size:18px !important;
     font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
 }
-p, div, span, label { color:#123A5C !important; }
+/* 只限制段落與標籤，不蓋掉 div 的 inline 顏色 */
+p { color:#123A5C !important; }
+label { color:#607080 !important; }
 div[data-testid="stButton"] > button {
     width:100%; background:#2A9DF4 !important;
     border:none !important; color:#ffffff !important;
