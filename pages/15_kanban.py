@@ -251,7 +251,7 @@ for i in range(5):
     n_ready = int((sub_orig.drop_duplicates("工單")["料況狀態"]=="已齊料").sum())
     n_short = n - n_ready
     wdays_left = count_workdays(TODAY-timedelta(days=1), we)
-    label = ("本週" if i==0 else "下週" if i==1 else f"+{i}週")
+    label = f"W{ws.isocalendar()[1]}"
     short_rows = sub_orig[sub_orig["料況狀態"]!="已齊料"].drop_duplicates("工單")
     weeks.append(dict(
         label=label, start=ws, end=we,
