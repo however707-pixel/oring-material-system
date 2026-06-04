@@ -13,29 +13,38 @@ st.set_page_config(page_title="工單進度看板", page_icon="📺",
 
 st.markdown("""
 <style>
-/* ── 白色底，清爽亮色主題 ── */
-.stApp { background:#e8eef6 !important; }
+/* ══ 工單看板：冰藍商務風 ══ */
+.stApp {
+    background: linear-gradient(150deg, #cfe0f5 0%, #ddeeff 50%, #e8f4ff 100%) !important;
+}
 [data-testid="stHeader"]  { background:transparent !important; }
-[data-testid="stSidebar"] { background:#ffffff !important; }
+[data-testid="stSidebar"] { background:#f0f7ff !important; }
 .block-container { padding:0.6rem 1.2rem 2rem !important; max-width:100% !important; }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
-::-webkit-scrollbar { width:5px; }
-::-webkit-scrollbar-track { background:#e2e8f0; }
-::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:3px; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:#dde8f5; }
+::-webkit-scrollbar-thumb { background:#5b9bd5; border-radius:4px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
-/* 全域字體 */
-html, body, [class*="css"] { font-size:18px !important; font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important; }
-p, div, span, label { color:#1e293b !important; }
+html, body, [class*="css"] {
+    font-size:18px !important;
+    font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
+}
+p, div, span, label { color:#1a2e4a !important; }
+/* 卡片通用 */
+div[data-testid="stHorizontalBlock"] { gap:16px; }
 /* 按鈕 */
 div[data-testid="stButton"] > button {
-    width:100%; background:#2563eb !important;
+    width:100%;
+    background:linear-gradient(135deg,#2563eb,#3b82f6) !important;
     border:none !important; color:#ffffff !important;
     font-size:16px !important; font-weight:700 !important;
-    border-radius:8px !important; padding:6px 10px !important;
+    border-radius:20px !important; padding:8px 14px !important;
     margin-top:8px !important;
+    box-shadow:0 4px 12px rgba(37,99,235,0.25) !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background:#1d4ed8 !important;
+    background:linear-gradient(135deg,#1d4ed8,#2563eb) !important;
+    box-shadow:0 6px 16px rgba(37,99,235,0.35) !important;
 }
 </style>
 """, unsafe_allow_html=True)

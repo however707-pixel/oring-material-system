@@ -12,21 +12,35 @@ st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
 
 st.markdown("""
 <style>
-/* ── 底色：中深藍，不再是純黑 ── */
-.stApp { background:linear-gradient(160deg,#0e1f3f 0%,#152848 55%,#112038 100%) !important; }
+/* ══ 倉儲看板：暖金商務風 ══ */
+.stApp {
+    background: linear-gradient(150deg, #f0e4cc 0%, #f8f0e0 50%, #fdf9f0 100%) !important;
+}
 [data-testid="stHeader"]  { background:transparent !important; }
-[data-testid="stSidebar"] { background:#0e1a33 !important; }
+[data-testid="stSidebar"] { background:#fdf8ef !important; }
 .block-container { padding:0.6rem 1.4rem 2rem !important; max-width:100% !important; }
 #MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
 [data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none !important; }
 .block-container { padding-left:1.4rem !important; }
-::-webkit-scrollbar { width:5px; }
-::-webkit-scrollbar-track { background:#0e1f3f; }
-::-webkit-scrollbar-thumb { background:#2563eb; border-radius:3px; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:#ede3cc; }
+::-webkit-scrollbar-thumb { background:#c9943a; border-radius:4px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
-/* ── 全域字體放大，基準18px ── */
-html, body, [class*="css"] { font-size:18px !important; font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important; }
-p, div, span, label { color:#dde6f5; }
+html, body, [class*="css"] {
+    font-size:18px !important;
+    font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
+}
+p, div, span, label { color:#2c1e0f !important; }
+div[data-testid="stButton"] > button {
+    background:linear-gradient(135deg,#b8892e,#d4aa55) !important;
+    border:none !important; color:#ffffff !important;
+    font-size:16px !important; font-weight:700 !important;
+    border-radius:20px !important; padding:8px 14px !important;
+    box-shadow:0 4px 12px rgba(180,130,50,0.3) !important;
+}
+div[data-testid="stButton"] > button:hover {
+    background:linear-gradient(135deg,#a07828,#b8892e) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -70,25 +84,24 @@ wday   = wday_names[TODAY.weekday()]
 data_ts = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
 
 st.markdown(
-    f'<div style="background:linear-gradient(90deg,#0d1f4e 0%,#0f2d6b 40%,#0d1f4e 100%);'
-    f'border:1px solid rgba(56,189,248,0.35);border-radius:14px;padding:16px 28px;margin-bottom:18px;'
-    f'box-shadow:0 0 30px rgba(14,165,233,0.15);'
+    f'<div style="background:linear-gradient(90deg,#1a1508 0%,#2d2210 40%,#1a1508 100%);'
+    f'border:1px solid rgba(201,148,58,0.5);border-radius:14px;padding:16px 28px;margin-bottom:18px;'
+    f'box-shadow:0 4px 24px rgba(180,130,50,0.2);'
     f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
     f'<div>'
-    f'<div style="color:#38bdf8;font-size:13px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
-    f'<div style="color:#a8c4e0;font-size:13px;margin-top:4px">'
+    f'<div style="color:#d4aa55;font-size:13px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
+    f'<div style="color:#c9943a;font-size:13px;margin-top:4px">'
     f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 資料：{data_ts}</div>'
     f'</div>'
     f'<div style="text-align:center">'
-    f'<div style="color:#f0f9ff;font-size:38px;font-weight:900;line-height:1.15;'
-    f'text-shadow:0 0 30px rgba(56,189,248,0.7);letter-spacing:2px">倉儲備料即時看板</div>'
-    f'<div style="color:#38bdf8;font-size:15px;font-weight:600;letter-spacing:4px;margin-top:4px;'
-    f'text-shadow:0 0 12px rgba(56,189,248,0.5)">WAREHOUSE MATERIAL PREP DASHBOARD</div>'
+    f'<div style="color:#f5e6c0;font-size:38px;font-weight:900;line-height:1.15;letter-spacing:2px">'
+    f'倉儲備料即時看板</div>'
+    f'<div style="color:#c9943a;font-size:14px;font-weight:500;letter-spacing:4px;margin-top:5px">'
+    f'WAREHOUSE MATERIAL PREP DASHBOARD</div>'
     f'</div>'
     f'<div style="text-align:right">'
-    f'<div style="color:#f0f9ff;font-size:30px;font-weight:900;'
-    f'text-shadow:0 0 20px rgba(56,189,248,0.5)">{TODAY.strftime("%Y / %m / %d")}</div>'
-    f'<div style="color:#38bdf8;font-size:18px;font-weight:700;margin-top:2px">（週{wday}）</div>'
+    f'<div style="color:#f5e6c0;font-size:30px;font-weight:900">{TODAY.strftime("%Y / %m / %d")}</div>'
+    f'<div style="color:#d4aa55;font-size:18px;font-weight:700;margin-top:2px">（週{wday}）</div>'
     f'</div></div>',
     unsafe_allow_html=True
 )
@@ -261,7 +274,7 @@ else:
 # SECTION 1：早會 KPI 三卡片
 # ══════════════════════════════════════════════════════
 st.markdown(
-    f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+    f'<div style="color:#8b6220;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
     f'📊 前日進度概況（{YESTERDAY.strftime("%m/%d")}）</div>',
     unsafe_allow_html=True
 )
@@ -273,7 +286,7 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
     elif rate >= 0.5: status = "🟡 持續推進"
     else:             status = "🔴 進度落後"
     return (
-        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
+        f'<div style="background:#fffdf7;'
         f'border:1px solid {accent};border-radius:16px;padding:22px 24px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
@@ -283,15 +296,15 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
         f'<div style="color:#4ade80;font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(74,222,128,0.5)">{done:,}</div>'
-        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">已完成</div></div>'
+        f'<div style="color:#8b6220;font-size:14px;margin-top:6px">已完成</div></div>'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
         f'<div style="color:#f87171;font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(248,113,113,0.4)">{pend:,}</div>'
-        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">待完成</div></div>'
+        f'<div style="color:#8b6220;font-size:14px;margin-top:6px">待完成</div></div>'
         f'<div style="flex:1;text-align:center">'
         f'<div style="color:{accent};font-size:56px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px {glow}">{pct}%</div>'
-        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">完成率</div></div>'
+        f'<div style="color:#8b6220;font-size:14px;margin-top:6px">完成率</div></div>'
         f'</div>'
         f'<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden">'
         f'<div style="display:flex;height:100%">'
@@ -299,7 +312,7 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'box-shadow:0 0 8px rgba(74,222,128,0.6)"></div>'
         f'<div style="width:{100-pct}%;background:rgba(248,113,113,0.4)"></div>'
         f'</div></div>'
-        f'<div style="color:#7b9ec8;font-size:13px;margin-top:6px;text-align:right">'
+        f'<div style="color:#8b6220;font-size:13px;margin-top:6px;text-align:right">'
         f'目標總筆數：{total:,}</div></div>'
     )
 
@@ -317,10 +330,10 @@ def _top_person_card():
             f'text-shadow:0 0 18px {color}66">{name}</div>'
             f'<div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">'
             f'<span style="color:{color};font-size:40px;font-weight:900">{cnt:,}</span>'
-            f'<span style="color:#7b9ec8;font-size:14px">筆</span>'
+            f'<span style="color:#8b6220;font-size:14px">筆</span>'
             f'<span style="color:{ac};font-size:18px;font-weight:700;margin-left:6px">{pct}%</span>'
             f'</div>'
-            f'<div style="color:#7b9ec8;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
+            f'<div style="color:#8b6220;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
             f'<div style="background:rgba(255,255,255,0.05);border-radius:3px;height:5px;overflow:hidden;margin-top:8px">'
             f'<div style="width:{bar_w}%;height:100%;background:{bar_color};'
             f'box-shadow:0 0 6px {bar_color}99"></div></div>'
@@ -328,7 +341,7 @@ def _top_person_card():
         )
 
     return (
-        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
+        f'<div style="background:#fffdf7;'
         f'border:1px solid {ac};border-radius:16px;padding:20px 22px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
         f'<div style="color:#a8c4e0;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:14px">'
@@ -355,7 +368,7 @@ col_person, col_alert = st.columns([3, 2])
 
 with col_person:
     st.markdown(
-        f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+        f'<div style="color:#8b6220;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
         f'👤 人員前日完成筆數（備料 · {YESTERDAY.strftime("%m/%d")}）</div>',
         unsafe_allow_html=True
     )
@@ -414,19 +427,19 @@ with col_alert:
     today_i_cnt = int(today_i_rows['完成筆數'].sum())
 
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,rgba(18,38,85,0.97),rgba(14,28,62,0.97));'
+        f'<div style="background:#fffdf7;'
         f'border:1px solid rgba(56,189,248,0.4);border-radius:12px;padding:16px 18px;height:100%">'
-        f'<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+        f'<div style="color:#8b6220;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
         f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
         f'<div style="display:flex;gap:0">'
         f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07);padding:10px 0">'
         f'<div style="color:#22d3ee;font-size:52px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(34,211,238,0.6)">{today_b_cnt:,}</div>'
-        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
+        f'<div style="color:#8b6220;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
         f'<div style="flex:1;text-align:center;padding:10px 0">'
         f'<div style="color:#818cf8;font-size:52px;font-weight:900;line-height:1;'
         f'text-shadow:0 0 20px rgba(129,140,248,0.6)">{today_i_cnt:,}</div>'
-        f'<div style="color:#7b9ec8;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
+        f'<div style="color:#8b6220;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
         f'</div>'
         f'<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px">'
         f'<div style="color:#8aabd4;font-size:13px;margin-bottom:6px">今日備料人員</div>',
@@ -444,7 +457,7 @@ with col_alert:
                 unsafe_allow_html=True
             )
     else:
-        st.markdown('<div style="color:#7b9ec8;font-size:13px">— 今日尚無備料完成記錄 —</div>',
+        st.markdown('<div style="color:#8b6220;font-size:13px">— 今日尚無備料完成記錄 —</div>',
                     unsafe_allow_html=True)
     st.markdown('</div></div>', unsafe_allow_html=True)
 
@@ -454,7 +467,7 @@ st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 # SECTION 3：近5週備料 + 入庫
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+    '<div style="color:#8b6220;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
     '📅 近5週備料 / 入庫完成筆數</div>',
     unsafe_allow_html=True
 )
@@ -511,7 +524,7 @@ st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
 # SECTION 4：1~12月備料 + 入庫
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#38bdf8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:12px">'
+    '<div style="color:#8b6220;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
     f'📆 年度月份備料 / 入庫完成筆數（{TODAY.year}年）</div>',
     unsafe_allow_html=True
 )
