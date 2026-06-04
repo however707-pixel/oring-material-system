@@ -39,19 +39,24 @@ div[data-testid="stButton"] > button {
     box-shadow:0 2px 10px rgba(42,157,244,0.30) !important;
 }
 div[data-testid="stButton"] > button:hover { background:#1a8ad4 !important; }
-/* 透明覆蓋按鈕：完全看不見，只保留點擊功能 */
+/* 透明覆蓋按鈕：完全不可見，僅保留點擊區域 */
+.click-overlay { position:relative; }
+.click-overlay > div[data-testid="stButton"] {
+    position:absolute !important;
+    top:-88px !important; left:0 !important;
+    width:20% !important; height:82px !important;
+    z-index:50 !important; margin:0 !important;
+}
 .click-overlay > div[data-testid="stButton"] > button {
     background:transparent !important; box-shadow:none !important;
     border:none !important; color:transparent !important;
-    font-size:1px !important; line-height:1 !important;
-    width:100% !important; height:72px !important;
-    margin-top:-84px !important; margin-bottom:0 !important;
-    padding:0 !important; cursor:pointer !important;
-    position:relative !important; z-index:10 !important;
-    border-radius:4px !important;
+    font-size:1px !important; width:100% !important;
+    height:100% !important; padding:0 !important;
+    cursor:pointer !important; border-radius:4px !important;
 }
 .click-overlay > div[data-testid="stButton"] > button:hover {
-    background:rgba(42,157,244,0.05) !important;
+    background:rgba(42,157,244,0.08) !important;
+    border-radius:6px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -399,9 +404,8 @@ st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════
 # SECTION 2：三週大卡片（可點擊出貨筆數展開明細）
 # ══════════════════════════════════════════════════════
-# 用 query_params 記錄選中的週次（點擊數字後 URL 加 ?dw=N）
-_dw_raw = st.query_params.get("dw", None)
-_detail_week = int(_dw_raw) if _dw_raw is not None else None
+if "detail_week" not in st.session_state:
+    st.session_state["detail_week"] = None
 
 card_l, card_r, card_r2 = st.columns(3)
 
@@ -433,13 +437,12 @@ def _big_card(wk):
         f'border:1px solid {bc};border-radius:6px;padding:4px 14px;'
         f'font-size:15px;font-weight:700;margin-bottom:16px">{icon} {msg}</div>'
         f'<div style="display:flex;gap:0;margin-bottom:16px">'
-        # 出貨筆數：<a> 連結，點擊後 URL 加 ?dw=wi 展開明細
-        f'<a href="?dw={wk["idx"]}" style="text-decoration:none;flex:1;text-align:center;'
-        f'border-right:1px solid #EEF2F7;padding:4px 0;display:block;cursor:pointer" '
+        # 出貨筆數：靜態顯示（透明按鈕在外部覆蓋）
+        f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0;cursor:pointer" '
         f'title="點擊查看該週工單明細">'
         f'<div style="font-size:46px;font-weight:900;color:#123A5C;line-height:1">{n}</div>'
         f'<div style="font-size:13px;color:#607080;margin-top:4px">出貨筆數</div>'
-        f'</a>'
+        f'</div>'
         + "".join([
             f'<div style="flex:1;text-align:center;border-right:1px solid #EEF2F7;padding:4px 0">'
             f'<div style="font-size:46px;font-weight:900;color:{vc};line-height:1">{v}</div>'
@@ -465,9 +468,18 @@ def _big_card(wk):
 for _col, _wi in zip([card_l, card_r, card_r2], [0, 1, 2]):
     with _col:
         st.markdown(_big_card(weeks[_wi]), unsafe_allow_html=True)
+        if weeks[_wi]["n"] > 0:
+            _is_sel = (st.session_state["detail_week"] == _wi)
+            # 透明覆蓋按鈕：絕對定位在「出貨筆數」格上，視覺不可見
+            st.markdown('<div class="click-overlay">', unsafe_allow_html=True)
+            if st.button("", key=f"bd_{_wi}",
+                         help="點擊查看/收起工單明細"):
+                st.session_state["detail_week"] = None if _is_sel else _wi
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # ── 展開明細表 ────────────────────────────────────────
-_dw = _detail_week
+_dw = st.session_state.get("detail_week")
 if _dw is not None and 0 <= _dw <= 2:
     _wk = weeks[_dw]
     _ws = _wk["start"]; _we = _wk["end"]
@@ -487,7 +499,7 @@ if _dw is not None and 0 <= _dw <= 2:
         f'<span style="color:#123A5C;font-size:15px;font-weight:800">'
         f'📋 {_wk["label"]}（{_ws.strftime("%m/%d")}~{_we.strftime("%m/%d")}）工單明細'
         f'&nbsp;— 共 {len(_detail)} 張</span>'
-        f'<a href="?" style="color:#607080;font-size:14px;text-decoration:none">✕ 關閉</a>'
+        f'<span style="color:#607080;font-size:13px">再按數字可收起</span>'
         f'</div>',
         unsafe_allow_html=True
     )
