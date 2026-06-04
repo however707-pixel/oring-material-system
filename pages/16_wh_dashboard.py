@@ -361,7 +361,7 @@ col_person, col_alert = st.columns([3, 2])
 
 with col_person:
     st.markdown(
-        f'<div style="color:#6B7280;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
+        f'<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
         f'👤 人員前日完成筆數（備料 · {YESTERDAY.strftime("%m/%d")}）</div>',
         unsafe_allow_html=True
     )
@@ -375,7 +375,7 @@ with col_person:
 
     if person_today.empty:
         st.markdown(
-            '<div style="background:rgba(15,23,42,0.6);border:1px solid rgba(51,65,85,0.4);'
+            '<div style="background:#fdfaf5;border:1px solid #E6D8B8;'
             'border-radius:8px;padding:20px;text-align:center;color:#6B7280">— 今日尚無完成記錄 —</div>',
             unsafe_allow_html=True
         )
@@ -386,23 +386,26 @@ with col_person:
             y=person_today['人員'],
             orientation='h',
             marker=dict(
-                color=[f"rgba(34,211,238,{0.4 + 0.6*(v/max_val):.2f})" for v in person_today['完成筆數']],
+                color=[f"rgba(46,157,112,{0.45 + 0.55*(v/max_val):.2f})" for v in person_today['完成筆數']],
                 line=dict(color="#2E9D70", width=1),
             ),
             text=person_today['完成筆數'].astype(int).astype(str) + " 筆",
             textposition="outside",
-            textfont=dict(color="#cbd5e1", size=14),
+            textfont=dict(color="#1D2B3A", size=14,
+                          family="Microsoft JhengHei"),
         ))
         fig_p.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-                      tickfont=dict(color="#64748b", size=13), zeroline=False),
-            yaxis=dict(showgrid=False, tickfont=dict(color="#94a3b8", size=14)),
-            margin=dict(l=10, r=60, t=10, b=10),
-            height=max(200, len(person_today) * 48),
-            font=dict(color="#94a3b8"),
+            xaxis=dict(showgrid=True, gridcolor="#EDE5CF",
+                      tickfont=dict(color="#6B7280", size=13), zeroline=False),
+            yaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=14,
+                       family="Microsoft JhengHei")),
+            margin=dict(l=10, r=70, t=10, b=10),
+            height=max(200, len(person_today) * 52),
+            font=dict(color="#6B7280", family="Microsoft JhengHei"),
         )
-        st.plotly_chart(fig_p, use_container_width=True)
+        st.plotly_chart(fig_p, use_container_width=True,
+                        config=dict(staticPlot=True))
 
 with col_alert:
     # ── 今日即時訊息 ────────────────────────────────────
@@ -421,31 +424,31 @@ with col_alert:
 
     st.markdown(
         f'<div style="background:#FFFFFF;'
-        f'border:1px solid rgba(56,189,248,0.4);border-radius:12px;padding:16px 18px;height:100%">'
-        f'<div style="color:#6B7280;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
+        f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
+        f'border-radius:12px;padding:16px 18px;height:100%;'
+        f'box-shadow:0 2px 14px rgba(29,43,58,0.08)">'
+        f'<div style="color:#1D2B3A;font-size:15px;font-weight:700;letter-spacing:0.5px;margin-bottom:14px">'
         f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
         f'<div style="display:flex;gap:0">'
         f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
-        f'<div style="color:#2E9D70;font-size:52px;font-weight:900;line-height:1;'
-        f'text-shadow:0 0 20px rgba(34,211,238,0.6)">{today_b_cnt:,}</div>'
+        f'<div style="color:#2E9D70;font-size:52px;font-weight:900;line-height:1">{today_b_cnt:,}</div>'
         f'<div style="color:#6B7280;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
         f'<div style="flex:1;text-align:center;padding:10px 0">'
-        f'<div style="color:#5b7fa6;font-size:52px;font-weight:900;line-height:1;'
-        f'text-shadow:0 0 20px rgba(129,140,248,0.6)">{today_i_cnt:,}</div>'
+        f'<div style="color:#B23A48;font-size:52px;font-weight:900;line-height:1">{today_i_cnt:,}</div>'
         f'<div style="color:#6B7280;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
         f'</div>'
-        f'<div style="margin-top:14px;border-top:1px solid #f0e8d8;padding-top:12px">'
-        f'<div style="color:#6B7280;font-size:13px;margin-bottom:6px">今日備料人員</div>',
+        f'<div style="margin-top:14px;border-top:1px solid #EDE5CF;padding-top:12px">'
+        f'<div style="color:#6B7280;font-size:13px;margin-bottom:8px">今日備料人員</div>',
         unsafe_allow_html=True
     )
     if not today_b_rows.empty:
         by_p = today_b_rows.groupby('備料人員')['需求筆數'].sum().sort_values(ascending=False)
         for person, cnt in by_p.items():
             st.markdown(
-                f'<div style="display:flex;justify-content:space-between;padding:3px 0;'
-                f'border-bottom:1px solid rgba(255,255,255,0.04)">'
-                f'<span style="color:#a8c4e0;font-size:13px">{person}</span>'
-                f'<span style="color:#2E9D70;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
+                f'<div style="display:flex;justify-content:space-between;padding:5px 0;'
+                f'border-bottom:1px solid #f5ede0">'
+                f'<span style="color:#1D2B3A;font-size:14px">{person}</span>'
+                f'<span style="color:#C9A45C;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -460,7 +463,7 @@ st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 # SECTION 3：近5週備料 + 入庫
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="color:#6B7280;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
+    '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
     '📅 近5週備料 / 入庫完成筆數</div>',
     unsafe_allow_html=True
 )
@@ -501,15 +504,15 @@ fig_week.add_trace(go.Bar(
 fig_week.update_layout(
     barmode="group",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#94a3b8", size=13),
+    font=dict(color="#6B7280", size=13, family="Microsoft JhengHei"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#cbd5e1", size=13), bgcolor="rgba(0,0,0,0)"),
-    xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=12)),
-    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-               tickfont=dict(color="#64748b", size=12), zeroline=False),
+                font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
+    xaxis=dict(showgrid=False, tickfont=dict(color="#6B7280", size=13)),
+    yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
+               tickfont=dict(color="#6B7280", size=13), zeroline=False),
     margin=dict(l=20, r=20, t=40, b=20), height=280,
 )
-st.plotly_chart(fig_week, use_container_width=True)
+st.plotly_chart(fig_week, use_container_width=True, config=dict(staticPlot=True))
 
 st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
 
@@ -548,15 +551,15 @@ fig_month.add_trace(go.Bar(
 fig_month.update_layout(
     barmode="group",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#94a3b8", size=13),
+    font=dict(color="#6B7280", size=13, family="Microsoft JhengHei"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                font=dict(color="#cbd5e1", size=13), bgcolor="rgba(0,0,0,0)"),
+                font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
     xaxis=dict(showgrid=False, tickfont=dict(color="#64748b", size=13)),
-    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
-               tickfont=dict(color="#64748b", size=12), zeroline=False),
+    yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
+               tickfont=dict(color="#6B7280", size=13), zeroline=False),
     margin=dict(l=20, r=20, t=40, b=20), height=300,
 )
-st.plotly_chart(fig_month, use_container_width=True)
+st.plotly_chart(fig_month, use_container_width=True, config=dict(staticPlot=True))
 
 # 頁尾
 st.markdown(
