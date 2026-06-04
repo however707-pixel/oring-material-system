@@ -23,7 +23,7 @@ st.markdown("""
 ::-webkit-scrollbar-thumb { background:#1e3a8a; border-radius:3px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
 /* 全域字體放大 */
-html, body, [class*="css"] { font-size: 18px !important; }
+html, body, [class*="css"] { font-size: 18px !important; font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important; }
 p, div, span, label { color:#dde6f5; }
 /* 明細按鈕樣式 */
 div[data-testid="stButton"] > button {

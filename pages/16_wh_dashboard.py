@@ -25,7 +25,7 @@ st.markdown("""
 ::-webkit-scrollbar-thumb { background:#2563eb; border-radius:3px; }
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
 /* ── 全域字體放大，基準18px ── */
-html, body, [class*="css"] { font-size:18px !important; }
+html, body, [class*="css"] { font-size:18px !important; font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important; }
 p, div, span, label { color:#dde6f5; }
 </style>
 """, unsafe_allow_html=True)
