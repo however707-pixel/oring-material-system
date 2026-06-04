@@ -227,34 +227,34 @@ i_pend = int(ib_pend_rows['筆數'].sum())
 i_total = i_done + i_pend
 i_rate  = i_done / i_total if i_total else 0
 
-# ── 合計：前日最高績效人員 & 佔比 ─────────────────────
-# 備料：昨日各人員完成筆數
+# ── 前日最高績效：備料 / 入庫 分開計算 ────────────────
+# 備料最高
 b_by_person = (
     b_done_rows.groupby('備料人員')['需求筆數'].sum()
-    .rename('備料').reset_index().rename(columns={'備料人員':'人員'})
+    .reset_index().rename(columns={'備料人員':'人員','需求筆數':'筆數'})
 )
-# 入庫：昨日各人員上架筆數（從調撥單，備料人員欄）
+b_total_done = int(b_by_person['筆數'].sum())
+if not b_by_person.empty and b_total_done > 0:
+    top_b_row  = b_by_person.loc[b_by_person['筆數'].idxmax()]
+    top_b_name = str(top_b_row['人員'])
+    top_b_cnt  = int(top_b_row['筆數'])
+    top_b_pct  = round(top_b_cnt / b_total_done * 100, 1)
+else:
+    top_b_name = "—"; top_b_cnt = 0; top_b_pct = 0.0
+
+# 入庫最高
 i_by_person = (
     ib_done_rows.groupby('備料人員')['完成筆數'].sum()
-    .rename('入庫').reset_index().rename(columns={'備料人員':'人員'})
-) if not ib_done_rows.empty else pd.DataFrame(columns=['人員','入庫'])
-
-person_df = (
-    b_by_person.merge(i_by_person, on='人員', how='outer')
-    .fillna(0)
-)
-person_df['合計'] = person_df.get('備料', 0) + person_df.get('入庫', 0)
-grand_total = int(person_df['合計'].sum())
-
-if not person_df.empty and grand_total > 0:
-    top_row   = person_df.loc[person_df['合計'].idxmax()]
-    top_name  = str(top_row['人員'])
-    top_total = int(top_row['合計'])
-    top_b     = int(top_row.get('備料', 0))
-    top_i     = int(top_row.get('入庫', 0))
-    top_pct   = round(top_total / grand_total * 100, 1)
+    .reset_index().rename(columns={'備料人員':'人員','完成筆數':'筆數'})
+) if not ib_done_rows.empty else pd.DataFrame(columns=['人員','筆數'])
+i_total_done = int(i_by_person['筆數'].sum()) if not i_by_person.empty else 0
+if not i_by_person.empty and i_total_done > 0:
+    top_i_row  = i_by_person.loc[i_by_person['筆數'].idxmax()]
+    top_i_name = str(top_i_row['人員'])
+    top_i_cnt  = int(top_i_row['筆數'])
+    top_i_pct  = round(top_i_cnt / i_total_done * 100, 1)
 else:
-    top_name = "—"; top_total = 0; top_b = 0; top_i = 0; top_pct = 0.0
+    top_i_name = "—"; top_i_cnt = 0; top_i_pct = 0.0
 
 # ══════════════════════════════════════════════════════
 # SECTION 1：早會 KPI 三卡片
@@ -302,40 +302,40 @@ def _kpi_card(title, done, pend, rate, accent, glow, icon):
         f'目標總筆數：{total:,}</div></div>'
     )
 
-# 第三卡片：前日最高績效人員
+# 第三卡片：備料最高 / 入庫最高 分開顯示
 def _top_person_card():
-    ac="#fbbf24"; glow="rgba(251,191,36,0.25)"
+    ac = "#fbbf24"; glow = "rgba(251,191,36,0.25)"
+
+    def _half(label, name, cnt, pct, color, bar_color):
+        bar_w = min(int(pct), 100)
+        return (
+            f'<div style="flex:1;padding:14px 16px;'
+            f'background:rgba(255,255,255,0.03);border-radius:10px">'
+            f'<div style="color:#64748b;font-size:12px;letter-spacing:1px;margin-bottom:8px">{label}</div>'
+            f'<div style="color:{color};font-size:32px;font-weight:900;line-height:1;'
+            f'text-shadow:0 0 18px {color}66">{name}</div>'
+            f'<div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">'
+            f'<span style="color:{color};font-size:40px;font-weight:900">{cnt:,}</span>'
+            f'<span style="color:#374151;font-size:14px">筆</span>'
+            f'<span style="color:{ac};font-size:18px;font-weight:700;margin-left:6px">{pct}%</span>'
+            f'</div>'
+            f'<div style="color:#374151;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
+            f'<div style="background:rgba(255,255,255,0.05);border-radius:3px;height:5px;overflow:hidden;margin-top:8px">'
+            f'<div style="width:{bar_w}%;height:100%;background:{bar_color};'
+            f'box-shadow:0 0 6px {bar_color}99"></div></div>'
+            f'</div>'
+        )
+
     return (
         f'<div style="background:linear-gradient(135deg,rgba(13,28,65,0.95),rgba(8,18,45,0.95));'
-        f'border:1px solid {ac};border-radius:16px;padding:22px 24px;'
+        f'border:1px solid {ac};border-radius:16px;padding:20px 22px;'
         f'box-shadow:0 0 28px {glow};height:100%">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
-        f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px">🏆 前日最高績效</div>'
-        f'<div style="color:#64748b;font-size:13px">備料＋入庫合計</div></div>'
-        # 人員名稱大字
-        f'<div style="text-align:center;margin-bottom:16px">'
-        f'<div style="color:{ac};font-size:42px;font-weight:900;'
-        f'text-shadow:0 0 24px {glow}">{top_name}</div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:4px">前日最高完成人員</div></div>'
-        # 三個數字
-        f'<div style="display:flex;gap:0;margin-bottom:14px">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
-        f'<div style="color:#22d3ee;font-size:36px;font-weight:900">{top_b:,}</div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:4px">備料筆數</div></div>'
-        f'<div style="flex:1;text-align:center;border-right:1px solid rgba(255,255,255,0.07)">'
-        f'<div style="color:#818cf8;font-size:36px;font-weight:900">{top_i:,}</div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:4px">入庫筆數</div></div>'
-        f'<div style="flex:1;text-align:center">'
-        f'<div style="color:{ac};font-size:36px;font-weight:900">{top_pct}%</div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:4px">佔全隊總量</div></div>'
-        f'</div>'
-        # 進度條
-        f'<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden">'
-        f'<div style="width:{min(top_pct,100):.0f}%;height:100%;'
-        f'background:linear-gradient(90deg,#fbbf24,#f59e0b);'
-        f'box-shadow:0 0 8px rgba(251,191,36,0.6)"></div></div>'
-        f'<div style="color:#374151;font-size:13px;margin-top:6px;text-align:right">'
-        f'全隊前日總完成：{grand_total:,} 筆</div></div>'
+        f'<div style="color:#94a3b8;font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:14px">'
+        f'🏆 前日最高績效</div>'
+        f'<div style="display:flex;gap:10px">'
+        + _half("📦 備料", top_b_name, top_b_cnt, top_b_pct, "#22d3ee", "#22d3ee")
+        + _half("🏭 入庫", top_i_name, top_i_cnt, top_i_pct, "#818cf8", "#818cf8")
+        + f'</div></div>'
     )
 
 c1, c2, c3 = st.columns(3)
