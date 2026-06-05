@@ -613,7 +613,7 @@ def _mfg_days(qty):
     except Exception:
         return 1
 
-SPECIAL_CAP = {"9048": 150}   # 品名含特定字串時的日產能
+SPECIAL_CAP = {"9084": 150}   # 品名含特定字串時的日產能
 
 def _mfg_days_by_pno(row):
     qty = row.get("預計產量", 0)
