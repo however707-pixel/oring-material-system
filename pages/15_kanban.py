@@ -653,26 +653,51 @@ else:
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
 
-        # 開工月曆：遍歷每個生產工作天，把工單加到該天的顯示中
-        _bc = "#E74C5B" if late else "#2A9DF4"
-        _bg = "#fdecea" if late else "#e8f4fd"
-        warn_txt = " ⚠️" if late else ""
+        # 開工月曆：遍歷每個生產工作天
+        _bc  = "#E74C5B" if late else "#2A9DF4"
+        _bg  = "#fdecea" if late else "#e8f4fd"
+        warn = " ⚠️趕不上" if late else ""
+        short_pno = (pno[-18:] if len(pno)>18 else pno) or "—"
         _d_ptr = start_d
         for _di in range(mfg):
             _daily_pcs[_d_ptr] = _daily_pcs.get(_d_ptr, 0) + daily_rate
             if _d_ptr.month == _month:
                 is_first = (_di == 0)
                 is_last  = (_di == mfg - 1)
-                prefix   = f'▶ 開工{warn_txt} ' if is_first else ""
-                suffix   = f'<span style="color:{_bc};font-size:12px"> ✓完工</span>' if is_last else ""
-                _ev_start.setdefault(_d_ptr, []).append(
-                    f'<div style="background:{_bg};border-left:3px solid {_bc};'
-                    f'border-radius:3px;padding:3px 6px;margin-bottom:3px;line-height:1.5">'
-                    f'{"<b style=color:"+_bc+">"+prefix+"</b>" if prefix else ""}'
-                    f'<span style="color:#333;font-size:14px;font-weight:600">{pno or "—"}</span><br>'
-                    f'<span style="color:#888;font-size:13px">{int(daily_rate):,}pcs/天</span>'
-                    f'{suffix}</div>'
-                )
+                if is_first and is_last:
+                    # 只有一天：完整顯示
+                    _ev_start.setdefault(_d_ptr, []).append(
+                        f'<div style="background:{_bg};border-left:4px solid {_bc};'
+                        f'border-radius:4px;padding:4px 7px;margin-bottom:3px;line-height:1.5">'
+                        f'<b style="color:{_bc};font-size:13px">▶ 開工 ✓完工{warn}</b><br>'
+                        f'<span style="color:#333;font-size:14px;font-weight:700">{short_pno}</span><br>'
+                        f'<span style="color:#888;font-size:13px">{int(daily_rate):,} pcs/天</span></div>'
+                    )
+                elif is_first:
+                    # 第一天：完整資訊
+                    _ev_start.setdefault(_d_ptr, []).append(
+                        f'<div style="background:{_bg};border-left:4px solid {_bc};'
+                        f'border-radius:4px 4px 0 0;padding:4px 7px;margin-bottom:0;line-height:1.5">'
+                        f'<b style="color:{_bc};font-size:13px">▶ 開工{warn}  → 共{mfg}天</b><br>'
+                        f'<span style="color:#333;font-size:14px;font-weight:700">{short_pno}</span><br>'
+                        f'<span style="color:#888;font-size:13px">{int(daily_rate):,} pcs/天｜共{qty:,}pcs</span></div>'
+                    )
+                elif is_last:
+                    # 最後一天：完工標記
+                    _ev_start.setdefault(_d_ptr, []).append(
+                        f'<div style="background:{_bg};border-left:4px solid {_bc};'
+                        f'border-radius:0 0 4px 4px;padding:3px 7px;margin-bottom:3px;line-height:1.4">'
+                        f'<span style="color:#888;font-size:12px">↳ {short_pno}</span>'
+                        f'<b style="color:{_bc};font-size:12px;float:right">✓完工</b></div>'
+                    )
+                else:
+                    # 中間天：細條繼續
+                    _ev_start.setdefault(_d_ptr, []).append(
+                        f'<div style="background:{_bg};border-left:4px solid {_bc};'
+                        f'padding:2px 7px;margin-bottom:0;line-height:1.3">'
+                        f'<span style="color:#888;font-size:12px">→ {short_pno} '
+                        f'{int(daily_rate):,}pcs</span></div>'
+                    )
             _d_ptr = _next_workday(_d_ptr)
 
     # ── HTML 月曆產生函式 ─────────────────────────────────────
