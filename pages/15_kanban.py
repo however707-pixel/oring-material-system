@@ -572,6 +572,175 @@ else:
                     unsafe_allow_html=True
                 )
 
+# ══════════════════════════════════════════════════════
+# SECTION 5：本月出貨排程月曆（含預計開工日）
+# ══════════════════════════════════════════════════════
+import math, calendar as _cal
+
+st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+st.markdown(
+    f'<div style="color:#123A5C;font-size:18px;font-weight:800;margin-bottom:14px">'
+    f'📅 本月出貨排程月曆（{TODAY.year}年 {TODAY.month}月）</div>',
+    unsafe_allow_html=True
+)
+
+IQC_WH_DAYS = 1.5   # IQC + 倉庫最少 1.5 工作日
+
+def workday_subtract(d, n_days):
+    """從 d 往前推 n_days 個工作天（含小數，取 ceil）"""
+    nd = math.ceil(n_days)
+    cur = d
+    for _ in range(nd):
+        cur -= timedelta(days=1)
+        while cur.weekday() >= 5 or cur in TAIWAN_HOLIDAYS:
+            cur -= timedelta(days=1)
+    return cur
+
+# 篩選本月有出貨日的工單
+_this_month = df[
+    df["出貨日"].notna() &
+    (df["出貨日"].dt.year  == TODAY.year) &
+    (df["出貨日"].dt.month == TODAY.month)
+].drop_duplicates("工單").copy()
+
+# 計算製造天數 = ceil(預計產量 / 日產能)
+def _mfg_days(qty):
+    try:
+        q = float(qty)
+        return max(1, math.ceil(q / DAILY_CAP))
+    except Exception:
+        return 1
+
+_this_month["製造天數"] = _this_month["預計產量"].apply(_mfg_days)
+_this_month["預計開工日"] = _this_month.apply(
+    lambda r: workday_subtract(r["出貨日"].date(), r["製造天數"] + IQC_WH_DAYS),
+    axis=1
+)
+
+if _this_month.empty:
+    st.info("本月無出貨工單")
+else:
+    # ── 建立月曆格線 ──────────────────────────────────────
+    _year, _month = TODAY.year, TODAY.month
+    _first = date(_year, _month, 1)
+    _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
+
+    # 週起點列表（週一為起點）
+    _weeks = []
+    _d = _first - timedelta(days=_first.weekday())
+    while _d <= _last:
+        _weeks.append(_d)
+        _d += timedelta(weeks=1)
+
+    day_names = ["一","二","三","四","五","六","日"]
+
+    fig_cal = go.Figure()
+
+    # 月曆底色格
+    for wi, wstart in enumerate(_weeks):
+        for di in range(7):
+            _day = wstart + timedelta(days=di)
+            _in_month = (_day.month == _month)
+            _is_weekend = (_day.weekday() >= 5)
+            _is_today = (_day == TODAY)
+            _bg = "#f8faff" if _in_month else "#f5f5f5"
+            if _is_weekend and _in_month: _bg = "#fff8f0"
+            if _is_today: _bg = "#e8f4ff"
+            fig_cal.add_shape(
+                type="rect", layer="below",
+                x0=di-0.5, x1=di+0.5, y0=-wi-0.48, y1=-wi+0.48,
+                fillcolor=_bg, line=dict(color="#dde8f3", width=0.5)
+            )
+            # 日期文字
+            day_color = "#c0392b" if _is_weekend else ("#2A9DF4" if _is_today else "#607080")
+            if _in_month:
+                fig_cal.add_annotation(
+                    x=di, y=-wi+0.38, text=f"{_day.day}",
+                    font=dict(size=11, color=day_color, family="Microsoft JhengHei"),
+                    showarrow=False, xanchor="center", yanchor="top"
+                )
+
+    # 工單事件點
+    _color_map = {"已齊料":"#16A085","完全缺料":"#E74C5B"}
+    _y_offsets = {}   # 同一天多張工單時垂直排列
+
+    for _, r in _this_month.iterrows():
+        ship_d  = r["出貨日"].date()
+        start_d = r["預計開工日"]
+        wo      = r["工單"]
+        status  = r["料況狀態"]
+        qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
+        mfg     = int(r["製造天數"])
+        color   = _color_map.get(status, "#d97706")
+
+        # 繪製出貨日標記
+        if ship_d.month == _month:
+            _wk_i = (ship_d - _first).days // 7
+            _di   = ship_d.weekday()
+            _key  = (ship_d, "ship")
+            _off  = _y_offsets.get(_key, 0)
+            _y_offsets[_key] = _off + 1
+            fig_cal.add_trace(go.Scatter(
+                x=[_di], y=[-_wk_i + 0.15 - _off*0.18],
+                mode="markers+text",
+                marker=dict(size=10, color=color, symbol="diamond",
+                            line=dict(width=1, color="white")),
+                text=[f"🚢{wo[-6:]}"],
+                textposition="middle right",
+                textfont=dict(size=9, color=color),
+                name=f"出貨 {wo}",
+                hovertemplate=(f"<b>{wo}</b><br>出貨日：{ship_d.strftime('%m/%d')}<br>"
+                               f"料況：{status}<br>預計產量：{qty:,}<extra></extra>"),
+                showlegend=False,
+            ))
+
+        # 繪製預計開工日標記
+        if start_d.month == _month:
+            _wk_i2 = (start_d - _first).days // 7
+            _di2   = start_d.weekday()
+            _key2  = (start_d, "start")
+            _off2  = _y_offsets.get(_key2, 0)
+            _y_offsets[_key2] = _off2 + 1
+            fig_cal.add_trace(go.Scatter(
+                x=[_di2], y=[-_wk_i2 + 0.15 - _off2*0.18],
+                mode="markers+text",
+                marker=dict(size=9, color=color, symbol="triangle-right",
+                            line=dict(width=1, color="white")),
+                text=[f"▶{wo[-6:]}"],
+                textposition="middle right",
+                textfont=dict(size=9, color=color),
+                name=f"開工 {wo}",
+                hovertemplate=(f"<b>{wo}</b><br>預計開工：{start_d.strftime('%m/%d')}<br>"
+                               f"製造天數：{mfg}天<br>"
+                               f"出貨日：{ship_d.strftime('%m/%d')}<extra></extra>"),
+                showlegend=False,
+            ))
+
+    # 圖表設定
+    fig_cal.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(tickvals=list(range(7)), ticktext=day_names,
+                   tickfont=dict(size=13, color="#607080", family="Microsoft JhengHei"),
+                   showgrid=False, zeroline=False, range=[-0.5, 6.5]),
+        yaxis=dict(showgrid=False, showticklabels=False, zeroline=False,
+                   range=[-len(_weeks)+0.5, 0.55]),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=max(240, len(_weeks)*90),
+        font=dict(family="Microsoft JhengHei"),
+    )
+
+    st.plotly_chart(fig_cal, use_container_width=True,
+                    config=dict(staticPlot=False))
+
+    # 說明
+    st.markdown(
+        '<div style="font-size:13px;color:#607080;margin-top:4px">'
+        '◆ 菱形 = 出貨日 &nbsp;｜&nbsp; ▶ 三角 = 預計開工日<br>'
+        f'計算公式：<b>預計開工日 = 出貨日 − 製造天數（產量÷{DAILY_CAP}pcs/天）− {IQC_WH_DAYS}天（IQC+倉庫）</b>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
 st.markdown(
     f'<div style="text-align:center;color:#1e3a5f;font-size:12px;margin-top:24px;letter-spacing:1px">'
     f'DATA · {src_path.replace(r"\\192.168.2.34\MO_Storage","NAS") if src_path else "—"}'
