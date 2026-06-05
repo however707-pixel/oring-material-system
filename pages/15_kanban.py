@@ -830,20 +830,25 @@ else:
                 is_first_week = (wo["start"] >= week_start)
                 is_last_week  = (wo["last"]  <= week_end)
                 warn = " ⚠️趕不上" if wo["late"] else ""
-                short_p = wo["pno"][-20:] if len(wo["pno"]) > 20 else wo["pno"]
+                full_pno = wo["pno"] or "—"
+                if is_first_week:
+                    lbl_head = f'<b style="color:{wo["bc"]};font-size:13px">▶ 開工{warn}</b><br>'
+                else:
+                    lbl_head = f'<span style="color:{wo["bc"]};font-size:12px;opacity:0.8">→ 繼續</span><br>'
+                lbl_foot = f'<b style="color:{wo["bc"]};font-size:12px"> ✓完工</b>' if is_last_week else ''
                 label = (
-                    (f'<b style="font-size:14px">▶ 開工{warn}</b> ' if is_first_week else
-                     f'<span style="font-size:13px;opacity:0.7">→ 繼續</span> ') +
-                    f'<span style="font-size:15px;font-weight:700">{short_p}</span> ' +
-                    f'<span style="font-size:13px;color:#555">{int(wo["dr"]):,}pcs/天 | 共{wo["qty"]:,}pcs</span>' +
-                    (f' <b style="font-size:13px">✓完工</b>' if is_last_week else '')
+                    lbl_head +
+                    f'<span style="font-size:14px;font-weight:700;color:#1e293b;'
+                    f'word-break:break-all;line-height:1.4">{full_pno}</span><br>'
+                    f'<span style="font-size:13px;color:#555">'
+                    f'{int(wo["dr"]):,} pcs/天｜共 {wo["qty"]:,} pcs{lbl_foot}</span>'
                 )
                 h += '<tr>'
                 if pre > 0:
                     h += f'<td colspan="{pre}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
                 h += (f'<td colspan="{span}" style="background:{wo["bg"]};'
                       f'border:2px solid {wo["bc"]};border-radius:5px;'
-                      f'padding:5px 10px;white-space:nowrap;overflow:hidden">'
+                      f'padding:6px 10px;vertical-align:top;word-break:break-all">'
                       f'{label}</td>')
                 if suf > 0:
                     h += f'<td colspan="{suf}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
