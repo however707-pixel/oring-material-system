@@ -643,23 +643,23 @@ else:
         status  = r["料況狀態"]
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
         color   = _color_map.get(status, "#d97706")
-        short_pno = pno[-12:] if pno else wo[-8:]
-
-        # 出貨日
+        # 出貨日 → 黃色：品名 / 數量
         if ship_d.month == _month:
             _events.setdefault(ship_d, []).append(
                 f'<div style="background:#fff3cd;border-left:3px solid #d97706;'
-                f'border-radius:3px;padding:3px 5px;margin-bottom:3px;font-size:14px;line-height:1.4">'
-                f'<b style="color:#d97706">出貨</b> {short_pno}<br>'
-                f'<span style="color:#555;font-size:13px">{qty:,} pcs</span></div>'
+                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:14px;line-height:1.5">'
+                f'<b style="color:#d97706;font-size:13px">🚢 出貨</b><br>'
+                f'<span style="color:#333;font-size:15px;font-weight:600">{pno if pno else "—"}</span><br>'
+                f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
-        # 預計開工日
+        # 預計開工日 → 藍色：品名 / 數量
         if start_d.month == _month:
             _events.setdefault(start_d, []).append(
                 f'<div style="background:#e8f4fd;border-left:3px solid #2A9DF4;'
-                f'border-radius:3px;padding:3px 5px;margin-bottom:3px;font-size:14px;line-height:1.4">'
-                f'<b style="color:#2A9DF4">開工</b> {short_pno}<br>'
-                f'<span style="color:#555;font-size:13px">{qty:,} pcs</span></div>'
+                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:14px;line-height:1.5">'
+                f'<b style="color:#2A9DF4;font-size:13px">▶ 開工</b><br>'
+                f'<span style="color:#333;font-size:15px;font-weight:600">{pno if pno else "—"}</span><br>'
+                f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
 
     # ── HTML 月曆表格 ─────────────────────────────────────
