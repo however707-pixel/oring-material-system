@@ -614,8 +614,13 @@ def _mfg_days(qty):
         return 1
 
 _this_month["製造天數"] = _this_month["預計產量"].apply(_mfg_days)
+def _to_date(v):
+    """確保回傳 date 物件"""
+    if hasattr(v, 'date'): return v.date()
+    return v
+
 _this_month["預計開工日"] = _this_month.apply(
-    lambda r: workday_subtract(r["出貨日"].date(), r["製造天數"] + IQC_WH_DAYS),
+    lambda r: workday_subtract(_to_date(r["出貨日"]), r["製造天數"] + IQC_WH_DAYS),
     axis=1
 )
 
@@ -667,7 +672,7 @@ else:
     _y_offsets = {}   # 同一天多張工單時垂直排列
 
     for _, r in _this_month.iterrows():
-        ship_d  = r["出貨日"].date()
+        ship_d  = _to_date(r["出貨日"])
         start_d = r["預計開工日"]
         wo      = r["工單"]
         status  = r["料況狀態"]
