@@ -614,15 +614,41 @@ def _mfg_days(qty):
         return 1
 
 _this_month["製造天數"] = _this_month["預計產量"].apply(_mfg_days)
+
 def _to_date(v):
-    """確保回傳 date 物件"""
     if hasattr(v, 'date'): return v.date()
     return v
 
-_this_month["預計開工日"] = _this_month.apply(
-    lambda r: workday_subtract(_to_date(r["出貨日"]), r["製造天數"] + IQC_WH_DAYS),
-    axis=1
+def workday_add(d, n):
+    """從 d 往後推 n 個工作天"""
+    cur = d
+    count = 0
+    while count < n:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5 and cur not in TAIWAN_HOLIDAYS:
+            count += 1
+    return cur
+
+def _calc_start(r):
+    ship  = _to_date(r["出貨日"])
+    mfg   = r["製造天數"]
+    # 最晚必須開工（倒推）
+    deadline_start = workday_subtract(ship, mfg + IQC_WH_DAYS)
+    # 齊料日 + 1 工作天（最早可開工）
+    qi = r.get("預計齊料日", None) if "預計齊料日" in r.index else None
+    if pd.notna(qi) and qi is not None:
+        qi_d = _to_date(qi)
+        earliest_start = workday_add(qi_d, 1)
+    else:
+        earliest_start = deadline_start
+    # 最終開工日 = 最早可開工（不超過最晚必須開工就用最早，否則用最晚並標警示）
+    return earliest_start, deadline_start
+
+_this_month[["預計開工日","最晚開工日"]] = _this_month.apply(
+    lambda r: pd.Series(_calc_start(r)), axis=1
 )
+# 若 預計開工日 > 最晚開工日 → 趕不上出貨（警示）
+_this_month["趕不上"] = _this_month["預計開工日"] > _this_month["最晚開工日"]
 
 if _this_month.empty:
     st.info("本月無出貨工單")
@@ -638,27 +664,30 @@ else:
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
         start_d = r["預計開工日"]
-        wo      = r["工單"]
+        late    = bool(r.get("趕不上", False))
         pno     = str(r.get("成品料號","")).strip()
-        status  = r["料況狀態"]
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
-        color   = _color_map.get(status, "#d97706")
-        # 出貨日 → 黃色：品名 / 數量
+
+        # 出貨日 → 黃橙色
         if ship_d.month == _month:
             _events.setdefault(ship_d, []).append(
                 f'<div style="background:#fff3cd;border-left:3px solid #d97706;'
-                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:14px;line-height:1.5">'
+                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.5">'
                 f'<b style="color:#d97706;font-size:13px">🚢 出貨</b><br>'
-                f'<span style="color:#333;font-size:15px;font-weight:600">{pno if pno else "—"}</span><br>'
+                f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
-        # 預計開工日 → 藍色：品名 / 數量
+        # 開工日 → 藍色（正常）或 紅色（趕不上出貨警示）
         if start_d.month == _month:
+            if late:
+                _bg, _bc, _lbl = "#fdecea","#E74C5B","⚠️ 開工（趕不上）"
+            else:
+                _bg, _bc, _lbl = "#e8f4fd","#2A9DF4","▶ 開工"
             _events.setdefault(start_d, []).append(
-                f'<div style="background:#e8f4fd;border-left:3px solid #2A9DF4;'
-                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;font-size:14px;line-height:1.5">'
-                f'<b style="color:#2A9DF4;font-size:13px">▶ 開工</b><br>'
-                f'<span style="color:#333;font-size:15px;font-weight:600">{pno if pno else "—"}</span><br>'
+                f'<div style="background:{_bg};border-left:3px solid {_bc};'
+                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.5">'
+                f'<b style="color:{_bc};font-size:13px">{_lbl}</b><br>'
+                f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
 
@@ -699,9 +728,11 @@ else:
     st.markdown(html, unsafe_allow_html=True)
 
     st.markdown(
-        f'<div style="font-size:13px;color:#607080;margin-top:8px">'
-        f'🚢 出貨日 &nbsp;｜&nbsp; ▶ 預計開工日（藍色）<br>'
-        f'公式：<b>開工日 = 出貨日 − 製造天數（產量÷{DAILY_CAP}pcs/天）− {IQC_WH_DAYS}天（IQC+倉庫）</b>'
+        f'<div style="font-size:13px;color:#607080;margin-top:10px">'
+        f'🚢 <b>出貨日</b>（黃）&nbsp;｜&nbsp;'
+        f'▶ <b>開工日</b>（藍）= 齊料日 +1 工作天 &nbsp;｜&nbsp;'
+        f'⚠️ <b>趕不上</b>（紅）= 齊料太晚，來不及出貨<br>'
+        f'製造天數 = ⌈產量 ÷ {DAILY_CAP} pcs/天⌉ &nbsp;｜&nbsp; IQC+倉庫緩衝 = {IQC_WH_DAYS} 工作天'
         f'</div>',
         unsafe_allow_html=True
     )
