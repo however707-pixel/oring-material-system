@@ -627,49 +627,13 @@ _this_month["預計開工日"] = _this_month.apply(
 if _this_month.empty:
     st.info("本月無出貨工單")
 else:
-    # ── 建立月曆格線 ──────────────────────────────────────
     _year, _month = TODAY.year, TODAY.month
     _first = date(_year, _month, 1)
     _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
 
-    # 週起點列表（週一為起點）
-    _weeks = []
-    _d = _first - timedelta(days=_first.weekday())
-    while _d <= _last:
-        _weeks.append(_d)
-        _d += timedelta(weeks=1)
-
-    day_names = ["一","二","三","四","五","六","日"]
-
-    fig_cal = go.Figure()
-
-    # 月曆底色格
-    for wi, wstart in enumerate(_weeks):
-        for di in range(7):
-            _day = wstart + timedelta(days=di)
-            _in_month = (_day.month == _month)
-            _is_weekend = (_day.weekday() >= 5)
-            _is_today = (_day == TODAY)
-            _bg = "#f8faff" if _in_month else "#f5f5f5"
-            if _is_weekend and _in_month: _bg = "#fff8f0"
-            if _is_today: _bg = "#e8f4ff"
-            fig_cal.add_shape(
-                type="rect", layer="below",
-                x0=di-0.5, x1=di+0.5, y0=-wi-0.48, y1=-wi+0.48,
-                fillcolor=_bg, line=dict(color="#dde8f3", width=0.5)
-            )
-            # 日期文字
-            day_color = "#c0392b" if _is_weekend else ("#2A9DF4" if _is_today else "#607080")
-            if _in_month:
-                fig_cal.add_annotation(
-                    x=di, y=-wi+0.38, text=f"{_day.day}",
-                    font=dict(size=11, color=day_color, family="Microsoft JhengHei"),
-                    showarrow=False, xanchor="center", yanchor="top"
-                )
-
-    # 工單事件點
-    _color_map = {"已齊料":"#16A085","完全缺料":"#E74C5B"}
-    _y_offsets = {}   # 同一天多張工單時垂直排列
+    # 每天的事件字典
+    _events = {}   # date → list of (label, color, tooltip)
+    _color_map = {"已齊料":"#16A085", "完全缺料":"#E74C5B"}
 
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
@@ -679,72 +643,72 @@ else:
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
         mfg     = int(r["製造天數"])
         color   = _color_map.get(status, "#d97706")
+        bg      = {"已齊料":"#e8faf5","完全缺料":"#fdecea"}.get(status,"#fff8ec")
 
-        # 繪製出貨日標記
+        # 出貨日標記
         if ship_d.month == _month:
-            _wk_i = (ship_d - _first).days // 7
-            _di   = ship_d.weekday()
-            _key  = (ship_d, "ship")
-            _off  = _y_offsets.get(_key, 0)
-            _y_offsets[_key] = _off + 1
-            fig_cal.add_trace(go.Scatter(
-                x=[_di], y=[-_wk_i + 0.15 - _off*0.18],
-                mode="markers+text",
-                marker=dict(size=10, color=color, symbol="diamond",
-                            line=dict(width=1, color="white")),
-                text=[f"🚢{wo[-6:]}"],
-                textposition="middle right",
-                textfont=dict(size=9, color=color),
-                name=f"出貨 {wo}",
-                hovertemplate=(f"<b>{wo}</b><br>出貨日：{ship_d.strftime('%m/%d')}<br>"
-                               f"料況：{status}<br>預計產量：{qty:,}<extra></extra>"),
-                showlegend=False,
-            ))
-
-        # 繪製預計開工日標記
+            tip = f"🚢 出貨｜{wo}｜{status}｜{qty:,}pcs"
+            _events.setdefault(ship_d, []).append(
+                (f'<span style="background:{bg};color:{color};border:1px solid {color};'
+                 f'border-radius:4px;padding:2px 7px;font-size:13px;font-weight:700;'
+                 f'display:inline-block;margin:1px" title="{tip}">🚢 {wo[-8:]}</span>', color)
+            )
+        # 預計開工日標記
         if start_d.month == _month:
-            _wk_i2 = (start_d - _first).days // 7
-            _di2   = start_d.weekday()
-            _key2  = (start_d, "start")
-            _off2  = _y_offsets.get(_key2, 0)
-            _y_offsets[_key2] = _off2 + 1
-            fig_cal.add_trace(go.Scatter(
-                x=[_di2], y=[-_wk_i2 + 0.15 - _off2*0.18],
-                mode="markers+text",
-                marker=dict(size=9, color=color, symbol="triangle-right",
-                            line=dict(width=1, color="white")),
-                text=[f"▶{wo[-6:]}"],
-                textposition="middle right",
-                textfont=dict(size=9, color=color),
-                name=f"開工 {wo}",
-                hovertemplate=(f"<b>{wo}</b><br>預計開工：{start_d.strftime('%m/%d')}<br>"
-                               f"製造天數：{mfg}天<br>"
-                               f"出貨日：{ship_d.strftime('%m/%d')}<extra></extra>"),
-                showlegend=False,
-            ))
+            tip2 = f"▶ 開工｜{wo}｜製造{mfg}天｜出貨{ship_d.strftime('%m/%d')}"
+            _events.setdefault(start_d, []).append(
+                (f'<span style="background:#f0f6ff;color:#2A9DF4;border:1px solid #B9DDF5;'
+                 f'border-radius:4px;padding:2px 7px;font-size:13px;font-weight:700;'
+                 f'display:inline-block;margin:1px" title="{tip2}">▶ {wo[-8:]}</span>', "#2A9DF4")
+            )
 
-    # 圖表設定
-    fig_cal.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(tickvals=list(range(7)), ticktext=day_names,
-                   tickfont=dict(size=13, color="#607080", family="Microsoft JhengHei"),
-                   showgrid=False, zeroline=False, range=[-0.5, 6.5]),
-        yaxis=dict(showgrid=False, showticklabels=False, zeroline=False,
-                   range=[-len(_weeks)+0.5, 0.55]),
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=max(240, len(_weeks)*90),
-        font=dict(family="Microsoft JhengHei"),
-    )
+    # ── HTML 月曆表格 ─────────────────────────────────────
+    day_names = ["一","二","三","四","五","六","日"]
+    th_style = ('style="background:#EEF2F7;color:#607080;font-size:15px;font-weight:700;'
+                'text-align:center;padding:10px 4px;border:1px solid #dde8f3"')
+    html = (f'<table style="width:100%;border-collapse:collapse;'
+            f'font-family:Microsoft JhengHei;table-layout:fixed">'
+            f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
 
-    st.plotly_chart(fig_cal, use_container_width=True,
-                    config=dict(staticPlot=False))
+    _d = _first - timedelta(days=_first.weekday())
+    while _d <= _last:
+        html += "<tr>"
+        for di in range(7):
+            day = _d + timedelta(days=di)
+            in_month  = (day.month == _month)
+            is_today  = (day == TODAY)
+            is_wknd   = (day.weekday() >= 5)
+            # 格子底色
+            if not in_month: cell_bg = "#f5f5f5"
+            elif is_today:   cell_bg = "#dbeafe"
+            elif is_wknd:    cell_bg = "#fff7ed"
+            else:            cell_bg = "#ffffff"
+            # 日期數字顏色
+            if not in_month:    num_c = "#cccccc"
+            elif is_wknd:       num_c = "#c0392b"
+            elif is_today:      num_c = "#1d4ed8"
+            else:               num_c = "#334155"
+            # 事件內容
+            evts = _events.get(day, []) if in_month else []
+            evt_html = "".join(e[0] for e in evts)
+            html += (
+                f'<td style="background:{cell_bg};border:1px solid #dde8f3;'
+                f'vertical-align:top;padding:6px 5px;min-height:100px;height:100px">'
+                f'<div style="font-size:15px;font-weight:700;color:{num_c};margin-bottom:4px">'
+                f'{day.day if in_month else ""}</div>'
+                f'<div style="line-height:1.8">{evt_html}</div>'
+                f'</td>'
+            )
+        html += "</tr>"
+        _d += timedelta(weeks=1)
+    html += "</table>"
+    st.markdown(html, unsafe_allow_html=True)
 
-    # 說明
     st.markdown(
-        '<div style="font-size:13px;color:#607080;margin-top:4px">'
-        '◆ 菱形 = 出貨日 &nbsp;｜&nbsp; ▶ 三角 = 預計開工日<br>'
-        f'計算公式：<b>預計開工日 = 出貨日 − 製造天數（產量÷{DAILY_CAP}pcs/天）− {IQC_WH_DAYS}天（IQC+倉庫）</b>'
-        '</div>',
+        f'<div style="font-size:13px;color:#607080;margin-top:8px">'
+        f'🚢 出貨日 &nbsp;｜&nbsp; ▶ 預計開工日（藍色）<br>'
+        f'公式：<b>開工日 = 出貨日 − 製造天數（產量÷{DAILY_CAP}pcs/天）− {IQC_WH_DAYS}天（IQC+倉庫）</b>'
+        f'</div>',
         unsafe_allow_html=True
     )
 
