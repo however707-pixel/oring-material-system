@@ -795,65 +795,87 @@ else:
             f'text-align:center;padding:10px 4px;border:1px solid #dde8f3">{d}</th>'
             for d in day_names) + '</tr>'
 
+        # 品名縮短：取有意義的機種碼（去除 # 及 9-XX- 前綴）
+        def _short_model(pno):
+            if not pno: return "—"
+            parts = pno.split('-')
+            # 格式 9-XX-MODEL####-VER_SUFFIX
+            if len(parts) >= 3:
+                model = parts[2].rstrip('#')          # 去尾部 #
+                suffix = parts[-1] if len(parts) > 3 else ""
+                return f"{model}-{suffix}" if suffix and suffix != model else model
+            return pno
+
         week_start = _first - timedelta(days=_first.weekday())
         while week_start <= _last:
             week_end = week_start + timedelta(days=6)
 
-            # 日期數字列
-            h += '<tr style="border-bottom:1px solid #e2e8f0">'
+            # ── 日期數字列 ────────────────────────────────
+            h += '<tr>'
             for di in range(7):
-                day  = week_start + timedelta(days=di)
-                in_m = (day.month == _month)
-                is_t = (day == TODAY)
-                is_w = (day.weekday() >= 5)
-                is_h = (day in TAIWAN_HOLIDAYS)   # 國定假日
-                is_off = is_w or is_h             # 非工作日
-                cbg  = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff0e6" if is_off else "#f8faff"))
-                nc   = "#ccc" if not in_m else ("#c0392b" if is_off else ("#1d4ed8" if is_t else "#334155"))
-                hday_lbl = f'<div style="font-size:10px;color:#c0392b;font-weight:600">假</div>' if is_h and in_m else ""
-                util = _util_bar(day) if in_m and not is_off else ""
-                h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
-                      f'padding:6px 6px 4px;vertical-align:top">'
-                      f'<div style="font-size:16px;font-weight:800;color:{nc}">'
-                      f'{day.day if in_m else ""}</div>{hday_lbl}{util}</td>')
+                day   = week_start + timedelta(days=di)
+                in_m  = (day.month == _month)
+                is_t  = (day == TODAY)
+                is_off= (day.weekday() >= 5) or (day in TAIWAN_HOLIDAYS)
+                is_h  = (day in TAIWAN_HOLIDAYS)
+                cbg   = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff0e6" if is_off else "#f9fbff"))
+                nc    = "#bbb" if not in_m else ("#c0392b" if is_off else ("#1d4ed8" if is_t else "#1e293b"))
+                off_tag = '<span style="font-size:10px;color:#c0392b;padding:1px 4px;'
+                off_tag += 'background:#fee;border-radius:3px;margin-left:2px">假</span>' if is_h and in_m else ""
+                util  = _util_bar(day) if in_m and not is_off else ""
+                h += (f'<td style="background:{cbg};border:1px solid #e8ecf0;padding:8px 8px 4px">'
+                      f'<div style="display:flex;align-items:center;margin-bottom:3px">'
+                      f'<span style="font-size:18px;font-weight:900;color:{nc}">'
+                      f'{day.day if in_m else ""}</span>{off_tag}</div>'
+                      f'{util}</td>')
             h += '</tr>'
 
-            # 每張工單一列（Gantt 橫條）
+            # ── Gantt 工單橫條 ────────────────────────────
             week_wos = [w for w in wo_records
                         if w["start"] <= week_end and w["last"] >= week_start]
             for wo in sorted(week_wos, key=lambda x: x["start"]):
                 eff_s = max(wo["start"], week_start)
                 eff_e = min(wo["last"],  week_end)
-                pre   = (eff_s - week_start).days          # 空格數（前）
-                span  = (eff_e - eff_s).days + 1            # 橫條格數
-                suf   = 7 - pre - span                      # 空格數（後）
-                is_first_week = (wo["start"] >= week_start)
-                is_last_week  = (wo["last"]  <= week_end)
-                warn = " ⚠️趕不上" if wo["late"] else ""
-                full_pno = wo["pno"] or "—"
-                if is_first_week:
-                    lbl_head = f'<b style="color:{wo["bc"]};font-size:13px">▶ 開工{warn}</b><br>'
-                else:
-                    lbl_head = f'<span style="color:{wo["bc"]};font-size:12px;opacity:0.8">→ 繼續</span><br>'
-                lbl_foot = f'<b style="color:{wo["bc"]};font-size:12px"> ✓完工</b>' if is_last_week else ''
-                label = (
-                    lbl_head +
-                    f'<span style="font-size:14px;font-weight:700;color:#1e293b;'
-                    f'word-break:break-all;line-height:1.4">{full_pno}</span><br>'
-                    f'<span style="font-size:13px;color:#555">'
-                    f'{int(wo["dr"]):,} pcs/天｜共 {wo["qty"]:,} pcs{lbl_foot}</span>'
+                pre   = (eff_s - week_start).days
+                span  = (eff_e - eff_s).days + 1
+                suf   = 7 - pre - span
+                is_fst= (wo["start"] >= week_start)
+                is_lst= (wo["last"]  <= week_end)
+                model = _short_model(wo["pno"])
+                bc, bg = wo["bc"], wo["bg"]
+                warn_tag = (' <span style="background:#E74C5B;color:#fff;font-size:10px;'
+                            'padding:1px 5px;border-radius:3px">⚠ 趕不上</span>'
+                            if wo["late"] else "")
+                # 標記
+                badge_l = (f'<span style="font-size:11px;font-weight:600;color:{bc};'
+                           f'opacity:0.9">{"▶ 開工" if is_fst else "→ 繼續"}{warn_tag}</span>')
+                badge_r = (f'<span style="font-size:11px;font-weight:600;color:{bc}">✓ 完工</span>'
+                           if is_lst else '')
+                bar_content = (
+                    f'<div style="display:flex;justify-content:space-between;'
+                    f'align-items:center;margin-bottom:3px">{badge_l}{badge_r}</div>'
+                    f'<div style="font-size:15px;font-weight:800;color:#1a2e4a;'
+                    f'letter-spacing:0.2px;line-height:1.3;word-break:break-all">{model}</div>'
+                    f'<div style="font-size:12px;color:#607080;margin-top:3px">'
+                    f'{int(wo["dr"]):,} pcs/天　共 <b style="color:#1a2e4a">{wo["qty"]:,}</b> pcs'
+                    f'　{wo["mfg"]}天</div>'
                 )
                 h += '<tr>'
                 if pre > 0:
-                    h += f'<td colspan="{pre}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
-                h += (f'<td colspan="{span}" style="background:{wo["bg"]};'
-                      f'border:2px solid {wo["bc"]};border-radius:5px;'
-                      f'padding:6px 10px;vertical-align:top;word-break:break-all">'
-                      f'{label}</td>')
+                    h += (f'<td colspan="{pre}" style="background:#f9fbff;'
+                          f'border:1px solid #e8ecf0"></td>')
+                h += (f'<td colspan="{span}" style="'
+                      f'background:linear-gradient(135deg,{bg},{bg}cc);'
+                      f'border:1.5px solid {bc};border-left:4px solid {bc};'
+                      f'border-radius:6px;padding:8px 12px;vertical-align:middle">'
+                      f'{bar_content}</td>')
                 if suf > 0:
-                    h += f'<td colspan="{suf}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
+                    h += (f'<td colspan="{suf}" style="background:#f9fbff;'
+                          f'border:1px solid #e8ecf0"></td>')
                 h += '</tr>'
-
+            # 週間隔
+            h += (f'<tr><td colspan="7" style="height:6px;background:#EEF2F7;'
+                  f'border:none"></td></tr>')
             week_start += timedelta(weeks=1)
 
         return h + "</table>"
