@@ -95,12 +95,29 @@ DAILY_CAP   = 200
 MIN_BUFFER  = 10
 
 TAIWAN_HOLIDAYS = {
-    date(2026,1,1), date(2026,1,2),
-    date(2026,2,16), date(2026,2,17), date(2026,2,18),
-    date(2026,2,19), date(2026,2,20),
-    date(2026,3,2),  date(2026,4,3),  date(2026,4,6),
-    date(2026,5,1),  date(2026,6,19), date(2026,9,25),
-    date(2026,10,9),
+    # ── 2026 台灣國定假日 ──────────────────────────────────
+    date(2026, 1, 1),   # 元旦
+    date(2026, 1, 2),   # 彈性放假
+    # 春節
+    date(2026, 2, 16),  # 除夕（彈性放假）
+    date(2026, 2, 17),  # 春節初一
+    date(2026, 2, 18),  # 春節初二
+    date(2026, 2, 19),  # 春節初三
+    date(2026, 2, 20),  # 春節初四
+    # 228（2/28週六，3/2週一補假）
+    date(2026, 3, 2),
+    # 兒童節（4/4週六，4/3週五補假）
+    date(2026, 4, 3),
+    # 清明節（4/5週日，4/6週一補假）
+    date(2026, 4, 6),
+    # 勞動節
+    date(2026, 5, 1),
+    # 端午節（農曆5/5 ≈ 6/19 週五）
+    date(2026, 6, 19),
+    # 中秋節（農曆8/15 ≈ 9/25 週五）
+    date(2026, 9, 25),
+    # 國慶日（10/10週六，10/9週五補假）
+    date(2026, 10, 9),
 }
 
 def count_workdays(start, end):
@@ -789,13 +806,16 @@ else:
                 in_m = (day.month == _month)
                 is_t = (day == TODAY)
                 is_w = (day.weekday() >= 5)
-                cbg  = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff7ed" if is_w else "#f8faff"))
-                nc   = "#ccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
-                util = _util_bar(day) if in_m and not is_w else ""
+                is_h = (day in TAIWAN_HOLIDAYS)   # 國定假日
+                is_off = is_w or is_h             # 非工作日
+                cbg  = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff0e6" if is_off else "#f8faff"))
+                nc   = "#ccc" if not in_m else ("#c0392b" if is_off else ("#1d4ed8" if is_t else "#334155"))
+                hday_lbl = f'<div style="font-size:10px;color:#c0392b;font-weight:600">假</div>' if is_h and in_m else ""
+                util = _util_bar(day) if in_m and not is_off else ""
                 h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
                       f'padding:6px 6px 4px;vertical-align:top">'
                       f'<div style="font-size:16px;font-weight:800;color:{nc}">'
-                      f'{day.day if in_m else ""}</div>{util}</td>')
+                      f'{day.day if in_m else ""}</div>{hday_lbl}{util}</td>')
             h += '</tr>'
 
             # 每張工單一列（Gantt 橫條）
