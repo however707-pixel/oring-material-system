@@ -637,6 +637,10 @@ else:
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
+        # 完工日 = 開工日 + 製造天數 工作天
+        mfg = int(r["製造天數"])
+        finish_d = workday_add(start_d, mfg)
+
         # 開工日 → 藍色（正常）或 紅色（趕不上出貨警示）
         if start_d.month == _month:
             if late:
@@ -645,10 +649,12 @@ else:
                 _bg, _bc, _lbl = "#e8f4fd","#2A9DF4","▶ 開工"
             _events.setdefault(start_d, []).append(
                 f'<div style="background:{_bg};border-left:3px solid {_bc};'
-                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.5">'
+                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.6">'
                 f'<b style="color:{_bc};font-size:13px">{_lbl}</b><br>'
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
-                f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
+                f'<span style="color:#888;font-size:14px">{qty:,} pcs｜{mfg}天</span><br>'
+                f'<span style="color:{_bc};font-size:13px">完工：{finish_d.strftime("%m/%d")}</span>'
+                f'</div>'
             )
 
     # ── HTML 月曆表格 ─────────────────────────────────────
