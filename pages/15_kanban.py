@@ -596,14 +596,14 @@ def workday_subtract(d, n_days):
             cur -= timedelta(days=1)
     return cur
 
-# 篩選本月有出貨日的工單（出貨日為 date 物件，用 apply 比較）
+# 篩選本月有出貨日的工單（用 exp_df 避免多出貨日加總，不 drop_duplicates）
 def _is_this_month(v):
     try: return pd.notna(v) and v.year == TODAY.year and v.month == TODAY.month
     except: return False
 
-_this_month = df[
-    df["出貨日"].apply(_is_this_month)
-].drop_duplicates("工單").copy()
+_this_month = exp_df[
+    exp_df["出貨日"].apply(_is_this_month)
+].copy()   # 不 drop_duplicates：同工單不同出貨日各自計算
 
 # 計算製造天數 = ceil(預計產量 / 日產能)
 def _mfg_days(qty):
