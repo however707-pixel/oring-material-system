@@ -617,9 +617,9 @@ else:
     _first = date(_year, _month, 1)
     _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
 
-    # 每天的事件：開工日 & 出貨日
-    _events = {}   # date → list of html strings
-    _color_map = {"已齊料":"#16A085", "完全缺料":"#E74C5B"}
+    # 分別收集開工事件 & 出貨事件
+    _ev_start = {}   # 開工月曆
+    _ev_ship  = {}   # 出貨月曆
 
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
@@ -627,37 +627,35 @@ else:
         late    = bool(r.get("趕不上", False))
         pno     = str(r.get("成品料號","")).strip()
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
+        mfg     = int(r["製造天數"])
+        finish_d = workday_add(start_d, mfg)
 
-        # 出貨日 → 黃橙色
+        # 出貨月曆
         if ship_d.month == _month:
-            _events.setdefault(ship_d, []).append(
+            _ev_ship.setdefault(ship_d, []).append(
                 f'<div style="background:#fff3cd;border-left:3px solid #d97706;'
                 f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.5">'
-                f'<b style="color:#d97706;font-size:13px">🚢 出貨</b><br>'
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
-        # 完工日 = 開工日 + 製造天數 工作天
-        mfg = int(r["製造天數"])
-        finish_d = workday_add(start_d, mfg)
-
-        # 開工日 → 藍色（正常）或 紅色（趕不上出貨警示）
+        # 開工月曆
         if start_d.month == _month:
             if late:
-                _bg, _bc, _lbl = "#fdecea","#E74C5B","⚠️ 開工（趕不上）"
+                _bg, _bc = "#fdecea","#E74C5B"
+                warn = "⚠️ 趕不上出貨"
             else:
-                _bg, _bc, _lbl = "#e8f4fd","#2A9DF4","▶ 開工"
-            _events.setdefault(start_d, []).append(
+                _bg, _bc = "#e8f4fd","#2A9DF4"
+                warn = ""
+            _ev_start.setdefault(start_d, []).append(
                 f'<div style="background:{_bg};border-left:3px solid {_bc};'
                 f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.6">'
-                f'<b style="color:{_bc};font-size:13px">{_lbl}</b><br>'
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs｜{mfg}天</span><br>'
-                f'<span style="color:{_bc};font-size:13px">完工：{finish_d.strftime("%m/%d")}</span>'
-                f'</div>'
+                f'<span style="color:{_bc};font-size:13px">完工：{finish_d.strftime("%m/%d")}'
+                f'{" "+warn if warn else ""}</span></div>'
             )
 
-    # ── HTML 月曆表格 ─────────────────────────────────────
+    # ── HTML 月曆產生函式 ─────────────────────────────────────
     day_names = ["一","二","三","四","五","六","日"]
     th_style = ('style="background:#EEF2F7;color:#607080;font-size:15px;font-weight:700;'
                 'text-align:center;padding:10px 4px;border:1px solid #dde8f3"')
@@ -665,41 +663,44 @@ else:
             f'font-family:Microsoft JhengHei;table-layout:fixed">'
             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
 
-    _d = _first - timedelta(days=_first.weekday())
-    while _d <= _last:
-        html += "<tr>"
-        for di in range(7):
-            day = _d + timedelta(days=di)
-            in_month = (day.month == _month)
-            is_today = (day == TODAY)
-            is_wknd  = (day.weekday() >= 5)
-            if not in_month: cell_bg = "#f8f8f8"
-            elif is_today:   cell_bg = "#dbeafe"
-            elif is_wknd:    cell_bg = "#fff7ed"
-            else:            cell_bg = "#ffffff"
-            num_c = "#cccccc" if not in_month else ("#c0392b" if is_wknd else ("#1d4ed8" if is_today else "#334155"))
-            evts  = _events.get(day, []) if in_month else []
-            evt_html = "".join(evts)
-            html += (
-                f'<td style="background:{cell_bg};border:1px solid #e2e8f0;'
-                f'vertical-align:top;padding:8px 6px;min-height:120px">'
-                f'<div style="font-size:16px;font-weight:800;color:{num_c};margin-bottom:6px">'
-                f'{day.day if in_month else ""}</div>'
-                f'{evt_html}'
-                f'</td>'
-            )
-        html += "</tr>"
-        _d += timedelta(weeks=1)
-    html += "</table>"
-    st.markdown(html, unsafe_allow_html=True)
+    def _build_cal(events_dict):
+        """依 events_dict 建立月曆 HTML"""
+        h = (f'<table style="width:100%;border-collapse:collapse;'
+             f'font-family:Microsoft JhengHei;table-layout:fixed">'
+             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
+        d = _first - timedelta(days=_first.weekday())
+        while d <= _last:
+            h += "<tr>"
+            for di in range(7):
+                day = d + timedelta(days=di)
+                in_m = (day.month == _month)
+                is_t = (day == TODAY)
+                is_w = (day.weekday() >= 5)
+                cbg  = "#f8f8f8" if not in_m else ("#dbeafe" if is_t else ("#fff7ed" if is_w else "#ffffff"))
+                nc   = "#cccccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
+                evts = events_dict.get(day, []) if in_m else []
+                h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
+                      f'vertical-align:top;padding:8px 6px;min-height:120px">'
+                      f'<div style="font-size:16px;font-weight:800;color:{nc};margin-bottom:6px">'
+                      f'{day.day if in_m else ""}</div>' + "".join(evts) + '</td>')
+            h += "</tr>"
+            d += timedelta(weeks=1)
+        return h + "</table>"
 
-    st.markdown(
-        f'<div style="font-size:13px;color:#607080;margin-top:10px">'
-        f'🚢 <b>出貨日</b>（黃）&nbsp;｜&nbsp;'
-        f'▶ <b>開工日</b>（藍）= 齊料日 +1 工作天 &nbsp;｜&nbsp;'
-        f'⚠️ <b>趕不上</b>（紅）= 齊料太晚，來不及出貨<br>'
-        f'製造天數 = ⌈產量 ÷ {DAILY_CAP} pcs/天⌉ &nbsp;｜&nbsp; IQC+倉庫緩衝 = {IQC_WH_DAYS} 工作天'
-        f'</div>',
+    tab_start, tab_ship = st.tabs(["▶ 開工排程", "🚢 出貨排程"])
+    with tab_start:
+        st.markdown(_build_cal(_ev_start), unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="font-size:13px;color:#607080;margin-top:8px">'
+            f'藍色 = 正常開工｜紅色 = 齊料太晚趕不上出貨<br>'
+            f'開工日 = 齊料日+1工作天，完工日 = 開工日+製造天數（{DAILY_CAP}pcs/天，9084品項150pcs/天）'
+            f'</div>', unsafe_allow_html=True)
+    with tab_ship:
+        st.markdown(_build_cal(_ev_ship), unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="font-size:13px;color:#607080;margin-top:8px">'
+            f'出貨日｜IQC+倉庫緩衝 = {IQC_WH_DAYS} 工作天'
+            f'</div>',
         unsafe_allow_html=True
     )
 
