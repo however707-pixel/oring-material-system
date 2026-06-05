@@ -617,15 +617,22 @@ else:
     _first = date(_year, _month, 1)
     _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
 
-    # 分別收集開工事件 & 出貨事件，同時累積每日負荷
-    _ev_start  = {}   # 開工月曆
-    _ev_ship   = {}   # 出貨月曆
-    _daily_pcs = {}   # date → 當天排入的pcs（分攤）
+    # 出貨月曆事件
+    _ev_ship   = {}
+    # 開工月曆：每天顯示「當天正在生產的所有工單」（跨越整個生產期）
+    _ev_start  = {}   # date → list of html
+    _daily_pcs = {}   # date → 當天總pcs
 
     def _daily_cap_for(pno_str):
         for k, c in SPECIAL_CAP.items():
             if k in pno_str: return c
         return DAILY_CAP
+
+    def _next_workday(d):
+        d2 = d + timedelta(days=1)
+        while d2.weekday() >= 5 or d2 in TAIWAN_HOLIDAYS:
+            d2 += timedelta(days=1)
+        return d2
 
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
@@ -635,6 +642,7 @@ else:
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
         mfg     = int(r["製造天數"])
         finish_d = workday_add(start_d, mfg)
+        daily_rate = qty / mfg if mfg > 0 else 0
 
         # 出貨月曆
         if ship_d.month == _month:
@@ -644,33 +652,28 @@ else:
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
-        # 開工月曆 + 累積每日負荷
-        if start_d.month == _month:
-            if late:
-                _bg, _bc = "#fdecea","#E74C5B"
-                warn = "⚠️ 趕不上出貨"
-            else:
-                _bg, _bc = "#e8f4fd","#2A9DF4"
-                warn = ""
-            _ev_start.setdefault(start_d, []).append(
-                f'<div style="background:{_bg};border-left:3px solid {_bc};'
-                f'border-radius:3px;padding:4px 6px;margin-bottom:4px;line-height:1.6">'
-                f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
-                f'<span style="color:#888;font-size:14px">{qty:,} pcs｜{mfg}天</span><br>'
-                f'<span style="color:{_bc};font-size:13px">完工：{finish_d.strftime("%m/%d")}'
-                f'{" "+warn if warn else ""}</span></div>'
-            )
-        # 累積每日負荷：把產量均分到每個生產工作天
-        dcap = _daily_cap_for(pno)
-        daily_rate = qty / mfg if mfg > 0 else 0
+
+        # 開工月曆：遍歷每個生產工作天，把工單加到該天的顯示中
+        _bc = "#E74C5B" if late else "#2A9DF4"
+        _bg = "#fdecea" if late else "#e8f4fd"
+        warn_txt = " ⚠️" if late else ""
         _d_ptr = start_d
         for _di in range(mfg):
             _daily_pcs[_d_ptr] = _daily_pcs.get(_d_ptr, 0) + daily_rate
-            # 下一個工作天
-            _d_ptr2 = _d_ptr + timedelta(days=1)
-            while _d_ptr2.weekday() >= 5 or _d_ptr2 in TAIWAN_HOLIDAYS:
-                _d_ptr2 += timedelta(days=1)
-            _d_ptr = _d_ptr2
+            if _d_ptr.month == _month:
+                is_first = (_di == 0)
+                is_last  = (_di == mfg - 1)
+                prefix   = f'▶ 開工{warn_txt} ' if is_first else ""
+                suffix   = f'<span style="color:{_bc};font-size:12px"> ✓完工</span>' if is_last else ""
+                _ev_start.setdefault(_d_ptr, []).append(
+                    f'<div style="background:{_bg};border-left:3px solid {_bc};'
+                    f'border-radius:3px;padding:3px 6px;margin-bottom:3px;line-height:1.5">'
+                    f'{"<b style=color:"+_bc+">"+prefix+"</b>" if prefix else ""}'
+                    f'<span style="color:#333;font-size:14px;font-weight:600">{pno or "—"}</span><br>'
+                    f'<span style="color:#888;font-size:13px">{int(daily_rate):,}pcs/天</span>'
+                    f'{suffix}</div>'
+                )
+            _d_ptr = _next_workday(_d_ptr)
 
     # ── HTML 月曆產生函式 ─────────────────────────────────────
     day_names = ["一","二","三","四","五","六","日"]
