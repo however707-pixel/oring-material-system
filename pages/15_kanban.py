@@ -708,8 +708,8 @@ else:
             f'font-family:Microsoft JhengHei;table-layout:fixed">'
             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
 
-    def _build_cal(events_dict):
-        """依 events_dict 建立月曆 HTML"""
+    # ── 出貨月曆（格子式）────────────────────────────────────
+    def _build_ship_cal(events_dict):
         h = (f'<table style="width:100%;border-collapse:collapse;'
              f'font-family:Microsoft JhengHei;table-layout:fixed">'
              f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
@@ -725,20 +725,19 @@ else:
                 nc   = "#cccccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
                 evts = events_dict.get(day, []) if in_m else []
                 h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
-                      f'vertical-align:top;padding:8px 6px;min-height:120px">'
+                      f'vertical-align:top;padding:8px 6px;min-height:100px">'
                       f'<div style="font-size:16px;font-weight:800;color:{nc};margin-bottom:6px">'
                       f'{day.day if in_m else ""}</div>' + "".join(evts) + '</td>')
             h += "</tr>"
             d += timedelta(weeks=1)
         return h + "</table>"
 
-    # ── 稼動率月曆：在開工月曆格子頂端加稼動率色條 ──────────
+    # ── 稼動率色條 ─────────────────────────────────────────
     def _util_bar(day):
-        """回傳稼動率 HTML 色條（實際百分比，可超過100%）"""
         pcs = _daily_pcs.get(day, 0)
         if pcs == 0: return ""
-        pct_real = pcs / DAILY_CAP * 100      # 實際百分比，可 >100%
-        bar_w    = min(100, pct_real)          # 色條寬度最多100%（視覺）
+        pct_real = pcs / DAILY_CAP * 100
+        bar_w    = min(100, pct_real)
         if pct_real >= 120:  bar_c, lbl = "#E74C5B", f"🔴 {int(pct_real)}%（超載）"
         elif pct_real >= 100: bar_c, lbl = "#f97316", f"🟠 {int(pct_real)}%（滿載）"
         elif pct_real >= 80:  bar_c, lbl = "#d97706", f"🟡 {int(pct_real)}%"
@@ -746,33 +745,92 @@ else:
         return (f'<div style="background:#eee;border-radius:3px;height:7px;'
                 f'margin-bottom:3px;overflow:hidden">'
                 f'<div style="width:{bar_w:.0f}%;height:100%;background:{bar_c}"></div></div>'
-                f'<div style="font-size:11px;color:{bar_c};font-weight:700;'
-                f'margin-bottom:4px">{lbl} / {int(pcs)}pcs</div>')
+                f'<div style="font-size:11px;color:{bar_c};font-weight:700;margin-bottom:4px">'
+                f'{lbl} / {int(pcs)}pcs</div>')
 
-    def _build_cal_util(events_dict):
-        """月曆：格子頂端加稼動率色條"""
+    # ── Gantt 橫條月曆：每張工單是一條連續長方形 ──────────────
+    def _build_gantt_cal():
+        """Gantt式月曆：工單跨幾天就顯示一條連續橫條"""
+        # 先算每張工單的最後生產日（start + mfg-1 working days）
+        wo_records = []
+        for _, r in _this_month.iterrows():
+            s    = r["預計開工日"]
+            mfg  = int(r["製造天數"])
+            late = bool(r.get("趕不上", False))
+            pno  = str(r.get("成品料號","")).strip()
+            qty  = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
+            dr   = qty / mfg if mfg > 0 else 0
+            # 最後生產日
+            last = s
+            for _ in range(mfg - 1):
+                last = _next_workday(last)
+            bc = "#E74C5B" if late else "#2A9DF4"
+            bg = "#fca5a5" if late else "#bfdbfe"
+            wo_records.append(dict(start=s, last=last, mfg=mfg, pno=pno,
+                                   qty=qty, dr=dr, bc=bc, bg=bg, late=late))
+
         h = (f'<table style="width:100%;border-collapse:collapse;'
-             f'font-family:Microsoft JhengHei;table-layout:fixed">'
-             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
-        d = _first - timedelta(days=_first.weekday())
-        while d <= _last:
-            h += "<tr>"
+             f'font-family:Microsoft JhengHei;table-layout:fixed;border:1px solid #e2e8f0">')
+
+        # 表頭
+        h += '<tr>' + "".join(
+            f'<th style="background:#EEF2F7;color:#607080;font-size:15px;font-weight:700;'
+            f'text-align:center;padding:10px 4px;border:1px solid #dde8f3">{d}</th>'
+            for d in day_names) + '</tr>'
+
+        week_start = _first - timedelta(days=_first.weekday())
+        while week_start <= _last:
+            week_end = week_start + timedelta(days=6)
+
+            # 日期數字列
+            h += '<tr style="border-bottom:1px solid #e2e8f0">'
             for di in range(7):
-                day = d + timedelta(days=di)
+                day  = week_start + timedelta(days=di)
                 in_m = (day.month == _month)
                 is_t = (day == TODAY)
                 is_w = (day.weekday() >= 5)
-                cbg  = "#f8f8f8" if not in_m else ("#dbeafe" if is_t else ("#fff7ed" if is_w else "#ffffff"))
-                nc   = "#cccccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
-                evts = events_dict.get(day, []) if in_m else []
+                cbg  = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff7ed" if is_w else "#f8faff"))
+                nc   = "#ccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
                 util = _util_bar(day) if in_m and not is_w else ""
                 h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
-                      f'vertical-align:top;padding:8px 6px;min-height:120px">'
-                      f'<div style="font-size:16px;font-weight:800;color:{nc};margin-bottom:4px">'
-                      f'{day.day if in_m else ""}</div>'
-                      + util + "".join(evts) + '</td>')
-            h += "</tr>"
-            d += timedelta(weeks=1)
+                      f'padding:6px 6px 4px;vertical-align:top">'
+                      f'<div style="font-size:16px;font-weight:800;color:{nc}">'
+                      f'{day.day if in_m else ""}</div>{util}</td>')
+            h += '</tr>'
+
+            # 每張工單一列（Gantt 橫條）
+            week_wos = [w for w in wo_records
+                        if w["start"] <= week_end and w["last"] >= week_start]
+            for wo in sorted(week_wos, key=lambda x: x["start"]):
+                eff_s = max(wo["start"], week_start)
+                eff_e = min(wo["last"],  week_end)
+                pre   = (eff_s - week_start).days          # 空格數（前）
+                span  = (eff_e - eff_s).days + 1            # 橫條格數
+                suf   = 7 - pre - span                      # 空格數（後）
+                is_first_week = (wo["start"] >= week_start)
+                is_last_week  = (wo["last"]  <= week_end)
+                warn = " ⚠️趕不上" if wo["late"] else ""
+                short_p = wo["pno"][-20:] if len(wo["pno"]) > 20 else wo["pno"]
+                label = (
+                    (f'<b style="font-size:14px">▶ 開工{warn}</b> ' if is_first_week else
+                     f'<span style="font-size:13px;opacity:0.7">→ 繼續</span> ') +
+                    f'<span style="font-size:15px;font-weight:700">{short_p}</span> ' +
+                    f'<span style="font-size:13px;color:#555">{int(wo["dr"]):,}pcs/天 | 共{wo["qty"]:,}pcs</span>' +
+                    (f' <b style="font-size:13px">✓完工</b>' if is_last_week else '')
+                )
+                h += '<tr>'
+                if pre > 0:
+                    h += f'<td colspan="{pre}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
+                h += (f'<td colspan="{span}" style="background:{wo["bg"]};'
+                      f'border:2px solid {wo["bc"]};border-radius:5px;'
+                      f'padding:5px 10px;white-space:nowrap;overflow:hidden">'
+                      f'{label}</td>')
+                if suf > 0:
+                    h += f'<td colspan="{suf}" style="border:1px solid #e2e8f0;background:#fafafa"></td>'
+                h += '</tr>'
+
+            week_start += timedelta(weeks=1)
+
         return h + "</table>"
 
     # ── 週/月稼動率彙整表 ──────────────────────────────────
@@ -823,15 +881,15 @@ else:
             + _week_util_rows() + '</table>',
             unsafe_allow_html=True
         )
-        # 月曆（含稼動率色條）
-        st.markdown(_build_cal_util(_ev_start), unsafe_allow_html=True)
+        # Gantt 橫條月曆
+        st.markdown(_build_gantt_cal(), unsafe_allow_html=True)
         st.markdown(
             f'<div style="font-size:13px;color:#607080;margin-top:8px">'
             f'🟢&lt;80% 正常｜🟡 80~99% 接近滿載｜🔴≥100% 超載<br>'
             f'稼動率 = 當日排程產量 ÷ {DAILY_CAP} pcs（9084品項 150 pcs/天）'
             f'</div>', unsafe_allow_html=True)
     with tab_ship:
-        st.markdown(_build_cal(_ev_ship), unsafe_allow_html=True)
+        st.markdown(_build_ship_cal(_ev_ship), unsafe_allow_html=True)
         st.markdown(
             f'<div style="font-size:13px;color:#607080;margin-top:8px">'
             f'出貨日｜IQC+倉庫緩衝 = {IQC_WH_DAYS} 工作天'
