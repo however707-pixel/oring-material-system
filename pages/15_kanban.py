@@ -613,7 +613,23 @@ def _mfg_days(qty):
     except Exception:
         return 1
 
-_this_month["製造天數"] = _this_month["預計產量"].apply(_mfg_days)
+SPECIAL_CAP = {"9048": 150}   # 品名含特定字串時的日產能
+
+def _mfg_days_by_pno(row):
+    qty = row.get("預計產量", 0)
+    pno = str(row.get("成品料號", ""))
+    # 特殊品項日產能
+    cap = DAILY_CAP
+    for keyword, special_cap in SPECIAL_CAP.items():
+        if keyword in pno:
+            cap = special_cap
+            break
+    try:
+        return max(1, math.ceil(float(qty) / cap))
+    except Exception:
+        return 1
+
+_this_month["製造天數"] = _this_month.apply(_mfg_days_by_pno, axis=1)
 
 def _to_date(v):
     if hasattr(v, 'date'): return v.date()
