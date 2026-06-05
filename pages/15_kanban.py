@@ -171,7 +171,7 @@ def parse_file(path):
             qi_date=parse_date_str(f'{m.group(1)}/{m.group(2)}') if m else TODAY
         if rate>=1.0 or hint_qi: mat_status='已齊料'; qi_date=qi_date or TODAY
         elif rate==0.0: mat_status='完全缺料'
-        else: mat_status=f'缺料 {rate:.0%}'
+        else: mat_status=f'齊料 {rate:.0%}'
         if ship_date:
             wdays_to_ship=count_workdays(TODAY-timedelta(days=1),ship_date)
             is_urgent=(wdays_to_ship<=10)
