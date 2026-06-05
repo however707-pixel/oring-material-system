@@ -631,35 +631,35 @@ else:
     _first = date(_year, _month, 1)
     _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
 
-    # 每天的事件字典
-    _events = {}   # date → list of (label, color, tooltip)
+    # 每天的事件：開工日 & 出貨日
+    _events = {}   # date → list of html strings
     _color_map = {"已齊料":"#16A085", "完全缺料":"#E74C5B"}
 
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
         start_d = r["預計開工日"]
         wo      = r["工單"]
+        pno     = str(r.get("成品料號","")).strip()
         status  = r["料況狀態"]
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
-        mfg     = int(r["製造天數"])
         color   = _color_map.get(status, "#d97706")
-        bg      = {"已齊料":"#e8faf5","完全缺料":"#fdecea"}.get(status,"#fff8ec")
+        short_pno = pno[-12:] if pno else wo[-8:]
 
-        # 出貨日標記
+        # 出貨日
         if ship_d.month == _month:
-            tip = f"🚢 出貨｜{wo}｜{status}｜{qty:,}pcs"
             _events.setdefault(ship_d, []).append(
-                (f'<span style="background:{bg};color:{color};border:1px solid {color};'
-                 f'border-radius:4px;padding:2px 7px;font-size:13px;font-weight:700;'
-                 f'display:inline-block;margin:1px" title="{tip}">🚢 {wo[-8:]}</span>', color)
+                f'<div style="background:#fff3cd;border-left:3px solid #d97706;'
+                f'border-radius:3px;padding:3px 5px;margin-bottom:3px;font-size:14px;line-height:1.4">'
+                f'<b style="color:#d97706">出貨</b> {short_pno}<br>'
+                f'<span style="color:#555;font-size:13px">{qty:,} pcs</span></div>'
             )
-        # 預計開工日標記
+        # 預計開工日
         if start_d.month == _month:
-            tip2 = f"▶ 開工｜{wo}｜製造{mfg}天｜出貨{ship_d.strftime('%m/%d')}"
             _events.setdefault(start_d, []).append(
-                (f'<span style="background:#f0f6ff;color:#2A9DF4;border:1px solid #B9DDF5;'
-                 f'border-radius:4px;padding:2px 7px;font-size:13px;font-weight:700;'
-                 f'display:inline-block;margin:1px" title="{tip2}">▶ {wo[-8:]}</span>', "#2A9DF4")
+                f'<div style="background:#e8f4fd;border-left:3px solid #2A9DF4;'
+                f'border-radius:3px;padding:3px 5px;margin-bottom:3px;font-size:14px;line-height:1.4">'
+                f'<b style="color:#2A9DF4">開工</b> {short_pno}<br>'
+                f'<span style="color:#555;font-size:13px">{qty:,} pcs</span></div>'
             )
 
     # ── HTML 月曆表格 ─────────────────────────────────────
@@ -675,28 +675,22 @@ else:
         html += "<tr>"
         for di in range(7):
             day = _d + timedelta(days=di)
-            in_month  = (day.month == _month)
-            is_today  = (day == TODAY)
-            is_wknd   = (day.weekday() >= 5)
-            # 格子底色
-            if not in_month: cell_bg = "#f5f5f5"
+            in_month = (day.month == _month)
+            is_today = (day == TODAY)
+            is_wknd  = (day.weekday() >= 5)
+            if not in_month: cell_bg = "#f8f8f8"
             elif is_today:   cell_bg = "#dbeafe"
             elif is_wknd:    cell_bg = "#fff7ed"
             else:            cell_bg = "#ffffff"
-            # 日期數字顏色
-            if not in_month:    num_c = "#cccccc"
-            elif is_wknd:       num_c = "#c0392b"
-            elif is_today:      num_c = "#1d4ed8"
-            else:               num_c = "#334155"
-            # 事件內容
-            evts = _events.get(day, []) if in_month else []
-            evt_html = "".join(e[0] for e in evts)
+            num_c = "#cccccc" if not in_month else ("#c0392b" if is_wknd else ("#1d4ed8" if is_today else "#334155"))
+            evts  = _events.get(day, []) if in_month else []
+            evt_html = "".join(evts)
             html += (
-                f'<td style="background:{cell_bg};border:1px solid #dde8f3;'
-                f'vertical-align:top;padding:6px 5px;min-height:100px;height:100px">'
-                f'<div style="font-size:15px;font-weight:700;color:{num_c};margin-bottom:4px">'
+                f'<td style="background:{cell_bg};border:1px solid #e2e8f0;'
+                f'vertical-align:top;padding:8px 6px;min-height:120px">'
+                f'<div style="font-size:16px;font-weight:800;color:{num_c};margin-bottom:6px">'
                 f'{day.day if in_month else ""}</div>'
-                f'<div style="line-height:1.8">{evt_html}</div>'
+                f'{evt_html}'
                 f'</td>'
             )
         html += "</tr>"
