@@ -706,19 +706,20 @@ else:
 
     # ── 稼動率月曆：在開工月曆格子頂端加稼動率色條 ──────────
     def _util_bar(day):
-        """回傳稼動率 HTML 色條（嵌入格子最頂端）"""
+        """回傳稼動率 HTML 色條（實際百分比，可超過100%）"""
         pcs = _daily_pcs.get(day, 0)
         if pcs == 0: return ""
-        rate = pcs / DAILY_CAP   # 以預設200為分母顯示
-        pct  = min(100, int(rate * 100))
-        if pct >= 100: bar_c = "#E74C5B"
-        elif pct >= 80: bar_c = "#d97706"
-        else:           bar_c = "#16A085"
+        pct_real = pcs / DAILY_CAP * 100      # 實際百分比，可 >100%
+        bar_w    = min(100, pct_real)          # 色條寬度最多100%（視覺）
+        if pct_real >= 120:  bar_c, lbl = "#E74C5B", f"🔴 {int(pct_real)}%（超載）"
+        elif pct_real >= 100: bar_c, lbl = "#f97316", f"🟠 {int(pct_real)}%（滿載）"
+        elif pct_real >= 80:  bar_c, lbl = "#d97706", f"🟡 {int(pct_real)}%"
+        else:                 bar_c, lbl = "#16A085", f"🟢 {int(pct_real)}%"
         return (f'<div style="background:#eee;border-radius:3px;height:7px;'
-                f'margin-bottom:5px;overflow:hidden">'
-                f'<div style="width:{pct}%;height:100%;background:{bar_c}"></div></div>'
+                f'margin-bottom:3px;overflow:hidden">'
+                f'<div style="width:{bar_w:.0f}%;height:100%;background:{bar_c}"></div></div>'
                 f'<div style="font-size:11px;color:{bar_c};font-weight:700;'
-                f'margin-bottom:4px;text-align:right">{pct}% ({int(pcs)}pcs)</div>')
+                f'margin-bottom:4px">{lbl} / {int(pcs)}pcs</div>')
 
     def _build_cal_util(events_dict):
         """月曆：格子頂端加稼動率色條"""
