@@ -617,9 +617,15 @@ else:
     _first = date(_year, _month, 1)
     _last  = date(_year, _month, _cal.monthrange(_year, _month)[1])
 
-    # 分別收集開工事件 & 出貨事件
-    _ev_start = {}   # 開工月曆
-    _ev_ship  = {}   # 出貨月曆
+    # 分別收集開工事件 & 出貨事件，同時累積每日負荷
+    _ev_start  = {}   # 開工月曆
+    _ev_ship   = {}   # 出貨月曆
+    _daily_pcs = {}   # date → 當天排入的pcs（分攤）
+
+    def _daily_cap_for(pno_str):
+        for k, c in SPECIAL_CAP.items():
+            if k in pno_str: return c
+        return DAILY_CAP
 
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
@@ -638,7 +644,7 @@ else:
                 f'<span style="color:#333;font-size:15px;font-weight:600">{pno or "—"}</span><br>'
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
-        # 開工月曆
+        # 開工月曆 + 累積每日負荷
         if start_d.month == _month:
             if late:
                 _bg, _bc = "#fdecea","#E74C5B"
@@ -654,6 +660,17 @@ else:
                 f'<span style="color:{_bc};font-size:13px">完工：{finish_d.strftime("%m/%d")}'
                 f'{" "+warn if warn else ""}</span></div>'
             )
+        # 累積每日負荷：把產量均分到每個生產工作天
+        dcap = _daily_cap_for(pno)
+        daily_rate = qty / mfg if mfg > 0 else 0
+        _d_ptr = start_d
+        for _di in range(mfg):
+            _daily_pcs[_d_ptr] = _daily_pcs.get(_d_ptr, 0) + daily_rate
+            # 下一個工作天
+            _d_ptr2 = _d_ptr + timedelta(days=1)
+            while _d_ptr2.weekday() >= 5 or _d_ptr2 in TAIWAN_HOLIDAYS:
+                _d_ptr2 += timedelta(days=1)
+            _d_ptr = _d_ptr2
 
     # ── HTML 月曆產生函式 ─────────────────────────────────────
     day_names = ["一","二","三","四","五","六","日"]
@@ -687,13 +704,102 @@ else:
             d += timedelta(weeks=1)
         return h + "</table>"
 
+    # ── 稼動率月曆：在開工月曆格子頂端加稼動率色條 ──────────
+    def _util_bar(day):
+        """回傳稼動率 HTML 色條（嵌入格子最頂端）"""
+        pcs = _daily_pcs.get(day, 0)
+        if pcs == 0: return ""
+        rate = pcs / DAILY_CAP   # 以預設200為分母顯示
+        pct  = min(100, int(rate * 100))
+        if pct >= 100: bar_c = "#E74C5B"
+        elif pct >= 80: bar_c = "#d97706"
+        else:           bar_c = "#16A085"
+        return (f'<div style="background:#eee;border-radius:3px;height:7px;'
+                f'margin-bottom:5px;overflow:hidden">'
+                f'<div style="width:{pct}%;height:100%;background:{bar_c}"></div></div>'
+                f'<div style="font-size:11px;color:{bar_c};font-weight:700;'
+                f'margin-bottom:4px;text-align:right">{pct}% ({int(pcs)}pcs)</div>')
+
+    def _build_cal_util(events_dict):
+        """月曆：格子頂端加稼動率色條"""
+        h = (f'<table style="width:100%;border-collapse:collapse;'
+             f'font-family:Microsoft JhengHei;table-layout:fixed">'
+             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
+        d = _first - timedelta(days=_first.weekday())
+        while d <= _last:
+            h += "<tr>"
+            for di in range(7):
+                day = d + timedelta(days=di)
+                in_m = (day.month == _month)
+                is_t = (day == TODAY)
+                is_w = (day.weekday() >= 5)
+                cbg  = "#f8f8f8" if not in_m else ("#dbeafe" if is_t else ("#fff7ed" if is_w else "#ffffff"))
+                nc   = "#cccccc" if not in_m else ("#c0392b" if is_w else ("#1d4ed8" if is_t else "#334155"))
+                evts = events_dict.get(day, []) if in_m else []
+                util = _util_bar(day) if in_m and not is_w else ""
+                h += (f'<td style="background:{cbg};border:1px solid #e2e8f0;'
+                      f'vertical-align:top;padding:8px 6px;min-height:120px">'
+                      f'<div style="font-size:16px;font-weight:800;color:{nc};margin-bottom:4px">'
+                      f'{day.day if in_m else ""}</div>'
+                      + util + "".join(evts) + '</td>')
+            h += "</tr>"
+            d += timedelta(weeks=1)
+        return h + "</table>"
+
+    # ── 週/月稼動率彙整表 ──────────────────────────────────
+    def _week_util_rows():
+        rows_html = ""
+        d = _first - timedelta(days=_first.weekday())
+        _mo_pcs = 0; _mo_cap = 0
+        while d.month <= _month:
+            wend = d + timedelta(days=4)
+            w_pcs = sum(_daily_pcs.get(d+timedelta(days=i), 0) for i in range(5)
+                        if (d+timedelta(days=i)).month == _month)
+            w_wd  = sum(1 for i in range(5)
+                        if (d+timedelta(days=i)).month == _month
+                        and (d+timedelta(days=i)).weekday() < 5)
+            w_cap  = w_wd * DAILY_CAP
+            w_rate = int(w_pcs / w_cap * 100) if w_cap else 0
+            if w_wd > 0:
+                wlbl = f"W{d.isocalendar()[1]}（{d.strftime('%m/%d')}~{wend.strftime('%m/%d')}）"
+                rc = "#E74C5B" if w_rate>=100 else ("#d97706" if w_rate>=80 else "#16A085")
+                rows_html += (f'<tr><td style="padding:6px 10px;border:1px solid #e2e8f0">{wlbl}</td>'
+                              f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0">{int(w_pcs):,}</td>'
+                              f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0">{w_cap:,}</td>'
+                              f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;'
+                              f'color:{rc};font-weight:700">{w_rate}%</td></tr>')
+                _mo_pcs += w_pcs; _mo_cap += w_cap
+            d += timedelta(weeks=1)
+        mo_rate = int(_mo_pcs / _mo_cap * 100) if _mo_cap else 0
+        rc = "#E74C5B" if mo_rate>=100 else ("#d97706" if mo_rate>=80 else "#16A085")
+        rows_html += (f'<tr style="background:#f8faff;font-weight:800">'
+                      f'<td style="padding:6px 10px;border:1px solid #e2e8f0">📅 本月合計</td>'
+                      f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0">{int(_mo_pcs):,}</td>'
+                      f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0">{_mo_cap:,}</td>'
+                      f'<td style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;'
+                      f'color:{rc};font-weight:900">{mo_rate}%</td></tr>')
+        return rows_html
+
     tab_start, tab_ship = st.tabs(["▶ 開工排程", "🚢 出貨排程"])
     with tab_start:
-        st.markdown(_build_cal(_ev_start), unsafe_allow_html=True)
+        # 週/月稼動率彙整
+        st.markdown(
+            f'<table style="width:100%;border-collapse:collapse;font-family:Microsoft JhengHei;'
+            f'font-size:14px;margin-bottom:16px">'
+            f'<tr style="background:#EEF2F7;font-weight:700">'
+            f'<th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0">週次</th>'
+            f'<th style="text-align:right;padding:8px 10px;border:1px solid #e2e8f0">排程產量(pcs)</th>'
+            f'<th style="text-align:right;padding:8px 10px;border:1px solid #e2e8f0">最大產能(pcs)</th>'
+            f'<th style="text-align:right;padding:8px 10px;border:1px solid #e2e8f0">稼動率</th></tr>'
+            + _week_util_rows() + '</table>',
+            unsafe_allow_html=True
+        )
+        # 月曆（含稼動率色條）
+        st.markdown(_build_cal_util(_ev_start), unsafe_allow_html=True)
         st.markdown(
             f'<div style="font-size:13px;color:#607080;margin-top:8px">'
-            f'藍色 = 正常開工｜紅色 = 齊料太晚趕不上出貨<br>'
-            f'開工日 = 齊料日+1工作天，完工日 = 開工日+製造天數（{DAILY_CAP}pcs/天，9084品項150pcs/天）'
+            f'🟢&lt;80% 正常｜🟡 80~99% 接近滿載｜🔴≥100% 超載<br>'
+            f'稼動率 = 當日排程產量 ÷ {DAILY_CAP} pcs（9084品項 150 pcs/天）'
             f'</div>', unsafe_allow_html=True)
     with tab_ship:
         st.markdown(_build_cal(_ev_ship), unsafe_allow_html=True)
