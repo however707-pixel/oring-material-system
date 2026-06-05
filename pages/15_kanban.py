@@ -517,62 +517,6 @@ st.plotly_chart(fig, use_container_width=True,
                 config=dict(staticPlot=True))   # ← 固定，不能拖動
 
 # ══════════════════════════════════════════════════════
-# SECTION 4：急件缺料工單
-# ══════════════════════════════════════════════════════
-_wd2=TODAY.weekday()
-wk_mon2=TODAY-timedelta(days=_wd2)
-nwk_fri2=wk_mon2+timedelta(days=11)
-both_sub=exp_df[(exp_df["出貨日"]>=wk_mon2)&(exp_df["出貨日"]<=nwk_fri2)].copy()
-both_sub=both_sub.drop_duplicates(subset=["工單"])
-urgent_lack=both_sub[(both_sub["料況狀態"]!="已齊料")&(both_sub["急件"]==True)]
-
-st.markdown(
-    f'<div style="background:linear-gradient(90deg,#fef2f2,#ffe4e6);'
-    f'border:1px solid rgba(239,68,68,0.4);border-radius:10px;padding:12px 20px;margin-bottom:14px;'
-    f'box-shadow:0 0 16px rgba(239,68,68,0.1);display:flex;align-items:center;gap:20px">'
-    f'<span style="color:#be123c;font-size:16px;font-weight:800">🚨 &nbsp;兩週內急件缺料</span>'
-    f'<span style="color:#E74C5B;font-size:50px;font-weight:900;'
-    f'text-shadow:0 0 16px rgba(239,68,68,0.5)">{len(urgent_lack)}</span>'
-    f'<span style="color:#607080;font-size:14px">張工單（出貨剩 ≤10 工作天且尚未齊料）</span>'
-    f'</div>',
-    unsafe_allow_html=True
-)
-
-if urgent_lack.empty:
-    st.markdown(
-        '<div style="background:#f0fdf4;border:1px solid #86efac;'
-        'border-radius:10px;padding:16px;text-align:center;color:#6ee7b7;font-size:16px;font-weight:700">'
-        '✅ &nbsp; 目前兩週內無急件缺料工單</div>',
-        unsafe_allow_html=True
-    )
-else:
-    cols_per=4
-    rows_list=list(urgent_lack.iterrows())
-    for i in range(0, len(rows_list), cols_per):
-        chunk=rows_list[i:i+cols_per]
-        cols=st.columns(cols_per)
-        for j,(_,row) in enumerate(chunk):
-            with cols[j]:
-                ship_d=row["出貨日"].strftime('%m/%d') if pd.notna(row["出貨日"]) else "未定"
-                wdays=row.get("距出貨工作天")
-                wday_s=f"{int(wdays)}天" if pd.notna(wdays) else "—"
-                qty=int(row["預計產量"]) if pd.notna(row["預計產量"]) else "?"
-                st.markdown(
-                    f'<div style="background:#fff1f2;'
-                    f'border:1px solid rgba(239,68,68,0.4);border-top:3px solid #E74C5B;'
-                    f'border-radius:10px;padding:14px 16px;margin-bottom:8px">'
-                    f'<div style="color:#123A5C;font-size:14px;font-weight:800;margin-bottom:4px">{row["工單"]}</div>'
-                    f'<div style="color:#607080;font-size:12px;margin-bottom:10px">{row["成品料號"]} &nbsp;×&nbsp; {qty}</div>'
-                    f'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-                    f'<span style="background:rgba(239,68,68,0.2);color:#E74C5B;'
-                    f'border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700">{row["料況狀態"]}</span>'
-                    f'<span style="background:#fffbeb;color:#b45309;'
-                    f'border-radius:4px;padding:2px 8px;font-size:12px">出貨 {ship_d}（剩{wday_s}）</span>'
-                    f'</div></div>',
-                    unsafe_allow_html=True
-                )
-
-# ══════════════════════════════════════════════════════
 # SECTION 5：本月出貨排程月曆（含預計開工日）
 # ══════════════════════════════════════════════════════
 import math, calendar as _cal
