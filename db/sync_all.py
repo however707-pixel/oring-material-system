@@ -3,7 +3,8 @@
 全站 NAS → data/ 資料同步腳本
 執行後再 git push，Streamlit Cloud 即可自動載入所有頁面資料。
 """
-import os, glob, shutil, sys, subprocess
+import os, glob, shutil, sys, subprocess, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "data")
