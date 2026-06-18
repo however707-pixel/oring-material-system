@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import re
+import io
 from datetime import date, timedelta, datetime
 import sys, os
 
@@ -86,6 +87,30 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover {
 """, unsafe_allow_html=True)
 
 render_sidebar()
+
+# ── 側邊欄：手動上傳（NAS 離線 / 雲端使用）────────────────────────────────
+with st.sidebar:
+    st.markdown("---")
+    st.markdown(
+        '<div style="color:#2A9DF4;font-size:0.72rem;font-weight:800;'
+        'letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">📂 手動上傳</div>',
+        unsafe_allow_html=True,
+    )
+    _kanban_up = st.file_uploader(
+        "上傳「簡版-工單缺料狀況.xlsx」",
+        type=["xlsx", "xls"],
+        key="kanban_upload",
+        label_visibility="collapsed",
+    )
+    if _kanban_up is not None:
+        st.session_state["kanban_bytes"] = _kanban_up.read()
+        st.session_state["kanban_fname"] = _kanban_up.name
+    if st.session_state.get("kanban_bytes"):
+        st.caption(f"已載入：{st.session_state.get('kanban_fname', '手動上傳')}")
+        if st.button("🗑 清除上傳檔案", key="kanban_clear", use_container_width=True):
+            st.session_state.pop("kanban_bytes", None)
+            st.session_state.pop("kanban_fname", None)
+            st.rerun()
 
 # ══════════════════════════════════════════════════════
 TODAY    = date.today()
@@ -223,8 +248,16 @@ def load_data():
         return parse_file(path),path,mtime
     except Exception: return None,None,None
 
-try:    df, src_path, src_mtime = load_data()
-except: df, src_path, src_mtime = None, None, None
+if st.session_state.get("kanban_bytes"):
+    try:
+        df = parse_file(io.BytesIO(st.session_state["kanban_bytes"]))
+        src_path  = st.session_state.get("kanban_fname", "手動上傳")
+        src_mtime = None
+    except Exception:
+        df, src_path, src_mtime = None, None, None
+else:
+    try:    df, src_path, src_mtime = load_data()
+    except: df, src_path, src_mtime = None, None, None
 
 # ══════════════════════════════════════════════════════
 # HEADER
@@ -272,6 +305,18 @@ if df is None:
         f'<span style="font-size:14px;color:#607080">{BASE_DIR}</span></div>',
         unsafe_allow_html=True
     )
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.info("💡 **雲端 / NAS 離線時**：請點左側 ☰ 展開選單，上傳「簡版-工單缺料狀況.xlsx」即可顯示看板。")
+    with st.expander("📂 或在此直接上傳", expanded=True):
+        _inline_up = st.file_uploader(
+            "上傳「簡版-工單缺料狀況.xlsx」",
+            type=["xlsx", "xls"],
+            key="kanban_inline_upload",
+        )
+        if _inline_up is not None:
+            st.session_state["kanban_bytes"] = _inline_up.read()
+            st.session_state["kanban_fname"] = _inline_up.name
+            st.rerun()
     st.stop()
 
 # ══════════════════════════════════════════════════════
