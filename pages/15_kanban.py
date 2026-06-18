@@ -226,8 +226,10 @@ def parse_file(path):
             '_delayed':delayed,'_iqc':iqc,'_future':future})
     return pd.DataFrame(rows)
 
-BASE_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
-FILE_NAME = "簡版-工單缺料狀況.xlsx"
+BASE_DIR    = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
+FILE_NAME   = "簡版-工單缺料狀況.xlsx"
+DATA_KANBAN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "data", "kanban_latest.xlsx")
 
 def find_latest():
     try:
@@ -258,6 +260,15 @@ if st.session_state.get("kanban_bytes"):
 else:
     try:    df, src_path, src_mtime = load_data()
     except: df, src_path, src_mtime = None, None, None
+
+    # 若 NAS 離線，嘗試 data/ 資料夾內的已同步檔案
+    if df is None and os.path.exists(DATA_KANBAN):
+        try:
+            df        = parse_file(DATA_KANBAN)
+            src_path  = DATA_KANBAN
+            src_mtime = pd.Timestamp(os.path.getmtime(DATA_KANBAN), unit="s")
+        except Exception:
+            df, src_path, src_mtime = None, None, None
 
 # ══════════════════════════════════════════════════════
 # HEADER

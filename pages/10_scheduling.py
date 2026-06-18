@@ -345,8 +345,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── 自動抓取最新檔案 ──────────────────────────────────────────────────────────
-BASE_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
-FILE_NAME = "簡版-工單缺料狀況.xlsx"
+BASE_DIR      = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
+FILE_NAME     = "簡版-工單缺料狀況.xlsx"
+_DATA_DIR     = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+DATA_SCHED_NEW = os.path.join(_DATA_DIR, "kanban_latest.xlsx")
+DATA_SCHED_OLD = os.path.join(_DATA_DIR, "kanban_prev.xlsx")
 
 def find_latest_files(n=2):
     """遞迴搜尋 BASE_DIR，回傳最新 n 個 FILE_NAME，依修改時間降冪。"""
@@ -499,38 +502,53 @@ if nas_ok:
         st.success(f"載入完成：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
 
 else:
-    # ── NAS 離線（雲端 or 斷線）：改用手動上傳 ───────────────────────────────
-    st.warning("⚠️ NAS 離線，請手動上傳檔案（雲端使用時）")
-    with st.expander("📂 上傳 簡版-工單缺料狀況.xlsx", expanded=True):
-        up_col1, up_col2 = st.columns(2)
-        with up_col1:
-            st.caption("**今日檔案**（必要）")
-            upload_new = st.file_uploader(
-                "上傳今日版本", type=["xlsx", "xls"], key="sched_upload_new",
-                label_visibility="collapsed")
-        with up_col2:
-            st.caption("**前一日檔案**（選填，用於比對變更）")
-            upload_old = st.file_uploader(
-                "上傳前一版本", type=["xlsx", "xls"], key="sched_upload_old",
-                label_visibility="collapsed")
-
-    if upload_new is not None:
-        if st.button("📥 載入", type="primary", key="sched_load_btn"):
-            with st.spinner("讀取中..."):
-                sdf = parse_file(upload_new)
-                if upload_old is not None:
-                    diff_map = build_diff_map(upload_new, upload_old)
-                    sdf['變更'] = sdf['工單'].map(
-                        lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
-                else:
-                    sdf['變更'] = ''
+    # ── NAS 離線：先嘗試 data/ 已同步資料，再提示手動上傳 ─────────────────────
+    if os.path.exists(DATA_SCHED_NEW) and "sched_df" not in st.session_state:
+        with st.spinner("載入已同步的工單資料..."):
+            try:
+                sdf = parse_file(DATA_SCHED_NEW)
+                diff_map = build_diff_map(DATA_SCHED_NEW, DATA_SCHED_OLD) if os.path.exists(DATA_SCHED_OLD) else {}
+                sdf["變更"] = sdf["工單"].map(lambda wo: "、".join(diff_map[wo]) if wo in diff_map else "")
                 st.session_state.sched_df   = sdf
-                st.session_state.sched_src  = upload_new.name
-                st.session_state.sched_time = pd.Timestamp.now()
-            changed_n = (sdf['變更'] != '').sum()
-            st.success(f"載入完成：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
-    elif "sched_df" not in st.session_state:
-        st.info("👆 請先上傳今日的「簡版-工單缺料狀況.xlsx」")
+                st.session_state.sched_src  = "data/kanban_latest.xlsx"
+                st.session_state.sched_time = pd.Timestamp(os.path.getmtime(DATA_SCHED_NEW), unit="s")
+                changed_n = (sdf["變更"] != "").sum()
+                st.success(f"✅ 已從同步資料載入：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
+            except Exception as e:
+                st.warning(f"⚠️ 讀取同步資料失敗：{e}")
+
+    if "sched_df" not in st.session_state:
+        st.warning("⚠️ NAS 離線，請手動上傳檔案（雲端使用時）")
+        with st.expander("📂 上傳 簡版-工單缺料狀況.xlsx", expanded=True):
+            up_col1, up_col2 = st.columns(2)
+            with up_col1:
+                st.caption("**今日檔案**（必要）")
+                upload_new = st.file_uploader(
+                    "上傳今日版本", type=["xlsx", "xls"], key="sched_upload_new",
+                    label_visibility="collapsed")
+            with up_col2:
+                st.caption("**前一日檔案**（選填，用於比對變更）")
+                upload_old = st.file_uploader(
+                    "上傳前一版本", type=["xlsx", "xls"], key="sched_upload_old",
+                    label_visibility="collapsed")
+
+        if upload_new is not None:
+            if st.button("📥 載入", type="primary", key="sched_load_btn"):
+                with st.spinner("讀取中..."):
+                    sdf = parse_file(upload_new)
+                    if upload_old is not None:
+                        diff_map = build_diff_map(upload_new, upload_old)
+                        sdf['變更'] = sdf['工單'].map(
+                            lambda wo: '、'.join(diff_map[wo]) if wo in diff_map else '')
+                    else:
+                        sdf['變更'] = ''
+                    st.session_state.sched_df   = sdf
+                    st.session_state.sched_src  = upload_new.name
+                    st.session_state.sched_time = pd.Timestamp.now()
+                changed_n = (sdf['變更'] != '').sum()
+                st.success(f"載入完成：{len(sdf)} 張工單，其中 {changed_n} 張與上次不同")
+        else:
+            st.info("👆 請先上傳今日的「簡版-工單缺料狀況.xlsx」")
 
 if "sched_df" not in st.session_state:
     st.stop()

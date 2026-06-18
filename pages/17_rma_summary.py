@@ -19,7 +19,8 @@ render_header(
 )
 render_sidebar()
 
-NAS_DIR = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\維修部\3_紀錄文件\3_01_RMA紀錄_交換機\3_01_01_每日統計_交換機\RMA總表"
+NAS_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\維修部\3_紀錄文件\3_01_RMA紀錄_交換機\3_01_01_每日統計_交換機\RMA總表"
+DATA_RMA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "rma_latest.xlsx")
 SHEET   = "RMA 總表"
 
 CHART_LAYOUT = dict(
@@ -91,8 +92,20 @@ with st.sidebar:
             st.rerun()
         src_bytes = st.session_state.get("rma_bytes")
         src_name  = st.session_state.get("rma_name", nas_name)
+    elif os.path.exists(DATA_RMA) and "rma_bytes" not in st.session_state:
+        # NAS 離線時使用已同步的 data/ 資料
+        with open(DATA_RMA, "rb") as f:
+            st.session_state["rma_bytes"] = f.read()
+        st.session_state["rma_name"] = "rma_latest.xlsx"
+        st.info("📂 使用已同步資料（NAS 離線）")
+        src_bytes = st.session_state.get("rma_bytes")
+        src_name  = "rma_latest.xlsx"
     else:
-        st.warning("⚠️ NAS 離線，請手動上傳")
+        if "rma_bytes" in st.session_state:
+            src_bytes = st.session_state["rma_bytes"]
+            src_name  = st.session_state.get("rma_name", "已上傳")
+        else:
+            st.warning("⚠️ NAS 離線，請手動上傳")
 
     uploaded = st.file_uploader("手動上傳 RMA總表 (.xlsx)", type=["xlsx"], key="rma_upload")
     if uploaded:
