@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import os, sys
+import io, os, sys
 from datetime import date, timedelta, datetime
 from streamlit_autorefresh import st_autorefresh
 
@@ -52,21 +52,57 @@ TODAY = date.today()
 NOW   = datetime.now()
 
 # ══════════════════════════════════════════════════════
-# 資料來源：SQLite（由 db/import_to_db.py 從 NAS 匯入）
+# 手動上傳解析（NAS 離線 / 雲端使用）
 # ══════════════════════════════════════════════════════
-@st.cache_data(ttl=20*60, show_spinner=False)
-def load_sched(_mtime_key):
-    try:
-        return wh_db.load_sched()
-    except Exception:
-        return pd.DataFrame()
+def _parse_upload(file_bytes):
+    """直接從上傳 Excel 解析為 (diao, inbound)，格式同 queries.load_wh()。"""
+    xls = pd.ExcelFile(io.BytesIO(file_bytes))
 
-# 資料庫狀態
-db_ready  = wh_db.db_exists()
-src_mtime = wh_db.db_mtime() if db_ready else None
-src_name  = wh_db.source_filename() if db_ready else None
+    def _hdf(sheet):
+        df = pd.read_excel(xls, sheet_name=sheet, header=None)
+        df.columns = df.iloc[0]
+        return df.iloc[1:].reset_index(drop=True)
 
-sched_df = load_sched(str(src_mtime)) if db_ready else pd.DataFrame()
+    diao = _hdf("調撥單")
+    for c in ["開單日", "需求日", "備料日", "完成日"]:
+        if c in diao.columns:
+            diao[c] = pd.to_datetime(diao[c], errors="coerce")
+    for c in ["需求筆數", "完成筆數"]:
+        if c in diao.columns:
+            diao[c] = pd.to_numeric(diao[c], errors="coerce").fillna(0)
+
+    inbound = _hdf("入庫單據")
+    for c in ["驗畢日期", "接單日期", "預計完成日", "完成日", "取單日"]:
+        if c in inbound.columns:
+            inbound[c] = pd.to_datetime(inbound[c], errors="coerce")
+    if "筆數" in inbound.columns:
+        inbound["筆數"] = pd.to_numeric(inbound["筆數"], errors="coerce").fillna(0)
+
+    return diao, inbound
+
+# ── 判斷資料來源 ──────────────────────────────────────
+_has_upload = "wh_upload_bytes" in st.session_state
+
+if _has_upload:
+    db_ready  = True
+    src_mtime = st.session_state.get("wh_upload_ts")
+    src_name  = st.session_state.get("wh_upload_name", "手動上傳")
+    sched_df  = pd.DataFrame()
+else:
+    # ══════════════════════════════════════════════════════
+    # 資料來源：SQLite（由 db/import_to_db.py 從 NAS 匯入）
+    # ══════════════════════════════════════════════════════
+    @st.cache_data(ttl=20*60, show_spinner=False)
+    def load_sched(_mtime_key):
+        try:
+            return wh_db.load_sched()
+        except Exception:
+            return pd.DataFrame()
+
+    db_ready  = wh_db.db_exists()
+    src_mtime = wh_db.db_mtime() if db_ready else None
+    src_name  = wh_db.source_filename() if db_ready else None
+    sched_df  = load_sched(str(src_mtime)) if db_ready else pd.DataFrame()
 
 # ══════════════════════════════════════════════════════
 # HEADER
@@ -100,35 +136,80 @@ st.markdown(
 
 # ── 資料庫狀態列 ─────────────────────────────────────
 if db_ready:
-    ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else ""
+    ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "手動上傳"
+    _mode_badge = (
+        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">📂 手動上傳模式</span>'
+        if _has_upload else
+        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">🔄 每 20 分鐘自動更新</span>'
+    )
+    _clear_hint = (
+        '<span style="color:#94a3b8;margin-left:12px;font-size:11px">（重新整理頁面可清除上傳）</span>'
+        if _has_upload else ""
+    )
     st.markdown(
         f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
         f'border-radius:8px;padding:8px 16px;font-size:13px;color:#2E9D70;margin-bottom:4px">'
-        f'✅ &nbsp;資料庫已載入 &nbsp;·&nbsp; '
+        f'✅ &nbsp;資料已載入 &nbsp;·&nbsp; '
         f'<b style="color:#2E9D70">{src_name or "wh_dashboard.db"}</b>'
         f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span>'
-        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">🔄 每 20 分鐘自動更新</span>'
+        f'{_mode_badge}{_clear_hint}'
         f'</div>',
         unsafe_allow_html=True
     )
+    if _has_upload:
+        with st.expander("📂 重新上傳或切換回 NAS 模式"):
+            _reup = st.file_uploader(
+                "重新上傳「調件備料統計表.xlsx」",
+                type=["xlsx", "xls"],
+                key="wh_reupload",
+            )
+            if _reup is not None:
+                st.session_state["wh_upload_bytes"] = _reup.read()
+                st.session_state["wh_upload_name"]  = _reup.name
+                st.session_state["wh_upload_ts"]    = pd.Timestamp.now()
+                st.rerun()
+            if st.button("🗑 清除上傳，切換回 NAS / 資料庫模式", use_container_width=True):
+                st.session_state.pop("wh_upload_bytes", None)
+                st.session_state.pop("wh_upload_name", None)
+                st.session_state.pop("wh_upload_ts", None)
+                st.rerun()
 else:
     st.markdown(
         '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);'
-        'border-radius:8px;padding:10px 16px;margin-bottom:8px;color:#fca5a5;font-size:14px">'
-        '⚠️ &nbsp;尚未建立資料庫，請先執行 <code>python db/import_to_db.py</code> 從 NAS 匯入。</div>',
+        'border-radius:8px;padding:10px 16px;margin-bottom:8px;color:#ef4444;font-size:14px">'
+        '⚠️ &nbsp;NAS 離線或尚未建立資料庫。請上傳「調件備料統計表.xlsx」以繼續。</div>',
         unsafe_allow_html=True
     )
+    with st.expander("📂 上傳「調件備料統計表.xlsx」", expanded=True):
+        _up = st.file_uploader(
+            "上傳調件備料統計表（含「調撥單」與「入庫單據」工作表）",
+            type=["xlsx", "xls"],
+            key="wh_inline_upload",
+        )
+        if _up is not None:
+            st.session_state["wh_upload_bytes"] = _up.read()
+            st.session_state["wh_upload_name"]  = _up.name
+            st.session_state["wh_upload_ts"]    = pd.Timestamp.now()
+            st.rerun()
     st.stop()
 
 # ══════════════════════════════════════════════════════
-# 讀取資料（SQLite）
+# 讀取資料（SQLite 或手動上傳）
 # ══════════════════════════════════════════════════════
-@st.cache_data(ttl=5*60, show_spinner=False)
-def load_wh(_mtime_key):
-    return wh_db.load_wh()
+if _has_upload:
+    with st.spinner("解析上傳檔案中…"):
+        try:
+            diao, inbound = _parse_upload(st.session_state["wh_upload_bytes"])
+        except Exception as e:
+            st.error(f"解析失敗：{e}\n\n請確認檔案包含「調撥單」與「入庫單據」工作表。")
+            st.stop()
+else:
+    @st.cache_data(ttl=5*60, show_spinner=False)
+    def load_wh(_mtime_key):
+        return wh_db.load_wh()
 
-with st.spinner("載入資料中…"):
-    diao, inbound = load_wh(str(src_mtime))
+    with st.spinner("載入資料中…"):
+        diao, inbound = load_wh(str(src_mtime))
 
 # ══════════════════════════════════════════════════════
 # 計算 KPI（顯示前一工作日數值）
