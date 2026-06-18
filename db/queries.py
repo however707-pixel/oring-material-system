@@ -2,27 +2,61 @@
 """
 Dashboard 用的 SQLite 讀取層。
 
-回傳的 DataFrame 欄位名稱、型別與原本直接讀 Excel 的 load_wh() 完全一致，
-因此 16_wh_dashboard.py 下游的 KPI／圖表邏輯不需改動。
+優先順序：
+  1. 本機 data/wh_dashboard.db
+  2. DBHub.io 下載（雲端 / NAS 離線時自動觸發）
+
+回傳的 DataFrame 欄位名稱與原本直接讀 Excel 的 load_wh() 完全一致。
 """
 import os
 import sqlite3
 import pandas as pd
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH  = os.path.join(BASE_DIR, "data", "wh_dashboard.db")
+BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH     = os.path.join(BASE_DIR, "data", "wh_dashboard.db")
+DBHUB_CACHE = os.path.join(BASE_DIR, "data", "wh_cloud.db")   # 雲端下載暫存
 
 
-def db_exists():
-    return os.path.exists(DB_PATH)
+# ── DBHub 下載（只在雲端 / 本機 DB 不存在時呼叫）──────────────────────────────
+
+def _try_pull_from_dbhub(dest: str = DBHUB_CACHE) -> str | None:
+    """嘗試從 DBHub.io 下載 DB，成功回傳路徑，失敗回傳 None。"""
+    try:
+        from db.dbhub_sync import pull, dbhub_configured
+        if not dbhub_configured():
+            return None
+        return pull(dest)
+    except Exception:
+        return None
+
+
+def _effective_path() -> str | None:
+    """
+    回傳可用的 DB 檔案路徑：
+      - 本機 DB 存在 → 直接用
+      - 本機 DB 不存在 → 嘗試從 DBHub 下載
+      - 都失敗 → None
+    """
+    if os.path.exists(DB_PATH):
+        return DB_PATH
+    # 先看暫存是否已下載過（避免每次重新下載）
+    if os.path.exists(DBHUB_CACHE):
+        return DBHUB_CACHE
+    return _try_pull_from_dbhub()
+
+
+# ── 公開介面 ──────────────────────────────────────────────────────────────────
+
+def db_exists() -> bool:
+    return _effective_path() is not None
 
 
 def db_mtime():
-    """資料庫最後更新時間（取 import_log 最新一筆的來源檔時間）"""
-    if not db_exists():
+    path = _effective_path()
+    if not path:
         return None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(path)
         row = conn.execute(
             "SELECT source_mtime FROM import_log ORDER BY imported_at DESC LIMIT 1"
         ).fetchone()
@@ -31,15 +65,15 @@ def db_mtime():
             return pd.to_datetime(row[0])
     except Exception:
         pass
-    # 退而求其次：用檔案 mtime
-    return pd.Timestamp(os.path.getmtime(DB_PATH), unit="s")
+    return pd.Timestamp(os.path.getmtime(path), unit="s")
 
 
-def source_filename():
-    if not db_exists():
+def source_filename() -> str | None:
+    path = _effective_path()
+    if not path:
         return None
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(path)
         row = conn.execute(
             "SELECT source_file FROM import_log ORDER BY imported_at DESC LIMIT 1"
         ).fetchone()
@@ -51,7 +85,10 @@ def source_filename():
 
 def load_wh():
     """回傳 (diao, inbound) 兩個 DataFrame，欄位同原 Excel 版。"""
-    conn = sqlite3.connect(DB_PATH)
+    path = _effective_path()
+    if not path:
+        raise FileNotFoundError("找不到資料庫，且 DBHub 未設定或下載失敗。")
+    conn = sqlite3.connect(path)
     try:
         diao = pd.read_sql_query("""
             SELECT order_date AS 開單日, order_type AS 單別, order_no AS 單號,
@@ -86,7 +123,10 @@ def load_wh():
 
 def load_sched():
     """回傳排程 DataFrame，欄位：出貨日 / 料況狀態 / 預計產量（同原版）。"""
-    conn = sqlite3.connect(DB_PATH)
+    path = _effective_path()
+    if not path:
+        return pd.DataFrame()
+    conn = sqlite3.connect(path)
     try:
         df = pd.read_sql_query("""
             SELECT ship_date, planned_qty, material_rate, status_note
