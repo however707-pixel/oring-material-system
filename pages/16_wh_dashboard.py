@@ -107,6 +107,13 @@ else:
 # ══════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════
+st.markdown(
+    '<div style="margin-bottom:6px">'
+    '<a href="/" target="_self" style="color:#C9A45C;text-decoration:none;'
+    'font-size:13px;font-weight:600;opacity:0.85">← 返回主頁</a></div>',
+    unsafe_allow_html=True
+)
+
 wday_names = ["一","二","三","四","五","六","日"]
 wday   = wday_names[TODAY.weekday()]
 data_ts = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
