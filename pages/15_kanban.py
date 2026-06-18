@@ -25,7 +25,7 @@ st.markdown("""
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
 html, body, [class*="css"] {
     font-size:18px !important;
-    font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
+    font-family:"Arial,標楷體,DFKai-SB,serif","微軟正黑體",sans-serif !important;
 }
 /* 只限制段落與標籤，不蓋掉 div 的 inline 顏色 */
 p { color:#123A5C !important; }
@@ -312,10 +312,11 @@ for i in range(5):
     wdays_left = count_workdays(TODAY-timedelta(days=1), we)
     label = f"W{ws.isocalendar()[1]}"
     short_rows = sub_orig[sub_orig["料況狀態"]!="已齊料"].drop_duplicates("工單")
+    n_iqc = int(short_rows["_iqc"].apply(lambda x: bool(x)).sum())
     weeks.append(dict(
         idx=i, label=label, start=ws, end=we,
         n=n, tq=tq, rq=rq, lq=tq-rq,
-        n_ready=n_ready, n_short=n_short,
+        n_ready=n_ready, n_short=n_short, n_iqc=n_iqc,
         wdays_left=wdays_left, cap=wdays_left*DAILY_CAP,
         short_rows=short_rows,
     ))
@@ -334,7 +335,8 @@ if "sel_week" not in st.session_state:
 
 kpi_cols = st.columns(5)
 for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
-    n_ready=wk["n_ready"]; n_short=wk["n_short"]; n=wk["n"]; tq=wk["tq"]
+    n_ready=wk["n_ready"]; n_short=wk["n_short"]; n=wk["n"]; tq=wk["tq"]; n_iqc=wk["n_iqc"]
+    n_true_short=n_short-n_iqc
     pct=int(n_ready/n*100) if n else 0
     if n==0:         ac,bc_="##94a3b8","#e2e8f0"
     elif n_short==0: ac,bc_="#16A085","#b2dfdb"
@@ -354,11 +356,14 @@ for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
             f'<div style="color:#123A5C;font-size:68px;font-weight:900;line-height:1">{n}</div>'
             f'<div style="color:#607080;font-size:15px;margin-top:4px;margin-bottom:14px">'
             f'張工單 &nbsp;／&nbsp; {tq:,} pcs</div>'
-            f'<div style="display:flex;justify-content:center;gap:14px;margin-bottom:12px">'
-            f'<div><div style="color:#16A085;font-size:42px;font-weight:900">{n_ready}</div>'
+            f'<div style="display:flex;justify-content:center;gap:10px;margin-bottom:12px">'
+            f'<div><div style="color:#16A085;font-size:36px;font-weight:900">{n_ready}</div>'
             f'<div style="color:#607080;font-size:14px">已齊料</div></div>'
-            f'<div style="color:#B9DDF5;font-size:26px;line-height:2">｜</div>'
-            f'<div><div style="color:#E74C5B;font-size:42px;font-weight:900">{n_short}</div>'
+            f'<div style="color:#B9DDF5;font-size:26px;line-height:1.8">｜</div>'
+            f'<div><div style="color:#d97706;font-size:36px;font-weight:900">{n_iqc}</div>'
+            f'<div style="color:#607080;font-size:14px">IQC中</div></div>'
+            f'<div style="color:#B9DDF5;font-size:26px;line-height:1.8">｜</div>'
+            f'<div><div style="color:#E74C5B;font-size:36px;font-weight:900">{n_true_short}</div>'
             f'<div style="color:#607080;font-size:14px">缺料</div></div>'
             f'</div>'
             f'<div style="background:#EEF2F7;border-radius:3px;height:5px;overflow:hidden">'
@@ -374,7 +379,12 @@ for i, (col, wk) in enumerate(zip(kpi_cols, weeks)):
             if is_sel:
                 btn_label = "▲ 收起明細"
             elif n_short > 0:
-                btn_label = f"📋 查看 {_total} 張工單（含 {n_short} 缺料）"
+                if n_iqc > 0 and n_true_short > 0:
+                    btn_label = f"📋 查看 {_total} 張工單（{n_true_short} 缺料・{n_iqc} IQC中）"
+                elif n_iqc > 0:
+                    btn_label = f"📋 查看 {_total} 張工單（{n_iqc} IQC驗收中）"
+                else:
+                    btn_label = f"📋 查看 {_total} 張工單（含 {n_short} 缺料）"
             else:
                 btn_label = f"📋 查看 {_total} 張工單明細"
             if st.button(btn_label, key=f"wk_btn_{i}"):
@@ -409,6 +419,15 @@ if sel is not None:
         st.info("該週無出貨工單")
     else:
         _base_cols = ["工單","成品料號","預計產量","出貨日_顯示","料況狀態","重點提示"]
+
+        def _fmt_iqc(lst):
+            if not lst:
+                return "—"
+            dates = [d for _, d in lst if d]
+            tag = f"（{min(dates).strftime('%m/%d')}到廠）" if dates else ""
+            cnt = f" ×{len(lst)}項" if len(lst) > 1 else ""
+            return f"🔬 IQC驗收中{tag}{cnt}"
+
         if "預計齊料日" in all_rows.columns:
             disp = all_rows[_base_cols[:5] + ["預計齊料日"] + [_base_cols[5]]].copy()
             disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","到料日","重點提示"]
@@ -419,10 +438,18 @@ if sel is not None:
             disp = all_rows[_base_cols].copy()
             disp.columns = ["工單","成品料號","預計產量","出貨日","料況狀態","重點提示"]
             disp.insert(5, "到料日", "—")
+
+        disp.insert(6, "IQC狀態", all_rows["_iqc"].apply(_fmt_iqc).values)
+
         def _sr(r):
-            if r["料況狀態"]=="已齊料":    return ["background:#f0fdf9;color:#15803d"]*len(r)
-            elif r["料況狀態"]=="完全缺料": return ["background:#fff1f2;color:#be123c"]*len(r)
-            else:                           return ["background:#fffbeb;color:#b45309"]*len(r)
+            if r["料況狀態"]=="已齊料":    base = "background:#f0fdf9;color:#15803d"
+            elif r["料況狀態"]=="完全缺料": base = "background:#fff1f2;color:#be123c"
+            else:                           base = "background:#fffbeb;color:#b45309"
+            styles = [base]*len(r)
+            if r["IQC狀態"] != "—":
+                idx = r.index.get_loc("IQC狀態")
+                styles[idx] = base + ";font-weight:700;background:#fef3c7;color:#b45309"
+            return styles
         st.dataframe(disp.style.apply(_sr,axis=1),
                      use_container_width=True, hide_index=True,
                      height=min(500, 50+len(disp)*38))
@@ -512,7 +539,7 @@ for i, (rq, lq) in enumerate(zip(rq_vals, lq_vals)):
             text=f"<b>共 {total:,}</b><br><span style='font-size:13px'>齊 {rq:,} ｜ 缺 {lq:,}</span>",
             xanchor="center", yanchor="bottom",
             showarrow=False,
-            font=dict(size=15, color="#123A5C", family="Microsoft JhengHei"),
+            font=dict(size=15, color="#123A5C", family="Arial,標楷體,DFKai-SB,serif"),
             bgcolor="rgba(244,248,251,0.9)",
             bordercolor="#B9DDF5", borderwidth=1, borderpad=5,
         ))
@@ -521,7 +548,7 @@ fig.update_layout(
     barmode="stack",
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#607080", family="Microsoft JhengHei", size=15),
+    font=dict(color="#607080", family="Arial,標楷體,DFKai-SB,serif", size=15),
     annotations=annotations,
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                 font=dict(color="#607080", size=15), bgcolor="rgba(244,248,251,0.8)"),
@@ -606,26 +633,15 @@ def workday_add(d, n):
             count += 1
     return cur
 
-def _calc_start(r):
-    ship  = _to_date(r["出貨日"])
-    mfg   = r["製造天數"]
-    # 最晚必須開工（倒推）
-    deadline_start = workday_subtract(ship, mfg + IQC_WH_DAYS)
-    # 齊料日 + 1 工作天（最早可開工）
-    qi = r.get("預計齊料日", None) if "預計齊料日" in r.index else None
-    if pd.notna(qi) and qi is not None:
-        qi_d = _to_date(qi)
-        earliest_start = workday_add(qi_d, 1)
-    else:
-        earliest_start = deadline_start
-    # 最終開工日 = 最早可開工（不超過最晚必須開工就用最早，否則用最晚並標警示）
-    return earliest_start, deadline_start
+def _calc_start_from_ship(r):
+    """整條時間軸只由出貨日回推（不看齊料日、不另計獨立的開工日）：
+       完工日 = 出貨日 − IQC/倉庫緩衝；開工日 = 完工日往前推 (製造天數−1) 個工作天。"""
+    ship   = _to_date(r["出貨日"])
+    mfg    = r["製造天數"]
+    finish = workday_subtract(ship, IQC_WH_DAYS)
+    return workday_subtract(finish, mfg - 1)
 
-_this_month[["預計開工日","最晚開工日"]] = _this_month.apply(
-    lambda r: pd.Series(_calc_start(r)), axis=1
-)
-# 若 預計開工日 > 最晚開工日 → 趕不上出貨（警示）
-_this_month["趕不上"] = _this_month["預計開工日"] > _this_month["最晚開工日"]
+_this_month["預計開工日"] = _this_month.apply(_calc_start_from_ship, axis=1)
 
 if _this_month.empty:
     st.info("本月無出貨工單")
@@ -654,7 +670,6 @@ else:
     for _, r in _this_month.iterrows():
         ship_d  = _to_date(r["出貨日"])
         start_d = r["預計開工日"]
-        late    = bool(r.get("趕不上", False))
         pno     = str(r.get("成品料號","")).strip()
         qty     = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
         mfg     = int(r["製造天數"])
@@ -670,10 +685,9 @@ else:
                 f'<span style="color:#888;font-size:14px">{qty:,} pcs</span></div>'
             )
 
-        # 開工月曆：遍歷每個生產工作天
-        _bc  = "#E74C5B" if late else "#2A9DF4"
-        _bg  = "#fdecea" if late else "#e8f4fd"
-        warn = " ⚠️趕不上" if late else ""
+        # 開工月曆：遍歷每個生產工作天（時程已由出貨日回推得出，固定用同一色系）
+        _bc  = "#2A9DF4"
+        _bg  = "#e8f4fd"
         short_pno = (pno[-18:] if len(pno)>18 else pno) or "—"
         _d_ptr = start_d
         for _di in range(mfg):
@@ -686,7 +700,7 @@ else:
                     _ev_start.setdefault(_d_ptr, []).append(
                         f'<div style="background:{_bg};border-left:4px solid {_bc};'
                         f'border-radius:4px;padding:4px 7px;margin-bottom:3px;line-height:1.5">'
-                        f'<b style="color:{_bc};font-size:13px">▶ 開工 ✓完工{warn}</b><br>'
+                        f'<b style="color:{_bc};font-size:13px">▶ 開工 ✓完工</b><br>'
                         f'<span style="color:#333;font-size:14px;font-weight:700">{short_pno}</span><br>'
                         f'<span style="color:#888;font-size:13px">{int(daily_rate):,} pcs/天</span></div>'
                     )
@@ -695,7 +709,7 @@ else:
                     _ev_start.setdefault(_d_ptr, []).append(
                         f'<div style="background:{_bg};border-left:4px solid {_bc};'
                         f'border-radius:4px 4px 0 0;padding:4px 7px;margin-bottom:0;line-height:1.5">'
-                        f'<b style="color:{_bc};font-size:13px">▶ 開工{warn}  → 共{mfg}天</b><br>'
+                        f'<b style="color:{_bc};font-size:13px">▶ 開工  → 共{mfg}天</b><br>'
                         f'<span style="color:#333;font-size:14px;font-weight:700">{short_pno}</span><br>'
                         f'<span style="color:#888;font-size:13px">{int(daily_rate):,} pcs/天｜共{qty:,}pcs</span></div>'
                     )
@@ -722,13 +736,13 @@ else:
     th_style = ('style="background:#EEF2F7;color:#607080;font-size:15px;font-weight:700;'
                 'text-align:center;padding:10px 4px;border:1px solid #dde8f3"')
     html = (f'<table style="width:100%;border-collapse:collapse;'
-            f'font-family:Microsoft JhengHei;table-layout:fixed">'
+            f'font-family:Arial,標楷體,DFKai-SB,serif;table-layout:fixed">'
             f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
 
     # ── 出貨月曆（格子式）────────────────────────────────────
     def _build_ship_cal(events_dict):
         h = (f'<table style="width:100%;border-collapse:collapse;'
-             f'font-family:Microsoft JhengHei;table-layout:fixed">'
+             f'font-family:Arial,標楷體,DFKai-SB,serif;table-layout:fixed">'
              f'<tr>' + "".join(f"<th {th_style}>{d}</th>" for d in day_names) + "</tr>")
         d = _first - timedelta(days=_first.weekday())
         while d <= _last:
@@ -766,28 +780,36 @@ else:
                 f'{lbl} / {int(pcs)}pcs</div>')
 
     # ── Gantt 橫條月曆：每張工單是一條連續長方形 ──────────────
+    def _duration_style(mfg):
+        """依「製造天數」決定色塊配色，刻意分三階避免整排同一色：
+           ≥5天（長製程）→紫｜2~4天（中製程）→藍｜當天完成（1天）→綠"""
+        if mfg >= 5:
+            return "linear-gradient(135deg,#b794f4,#d8b4fe)", "#9333ea"
+        elif mfg >= 2:
+            return "linear-gradient(135deg,#60a5fa,#93c5fd)", "#3b82f6"
+        else:
+            return "linear-gradient(135deg,#34d399,#6ee7b7)", "#10b981"
+
     def _build_gantt_cal():
-        """Gantt式月曆：工單跨幾天就顯示一條連續橫條"""
+        """Gantt式月曆：工單跨幾天就顯示一條連續橫條（漸層色塊＋白字，依料況狀態上色）"""
         # 先算每張工單的最後生產日（start + mfg-1 working days）
         wo_records = []
         for _, r in _this_month.iterrows():
             s    = r["預計開工日"]
             mfg  = int(r["製造天數"])
-            late = bool(r.get("趕不上", False))
             pno  = str(r.get("成品料號","")).strip()
             qty  = int(r["預計產量"]) if pd.notna(r["預計產量"]) else 0
             dr   = qty / mfg if mfg > 0 else 0
-            # 最後生產日
+            # 最後生產日（= 由出貨日回推得出的理論完工日）
             last = s
             for _ in range(mfg - 1):
                 last = _next_workday(last)
-            bc = "#E74C5B" if late else "#2A9DF4"
-            bg = "#fca5a5" if late else "#bfdbfe"
-            wo_records.append(dict(start=s, last=last, mfg=mfg, pno=pno,
-                                   qty=qty, dr=dr, bc=bc, bg=bg, late=late))
+            grad, accent = _duration_style(mfg)
+            wo_records.append(dict(start=s, last=last, mfg=mfg, pno=pno, qty=qty, dr=dr,
+                                   grad=grad, accent=accent))
 
         h = (f'<table style="width:100%;border-collapse:collapse;'
-             f'font-family:Microsoft JhengHei;table-layout:fixed;border:1px solid #e2e8f0">')
+             f'font-family:Arial,標楷體,DFKai-SB,serif;table-layout:fixed;border:1px solid #e2e8f0">')
 
         # 表頭
         h += '<tr>' + "".join(
@@ -820,8 +842,9 @@ else:
                 is_h  = (day in TAIWAN_HOLIDAYS)
                 cbg   = "#f0f0f0" if not in_m else ("#dbeafe" if is_t else ("#fff0e6" if is_off else "#f9fbff"))
                 nc    = "#bbb" if not in_m else ("#c0392b" if is_off else ("#1d4ed8" if is_t else "#1e293b"))
-                off_tag = '<span style="font-size:10px;color:#c0392b;padding:1px 4px;'
-                off_tag += 'background:#fee;border-radius:3px;margin-left:2px">假</span>' if is_h and in_m else ""
+                off_tag = ('<span style="font-size:10px;color:#c0392b;padding:1px 4px;'
+                           'background:#fee;border-radius:3px;margin-left:2px">假</span>'
+                           if is_h and in_m else "")
                 util  = _util_bar(day) if in_m and not is_off else ""
                 h += (f'<td style="background:{cbg};border:1px solid #e8ecf0;padding:8px 8px 4px">'
                       f'<div style="display:flex;align-items:center;margin-bottom:3px">'
@@ -831,47 +854,84 @@ else:
             h += '</tr>'
 
             # ── Gantt 工單橫條 ────────────────────────────
+            # 1) 先把每張工單切成「本週內連續工作日」的色塊區段（遇六日／國定
+            #    假日就斷開，色塊絕不會蓋到非工作日格）
+            # 2) 再把彼此不重疊的區段打包進同一列並排顯示，避免每張工單獨佔
+            #    一整列、右側留下大片空白
             week_wos = [w for w in wo_records
                         if w["start"] <= week_end and w["last"] >= week_start]
-            for wo in sorted(week_wos, key=lambda x: x["start"]):
-                eff_s = max(wo["start"], week_start)
-                eff_e = min(wo["last"],  week_end)
-                pre   = (eff_s - week_start).days
-                span  = (eff_e - eff_s).days + 1
-                suf   = 7 - pre - span
-                is_fst= (wo["start"] >= week_start)
-                is_lst= (wo["last"]  <= week_end)
-                model = _short_model(wo["pno"])
-                bc, bg = wo["bc"], wo["bg"]
-                warn_tag = (' <span style="background:#E74C5B;color:#fff;font-size:10px;'
-                            'padding:1px 5px;border-radius:3px">⚠ 趕不上</span>'
-                            if wo["late"] else "")
-                # 標記
-                badge_l = (f'<span style="font-size:11px;font-weight:600;color:{bc};'
-                           f'opacity:0.9">{"▶ 開工" if is_fst else "→ 繼續"}{warn_tag}</span>')
-                badge_r = (f'<span style="font-size:11px;font-weight:600;color:{bc}">✓ 完工</span>'
-                           if is_lst else '')
-                bar_content = (
-                    f'<div style="display:flex;justify-content:space-between;'
-                    f'align-items:center;margin-bottom:3px">{badge_l}{badge_r}</div>'
-                    f'<div style="font-size:15px;font-weight:800;color:#1a2e4a;'
-                    f'letter-spacing:0.2px;line-height:1.3;word-break:break-all">{model}</div>'
-                    f'<div style="font-size:12px;color:#607080;margin-top:3px">'
-                    f'{int(wo["dr"]):,} pcs/天　共 <b style="color:#1a2e4a">{wo["qty"]:,}</b> pcs'
-                    f'　{wo["mfg"]}天</div>'
-                )
+
+            def _work_segments(wo):
+                segs, seg_s, seg_e = [], None, None
+                d   = max(wo["start"], week_start)
+                end = min(wo["last"],  week_end)
+                while d <= end:
+                    if d.weekday() < 5 and d not in TAIWAN_HOLIDAYS:
+                        if seg_s is None:
+                            seg_s = d
+                        seg_e = d
+                    elif seg_s is not None:
+                        segs.append((seg_s, seg_e))
+                        seg_s = None
+                    d += timedelta(days=1)
+                if seg_s is not None:
+                    segs.append((seg_s, seg_e))
+                return segs
+
+            pieces = []
+            for wo in week_wos:
+                for seg_s, seg_e in _work_segments(wo):
+                    pieces.append(dict(wo=wo, s=seg_s, e=seg_e))
+            pieces.sort(key=lambda p: p["s"])
+
+            lanes = []
+            for p in pieces:
+                for lane in lanes:
+                    if lane[-1]["e"] < p["s"]:
+                        lane.append(p)
+                        break
+                else:
+                    lanes.append([p])
+
+            _filler = '<td colspan="{n}" style="background:#fff;border:1px solid #f1f4f8"></td>'
+
+            for lane in lanes:
                 h += '<tr>'
-                if pre > 0:
-                    h += (f'<td colspan="{pre}" style="background:#f9fbff;'
-                          f'border:1px solid #e8ecf0"></td>')
-                h += (f'<td colspan="{span}" style="'
-                      f'background:linear-gradient(135deg,{bg},{bg}cc);'
-                      f'border:1.5px solid {bc};border-left:4px solid {bc};'
-                      f'border-radius:6px;padding:8px 12px;vertical-align:middle">'
-                      f'{bar_content}</td>')
-                if suf > 0:
-                    h += (f'<td colspan="{suf}" style="background:#f9fbff;'
-                          f'border:1px solid #e8ecf0"></td>')
+                cursor = week_start
+                for p in lane:
+                    wo, seg_s, seg_e = p["wo"], p["s"], p["e"]
+                    gap = (seg_s - cursor).days
+                    if gap > 0:
+                        h += _filler.format(n=gap)
+                    span   = (seg_e - seg_s).days + 1
+                    is_fst = (seg_s == wo["start"])
+                    is_lst = (seg_e == wo["last"])
+                    model  = _short_model(wo["pno"])
+                    grad, accent = wo["grad"], wo["accent"]
+                    badge_l = (f'<span style="font-size:11px;font-weight:700;color:#1a1a1a;'
+                               f'opacity:.95">{"▶ 開工" if is_fst else "→ 繼續"}</span>')
+                    badge_r = (f'<span style="font-size:11px;font-weight:700;color:#1a1a1a;'
+                               f'background:rgba(0,0,0,.12);border-radius:5px;'
+                               f'padding:1px 7px">✓ 完工</span>' if is_lst else '')
+                    bar_content = (
+                        f'<div style="display:flex;justify-content:space-between;'
+                        f'align-items:center;margin-bottom:4px">{badge_l}{badge_r}</div>'
+                        f'<div style="font-size:15px;font-weight:800;color:#1a1a1a;'
+                        f'letter-spacing:0.2px;line-height:1.3;word-break:break-all">{model}</div>'
+                        f'<div style="font-size:12px;color:#333333;margin-top:3px">'
+                        f'{int(wo["dr"]):,} pcs/天　共 <b style="color:#1a1a1a">{wo["qty"]:,}</b> pcs'
+                        f'　{wo["mfg"]}天</div>'
+                    )
+                    h += (f'<td colspan="{span}" style="'
+                          f'background:{grad};'
+                          f'border:1.5px solid {accent};border-radius:8px;'
+                          f'box-shadow:0 2px 6px rgba(0,0,0,.08);'
+                          f'padding:9px 13px;vertical-align:middle">'
+                          f'{bar_content}</td>')
+                    cursor = seg_e + timedelta(days=1)
+                tail = (week_end - cursor).days + 1
+                if tail > 0:
+                    h += _filler.format(n=tail)
                 h += '</tr>'
             # 週間隔
             h += (f'<tr><td colspan="7" style="height:6px;background:#EEF2F7;'
@@ -918,7 +978,7 @@ else:
     with tab_start:
         # 週/月稼動率彙整
         st.markdown(
-            f'<table style="width:100%;border-collapse:collapse;font-family:Microsoft JhengHei;'
+            f'<table style="width:100%;border-collapse:collapse;font-family:Arial,標楷體,DFKai-SB,serif;'
             f'font-size:14px;margin-bottom:16px">'
             f'<tr style="background:#EEF2F7;font-weight:700">'
             f'<th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0">週次</th>'
@@ -932,8 +992,14 @@ else:
         st.markdown(_build_gantt_cal(), unsafe_allow_html=True)
         st.markdown(
             f'<div style="font-size:13px;color:#607080;margin-top:8px">'
-            f'🟢&lt;80% 正常｜🟡 80~99% 接近滿載｜🔴≥100% 超載<br>'
-            f'稼動率 = 當日排程產量 ÷ {DAILY_CAP} pcs（9084品項 150 pcs/天）'
+            f'🟢&lt;80% 正常｜🟡 80~99% 接近滿載｜🔴≥100% 超載　／　'
+            f'色塊（依製造天數區分）：<span style="color:#5b21b6;font-weight:700">紫＝5天以上（長製程）</span>　'
+            f'<span style="color:#1d4ed8;font-weight:700">藍＝2~4天（中製程）</span>　'
+            f'<span style="color:#0f766e;font-weight:700">綠＝當天完成（1天）</span><br>'
+            f'稼動率 = 當日排程產量 ÷ {DAILY_CAP} pcs（9084品項 150 pcs/天）｜'
+            f'時程已改為「出貨日為主導」回推：完工日 = 出貨日 − {IQC_WH_DAYS} 工作天緩衝，'
+            f'開工日 = 完工日往前推「製造天數−1」個工作天，不再參考齊料日<br>'
+            f'色塊僅顯示於實際工作日（自動避開六、日與國定假日），且不重疊的工單會並排同列顯示，減少版面留白'
             f'</div>', unsafe_allow_html=True)
     with tab_ship:
         st.markdown(_build_ship_cal(_ev_ship), unsafe_allow_html=True)

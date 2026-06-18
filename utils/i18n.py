@@ -29,6 +29,12 @@ TEXTS = {
         "link_daily_inbound": "每日入庫筆數",
         "link_daily_picking": "每日備料筆數",
         "link_wh_staff":     "倉儲人員編製",
+        "link_loss_rate":    "耗損率分析",
+        "link_kanban":       "工單進度看板",
+        "link_wh_dashboard": "倉儲備料看板",
+        "dept_rma":      "RMA",
+        "dept_rma_sub":  "Return Material Authorization",
+        "link_rma_summary": "RMA總表",
 
         # Sidebar settings
         "settings":      "⚙️ 設定",
@@ -141,6 +147,12 @@ TEXTS = {
         "link_daily_inbound": "Daily Inbound Count",
         "link_daily_picking": "Daily Picking Count",
         "link_wh_staff":     "Warehouse Staff",
+        "link_loss_rate":    "Loss Rate Analysis",
+        "link_kanban":       "WO Progress Kanban",
+        "link_wh_dashboard": "Warehouse Prep Dashboard",
+        "dept_rma":      "RMA",
+        "dept_rma_sub":  "Return Material Authorization",
+        "link_rma_summary": "RMA Summary",
 
         # Sidebar settings
         "settings":      "⚙️ Settings",

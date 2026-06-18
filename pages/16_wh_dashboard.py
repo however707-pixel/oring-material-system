@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import glob, os, sys
+import os, sys
 from datetime import date, timedelta, datetime
 from streamlit_autorefresh import st_autorefresh
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import render_sidebar
+from db import queries as wh_db
 
 st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
                    layout="wide", initial_sidebar_state="expanded")
@@ -30,7 +31,7 @@ st.markdown("""
 .js-plotly-plot .plotly .bg { fill:transparent !important; }
 html, body, [class*="css"] {
     font-size:18px !important;
-    font-family:"Microsoft JhengHei","微軟正黑體",sans-serif !important;
+    font-family:"Arial,標楷體,DFKai-SB,serif","微軟正黑體",sans-serif !important;
 }
 p { color:#1D2B3A !important; }
 label { color:#6B7280 !important; }
@@ -51,80 +52,21 @@ TODAY = date.today()
 NOW   = datetime.now()
 
 # ══════════════════════════════════════════════════════
-# NAS 設定（固定路徑，自動載入）
+# 資料來源：SQLite（由 db/import_to_db.py 從 NAS 匯入）
 # ══════════════════════════════════════════════════════
-_NAS_DIR    = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\資材部\每日調撥與送燒ic(NEW)\3月-6月進貨資料表\調件備料統計表"
-_FILE_PFX   = "調件備料統計"
-
-def find_latest_wh():
-    try:
-        # 先找直接在資料夾內的檔案
-        files = [
-            os.path.join(_NAS_DIR, f)
-            for f in os.listdir(_NAS_DIR)
-            if not f.startswith('~$') and _FILE_PFX in f
-            and f.lower().endswith(('.xlsx','.xls'))
-        ]
-        if not files:
-            # 遞迴搜尋子資料夾
-            files = glob.glob(os.path.join(_NAS_DIR, f"**/*{_FILE_PFX}*.xlsx"), recursive=True)
-        if not files: return None, None
-        files.sort(key=os.path.getmtime, reverse=True)
-        f = files[0]
-        mtime = pd.Timestamp(os.path.getmtime(f), unit='s').tz_localize('UTC').tz_convert('Asia/Taipei')
-        return f, mtime
-    except Exception:
-        return None, None
-
-# ── 排程資料（工單出貨週報）──────────────────────────────
-_SCHED_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\早會資料夾"
-_SCHED_FILE = "簡版-工單缺料狀況.xlsx"
-
-def find_latest_sched():
-    try:
-        files = glob.glob(os.path.join(_SCHED_DIR, "**", _SCHED_FILE), recursive=True)
-        if not files: return None
-        files.sort(key=os.path.getmtime, reverse=True)
-        return files[0]
-    except Exception: return None
-
 @st.cache_data(ttl=20*60, show_spinner=False)
-def load_sched(path):
+def load_sched(_mtime_key):
     try:
-        df = pd.read_excel(path, sheet_name='LIST', header=0)
-        rows = []
-        for _, r in df.iterrows():
-            wo = str(r.iloc[1]).strip() if pd.notna(r.iloc[1]) else ''
-            qty = r.iloc[3]
-            rate = float(r.iloc[5]) if pd.notna(r.iloc[5]) else 0.0
-            if not wo or wo == 'nan': continue
-            raw_ship = r.iloc[12]
-            ship_date = None
-            if pd.notna(raw_ship):
-                s = str(raw_ship).strip()
-                if s not in ('','nan','None','TBD','試產','00:00:00'):
-                    try:
-                        ship_date = pd.to_datetime(s).date()
-                    except Exception:
-                        import re as _re
-                        found = _re.findall(r'(\d{1,2})/(\d{1,2})', s)
-                        if found:
-                            m2, d2 = int(found[0][0]), int(found[0][1])
-                            try: ship_date = date(TODAY.year, m2, d2)
-                            except Exception: pass
-            hint_qi = any(k in str(r.iloc[8]) for k in ('已發料','已齊料','已發放','齊料'))
-            if rate >= 1.0 or hint_qi: status = '已齊料'
-            elif rate == 0.0: status = '完全缺料'
-            else: status = f'缺料 {rate:.0%}'
-            rows.append({'出貨日': ship_date, '料況狀態': status, '預計產量': qty})
-        return pd.DataFrame(rows)
-    except Exception: return pd.DataFrame()
+        return wh_db.load_sched()
+    except Exception:
+        return pd.DataFrame()
 
-_sched_path = find_latest_sched()
-sched_df = load_sched(_sched_path) if _sched_path else pd.DataFrame()
+# 資料庫狀態
+db_ready  = wh_db.db_exists()
+src_mtime = wh_db.db_mtime() if db_ready else None
+src_name  = wh_db.source_filename() if db_ready else None
 
-# 自動抓 NAS；NAS 離線才需要手動上傳
-src_file, src_mtime = find_latest_wh()
+sched_df = load_sched(str(src_mtime)) if db_ready else pd.DataFrame()
 
 # ══════════════════════════════════════════════════════
 # HEADER
@@ -156,15 +98,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ── NAS 狀態列 + 離線時顯示上傳按鈕 ──────────────────
-if src_file:
-    fname = os.path.basename(src_file) if isinstance(src_file, str) else src_file.name
+# ── 資料庫狀態列 ─────────────────────────────────────
+if db_ready:
     ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else ""
     st.markdown(
         f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
         f'border-radius:8px;padding:8px 16px;font-size:13px;color:#2E9D70;margin-bottom:4px">'
-        f'✅ &nbsp;NAS 已連線，自動載入最新檔案 &nbsp;·&nbsp; '
-        f'<b style="color:#2E9D70">{fname}</b>'
+        f'✅ &nbsp;資料庫已載入 &nbsp;·&nbsp; '
+        f'<b style="color:#2E9D70">{src_name or "wh_dashboard.db"}</b>'
         f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span>'
         f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">🔄 每 20 分鐘自動更新</span>'
         f'</div>',
@@ -174,82 +115,32 @@ else:
     st.markdown(
         '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);'
         'border-radius:8px;padding:10px 16px;margin-bottom:8px;color:#fca5a5;font-size:14px">'
-        '⚠️ &nbsp;NAS 離線，請手動上傳「調件備料統計」Excel 檔</div>',
+        '⚠️ &nbsp;尚未建立資料庫，請先執行 <code>python db/import_to_db.py</code> 從 NAS 匯入。</div>',
         unsafe_allow_html=True
     )
-    uploaded = st.file_uploader(
-        "上傳 調件備料統計 Excel", type=["xlsx","xls"], key="wh_upload",
-        label_visibility="collapsed"
-    )
-    if uploaded:
-        src_file  = uploaded
-        src_mtime = pd.Timestamp.now()
-
-if src_file is None:
     st.stop()
 
 # ══════════════════════════════════════════════════════
-# 讀取資料
+# 讀取資料（SQLite）
 # ══════════════════════════════════════════════════════
 @st.cache_data(ttl=5*60, show_spinner=False)
-def load_wh(file_key):
-    xls = pd.ExcelFile(src_file) if isinstance(src_file, str) else pd.ExcelFile(src_file)
+def load_wh(_mtime_key):
+    return wh_db.load_wh()
 
-    # 調撥單
-    diao = pd.read_excel(xls, sheet_name='調撥單', header=None)
-    diao.columns = diao.iloc[0]; diao = diao.iloc[1:].reset_index(drop=True)
-    for c in ['需求日','完成日','開單日','備料日']:
-        if c in diao.columns:
-            diao[c] = pd.to_datetime(diao[c], errors='coerce')
-    for c in ['需求筆數','完成筆數']:
-        if c in diao.columns:
-            diao[c] = pd.to_numeric(diao[c], errors='coerce').fillna(0)
-
-    # 入庫單據
-    inbound = pd.read_excel(xls, sheet_name='入庫單據', header=None)
-    inbound.columns = inbound.iloc[0]; inbound = inbound.iloc[1:].reset_index(drop=True)
-    for c in ['驗畢日期','接單日期','預計完成日','完成日','取單日']:
-        if c in inbound.columns:
-            inbound[c] = pd.to_datetime(inbound[c], errors='coerce')
-    if '筆數' in inbound.columns:
-        inbound['筆數'] = pd.to_numeric(inbound['筆數'], errors='coerce').fillna(0)
-    else:
-        inbound['筆數'] = 0
-
-    # 工時效率-每日
-    eff = pd.read_excel(xls, sheet_name='工時效率計算-每日', header=None)
-    # 結構：row0=備料/入庫 大標, row1=欄名, row2+= 資料
-    eff_cols_biao = eff.iloc[1, :5].tolist()    # 備料欄
-    eff_cols_in   = eff.iloc[1, 8:12].tolist()  # 入庫欄
-    eff_biao = eff.iloc[2:, :5].copy()
-    eff_biao.columns = eff_cols_biao
-    eff_biao = eff_biao.rename(columns={eff_cols_biao[0]:'日期',eff_cols_biao[2]:'備料筆數',eff_cols_biao[3]:'平均筆數'})
-    eff_biao['日期'] = pd.to_datetime(eff_biao['日期'], errors='coerce')
-    eff_biao['備料筆數'] = pd.to_numeric(eff_biao.get('備料筆數',0), errors='coerce').fillna(0)
-
-    eff_in = eff.iloc[2:, 8:12].copy()
-    eff_in.columns = eff_cols_in
-    eff_in = eff_in.rename(columns={eff_cols_in[0]:'日期',eff_cols_in[2]:'入庫筆數'})
-    eff_in['日期'] = pd.to_datetime(eff_in['日期'], errors='coerce')
-    eff_in['入庫筆數'] = pd.to_numeric(eff_in.get('入庫筆數',0), errors='coerce').fillna(0)
-
-    # 錯料追蹤
-    err_df = pd.read_excel(xls, sheet_name='錯料歸還追蹤', header=None)
-    err_df.columns = err_df.iloc[0]; err_df = err_df.iloc[1:].reset_index(drop=True)
-    for c in ['通知日期','結案日期']:
-        if c in err_df.columns:
-            err_df[c] = pd.to_datetime(err_df[c], errors='coerce')
-
-    return diao, inbound, eff_biao, eff_in, err_df
-
-file_key = getattr(src_file, 'name', str(src_file))
 with st.spinner("載入資料中…"):
-    diao, inbound, eff_biao, eff_in, err_df = load_wh(file_key)
+    diao, inbound = load_wh(str(src_mtime))
 
 # ══════════════════════════════════════════════════════
-# 計算 KPI（顯示前一日數值）
+# 計算 KPI（顯示前一工作日數值）
 # ══════════════════════════════════════════════════════
-YESTERDAY = TODAY - timedelta(days=1)
+def _prev_workday(d):
+    """回傳 d 的前一個工作日（跳過週六、週日）"""
+    prev = d - timedelta(days=1)
+    while prev.weekday() >= 5:   # 5=週六, 6=週日
+        prev -= timedelta(days=1)
+    return prev
+
+YESTERDAY = _prev_workday(TODAY)
 
 # ── 備料（調撥單）──────────────────────────────────────
 # 已完成：K欄（完成日）= 昨日 且 M欄（狀態）= 已完成 → 加總 G欄（需求筆數）
@@ -260,6 +151,11 @@ b_done_rows = diao[
 ]
 b_done = int(b_done_rows['需求筆數'].sum())
 
+# 已完成拆分：E欄（需求單位）含「生產加工」或「廠內」→ 廠內，其餘 → 委外
+_inhouse_mask = b_done_rows['需求單位'].astype(str).str.contains('生產加工|廠內', na=False)
+b_done_inhouse  = int(b_done_rows[_inhouse_mask]['需求筆數'].sum())
+b_done_outsource = b_done - b_done_inhouse
+
 # 待完成：F欄（需求日）有值 且 <= 昨日 且 K欄（完成日）空白 → 加總 G欄
 b_pend_rows = diao[
     diao['需求日'].notna() &
@@ -267,6 +163,11 @@ b_pend_rows = diao[
     diao['完成日'].isna()
 ]
 b_pend = int(b_pend_rows['需求筆數'].sum())
+
+# 待完成拆分：E欄（需求單位）含「生產加工」或「廠內」→ 廠內，其餘 → 委外
+_pend_inhouse_mask = b_pend_rows['需求單位'].astype(str).str.contains('生產加工|廠內', na=False)
+b_pend_inhouse   = int(b_pend_rows[_pend_inhouse_mask]['需求筆數'].sum())
+b_pend_outsource = b_pend - b_pend_inhouse
 
 b_total = b_done + b_pend
 b_rate  = b_done / b_total if b_total else 0
@@ -325,9 +226,22 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-def _kpi_card(title, done, pend, rate, icon, daily_target=None):
+def _kpi_card(title, done, pend, rate, icon, daily_target=None,
+              done_breakdown=None, pend_breakdown=None):
     total = done + pend
     pct   = int(rate * 100)
+
+    # 廠內／委外拆分小標籤（例：廠內 180・委外 79）
+    def _bd_label(bd):
+        if not bd: return ""
+        in_cnt, out_cnt = bd
+        return (
+            f'<div style="color:#9CA3AF;font-size:12px;margin-top:4px;white-space:nowrap">'
+            f'廠內 {in_cnt:,}・委外 {out_cnt:,}</div>'
+        )
+    done_breakdown_html = _bd_label(done_breakdown)
+    pend_breakdown_html = _bd_label(pend_breakdown)
+
     if rate >= 0.8:   status_txt,status_c = "達標",    "#2E9D70"
     elif rate >= 0.5: status_txt,status_c = "持續推進", "#d97706"
     else:             status_txt,status_c = "進度落後", "#B23A48"
@@ -369,10 +283,12 @@ def _kpi_card(title, done, pend, rate, icon, daily_target=None):
         f'<div style="display:flex;gap:0;margin-bottom:18px">'
         f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF">'
         f'<div style="color:#2E9D70;font-size:54px;font-weight:900;line-height:1">{done:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">已完成</div></div>'
+        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">已完成</div>'
+        f'{done_breakdown_html}</div>'
         f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF">'
         f'<div style="color:#B23A48;font-size:54px;font-weight:900;line-height:1">{pend:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">待完成</div></div>'
+        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">待完成</div>'
+        f'{pend_breakdown_html}</div>'
         f'<div style="flex:1;text-align:center">'
         f'<div style="color:#C9A45C;font-size:54px;font-weight:900;line-height:1">{pct}%</div>'
         f'<div style="color:#6B7280;font-size:14px;margin-top:6px">完成率</div></div>'
@@ -416,13 +332,15 @@ def _top_person_card():
         f'🏆 前日最高績效</div>'
         f'<div style="display:flex;gap:10px">'
         + _half("📦 備料", top_b_name, top_b_cnt, top_b_pct, "#2E9D70", "#2E9D70")
-        + _half("🏭 入庫", top_i_name, top_i_cnt, top_i_pct, "#B23A48", "#B23A48")
+        + _half("🏭 上架", top_i_name, top_i_cnt, top_i_pct, "#B23A48", "#B23A48")
         + f'</div></div>'
     )
 
 c1, c2, c3 = st.columns(3)
-c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate, "📦", daily_target=200), unsafe_allow_html=True)
-c2.markdown(_kpi_card("入庫", i_done, i_pend, i_rate, "🏭", daily_target=100), unsafe_allow_html=True)
+c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate, "📦", daily_target=200,
+                      done_breakdown=(b_done_inhouse, b_done_outsource),
+                      pend_breakdown=(b_pend_inhouse, b_pend_outsource)), unsafe_allow_html=True)
+c2.markdown(_kpi_card("上架", i_done, i_pend, i_rate, "🏭", daily_target=100), unsafe_allow_html=True)
 c3.markdown(_top_person_card(), unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
@@ -482,7 +400,7 @@ with col_person:
                     x=_slabs[_i], y=_tot,
                     text=f"<b>共 {_tot:,}</b><br><span style='font-size:12px'>齊 {_rq2:,} ｜ 缺 {_lq2:,}</span>",
                     xanchor="center", yanchor="bottom", showarrow=False,
-                    font=dict(size=13, color="#1D2B3A", family="Microsoft JhengHei"),
+                    font=dict(size=13, color="#1D2B3A", family="Arial,標楷體,DFKai-SB,serif"),
                     bgcolor="rgba(253,250,245,0.9)",
                     bordercolor="#E6D8B8", borderwidth=1, borderpad=4,
                 ))
@@ -493,11 +411,11 @@ with col_person:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                         font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
             xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
-                       family="Microsoft JhengHei")),
+                       family="Arial,標楷體,DFKai-SB,serif")),
             yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
                        tickfont=dict(color="#6B7280", size=12), zeroline=False),
             margin=dict(l=10, r=10, t=60, b=10), height=320,
-            font=dict(family="Microsoft JhengHei"),
+            font=dict(family="Arial,標楷體,DFKai-SB,serif"),
         )
         st.plotly_chart(fig_ship, use_container_width=True,
                         config=dict(staticPlot=True))
@@ -517,6 +435,13 @@ with col_alert:
     today_b_cnt = int(today_b_rows['需求筆數'].sum())
     today_i_cnt = int(today_i_rows['完成筆數'].sum())
 
+    # 今日新增：開單日 = 今日（不論狀態）
+    today_new_rows = diao[
+        diao['開單日'].notna() &
+        (diao['開單日'].dt.date == TODAY)
+    ]
+    today_new_cnt = int(today_new_rows['需求筆數'].sum())
+
     st.markdown(
         f'<div style="background:#FFFFFF;'
         f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
@@ -528,9 +453,12 @@ with col_alert:
         f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
         f'<div style="color:#2E9D70;font-size:52px;font-weight:900;line-height:1">{today_b_cnt:,}</div>'
         f'<div style="color:#6B7280;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
-        f'<div style="flex:1;text-align:center;padding:10px 0">'
+        f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
         f'<div style="color:#B23A48;font-size:52px;font-weight:900;line-height:1">{today_i_cnt:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">🏭 入庫完成</div></div>'
+        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">🏭 上架完成</div></div>'
+        f'<div style="flex:1;text-align:center;padding:10px 0">'
+        f'<div style="color:#3B82F6;font-size:52px;font-weight:900;line-height:1">{today_new_cnt:,}</div>'
+        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">➕ 今日新增</div></div>'
         f'</div>'
         f'<div style="margin-top:14px;border-top:1px solid #EDE5CF;padding-top:12px">'
         f'<div style="color:#6B7280;font-size:13px;margin-bottom:8px">今日備料人員</div>',
@@ -582,7 +510,7 @@ week_labels  = []   # 長標籤（圖表用）
 week_b, week_i = [], []
 week_workdays = []  # 各週工作日數
 
-for w in range(4, -1, -1):
+for w in range(5, 0, -1):
     wk_start = this_mon - timedelta(weeks=w)
     wk_end   = wk_start + timedelta(days=4)   # Mon~Fri
     wnum = wk_start.isocalendar()[1]
@@ -603,13 +531,13 @@ def _bar_chart(labels, values, color_fill, color_line, height=240):
         marker=dict(color=color_fill, line=dict(color=color_line, width=1.5)),
         text=[f"{v:,}" if v else "0" for v in values],
         textposition="outside",
-        textfont=dict(color=color_line, size=14, family="Microsoft JhengHei"),
+        textfont=dict(color=color_line, size=14, family="Arial,標楷體,DFKai-SB,serif"),
     ))
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
-                   family="Microsoft JhengHei")),
+                   family="Arial,標楷體,DFKai-SB,serif")),
         yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
                    tickfont=dict(color="#6B7280", size=12), zeroline=False),
         margin=dict(l=10, r=10, t=36, b=10), height=height,
@@ -620,16 +548,16 @@ def _mini_table(row_label, labels, values, val_color, workdays=None):
     """HTML 小表格：完成筆數 + 每日平均"""
     th_style = (f'style="background:#1D2B3A;color:#ffffff;padding:8px 12px;'
                 f'font-size:13px;font-weight:700;text-align:center;'
-                f'border:1px solid #E6D8B8;font-family:Microsoft JhengHei"')
+                f'border:1px solid #E6D8B8;font-family:Arial,標楷體,DFKai-SB,serif"')
     td_label = (f'style="background:#fdfaf5;color:#1D2B3A;padding:8px 12px;'
                 f'font-size:13px;font-weight:700;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Microsoft JhengHei;white-space:nowrap"')
+                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif;white-space:nowrap"')
     td_val   = (f'style="background:#ffffff;color:{val_color};padding:8px 12px;'
                 f'font-size:15px;font-weight:900;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Microsoft JhengHei"')
+                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif"')
     td_avg   = (f'style="background:#fdfaf5;color:#C9A45C;padding:8px 12px;'
                 f'font-size:14px;font-weight:700;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Microsoft JhengHei"')
+                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif"')
 
     ths  = "".join(f"<th {th_style}>{l}</th>" for l in labels)
     tds  = "".join(f"<td {td_val}>{v:,}</td>" for v in values)
@@ -662,7 +590,7 @@ with col_w1:
                             workdays=week_workdays), unsafe_allow_html=True)
 
 with col_w2:
-    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
+    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 上架</div>',
                 unsafe_allow_html=True)
     st.plotly_chart(_bar_chart(week_labels, week_i,
                                "rgba(178,58,72,0.70)", "#B23A48"),
@@ -715,7 +643,7 @@ with col_m1:
                             workdays=month_workdays), unsafe_allow_html=True)
 
 with col_m2:
-    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 入庫</div>',
+    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 上架</div>',
                 unsafe_allow_html=True)
     st.plotly_chart(_bar_chart(month_labels_long, month_i,
                                "rgba(178,58,72,0.70)", "#B23A48", height=260),
@@ -726,7 +654,7 @@ with col_m2:
 # 頁尾
 st.markdown(
     f'<div style="text-align:center;color:#1e3a5f;font-size:11px;margin-top:24px;letter-spacing:1px">'
-    f'DATA · {os.path.basename(str(src_file)) if isinstance(src_file,str) else getattr(src_file,"name","上傳檔案")}'
+    f'DATA · {src_name or "wh_dashboard.db"}'
     f' &nbsp;｜&nbsp; {NOW.strftime("%H:%M")} 更新</div>',
     unsafe_allow_html=True
 )

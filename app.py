@@ -275,151 +275,313 @@ if uploaded_file is not None:
         st.success(t("no_shortage"))
 else:
     _flow_html = """
-<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: transparent; padding: 8px 4px; }
-  .board-title { text-align: center; margin-bottom: 32px; }
-  .board-title h2 { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 5px; }
-  .board-title p { font-size: 13px; color: #64748b; letter-spacing: 0.04em; }
-  .flow-grid { display: grid; grid-template-columns: 1fr 48px 1fr 48px 1fr; gap: 0; align-items: start; }
-  .dept-col { display: flex; flex-direction: column; gap: 0; }
-  .dept-header { border-radius: 14px 14px 0 0; padding: 18px 0 15px; text-align: center; position: relative; overflow: hidden; }
-  .dept-header .dept-icon { font-size: 28px; display: block; margin-bottom: 7px; }
-  .dept-header .dept-name { font-size: 18px; font-weight: 800; letter-spacing: 0.04em; }
-  .dept-header .dept-sub { font-size: 11px; margin-top: 3px; opacity: 0.85; }
-  .dept-pc .dept-header { background: linear-gradient(160deg, #166534, #15803d, #16a34a); color: #fff; box-shadow: 0 6px 20px rgba(21,128,61,0.4); }
-  .dept-mc .dept-header { background: linear-gradient(160deg, #1e3a8a, #1d4ed8, #2563eb); color: #fff; box-shadow: 0 6px 20px rgba(29,78,216,0.4); }
-  .dept-wh .dept-header { background: linear-gradient(160deg, #4c1d95, #6d28d9, #7c3aed); color: #fff; box-shadow: 0 6px 20px rgba(109,40,217,0.4); }
-  .dept-body { border-left: 2px solid; border-right: 2px solid; border-bottom: 2px solid; border-radius: 0 0 14px 14px; padding: 16px 14px 22px; display: flex; flex-direction: column; gap: 10px; }
-  .dept-pc .dept-body { border-color: #15803d; background: linear-gradient(180deg,#f0fdf4,#dcfce7); }
-  .dept-mc .dept-body { border-color: #1d4ed8; background: linear-gradient(180deg,#eff6ff,#dbeafe); }
-  .dept-wh .dept-body { border-color: #6d28d9; background: linear-gradient(180deg,#f5f3ff,#ede9fe); }
-  .step-card { border-radius: 10px; padding: 11px 14px; cursor: default; transition: transform 0.18s; }
-  .step-card:hover { transform: translateY(-3px); }
-  .dept-pc .step-card { background: #fff; border: 1px solid #bbf7d0; }
-  .dept-mc .step-card { background: #fff; border: 1px solid #bfdbfe; }
-  .dept-wh .step-card { background: #fff; border: 1px solid #ddd6fe; }
-  .step-num { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
-  .dept-pc .step-num { color: #15803d; } .dept-mc .step-num { color: #1d4ed8; } .dept-wh .step-num { color: #6d28d9; }
-  .step-name { font-size: 15px; font-weight: 700; color: #1e293b; }
-  .step-sub { font-size: 11.5px; color: #64748b; margin-top: 3px; }
-  .step-arrow { display: flex; align-items: center; justify-content: center; margin: 1px 0; font-size: 16px; }
-  .dept-pc .step-arrow { color: #16a34a; } .dept-mc .step-arrow { color: #2563eb; } .dept-wh .step-arrow { color: #7c3aed; }
-  .conn-col { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 72px; }
-  .conn-row { display: flex; align-items: center; justify-content: center; height: 63px; }
-  .conn-wrap { display: flex; flex-direction: column; align-items: center; }
-  .conn-arrow { width: 40px; height: 2px; background: linear-gradient(90deg, #94a3b8, #cbd5e1); position: relative; border-radius: 1px; }
-  .conn-arrow::after { content: ''; position: absolute; right: -1px; top: -5px; border-left: 9px solid #94a3b8; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-  .conn-label { font-size: 10px; color: #64748b; text-align: center; margin-top: 3px; white-space: nowrap; font-weight: 600; }
-  .legend { display: flex; gap: 24px; justify-content: center; margin-top: 26px; flex-wrap: wrap; }
-  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #64748b; font-weight: 500; }
-  .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
-  .legend-line { width: 28px; height: 2px; background: #94a3b8; position: relative; }
-  .legend-line::after { content:''; position:absolute; right:-1px; top:-4px; border-left:7px solid #94a3b8; border-top:5px solid transparent; border-bottom:5px solid transparent; }
-  .upload-hint { margin-top: 26px; text-align: center; padding: 16px 24px; background: linear-gradient(135deg,#f0f7ff,#f8faff); border: 1.5px dashed #93c5fd; border-radius: 12px; }
-  .upload-hint p { font-size: 13px; color: #64748b; }
-</style></head><body>
-<div class="board-title"><h2>__BOARD_TITLE__</h2><p>__BOARD_SUB__</p></div>
-<div class="flow-grid">
-  <div class="dept-col dept-pc">
-    <div class="dept-header"><span class="dept-icon">🏗</span><div class="dept-name">生管 PC</div><div class="dept-sub">Production Control</div></div>
-    <div class="dept-body">
-      <div class="step-card"><div class="step-num">01 · 接單</div><div class="step-name">客戶訂單確認</div><div class="step-sub">Sales Order Received</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">02 · 規劃</div><div class="step-name">生產排程規劃</div><div class="step-sub">Production Scheduling</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">03 · 開單</div><div class="step-name">工單發佈</div><div class="step-sub">Work Order Issued</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">04 · 追蹤</div><div class="step-name">生產進度追蹤</div><div class="step-sub">Progress Monitoring</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">05 · 完工</div><div class="step-name">完工確認回報</div><div class="step-sub">Completion Reporting</div></div>
-      <div class="step-arrow">↓</div>
-      <a href="./monthly_cost" target="_top" style="text-decoration:none;display:block">
-        <div class="step-card" style="border:2px solid #15803d;background:linear-gradient(135deg,#f0fdf4,#dcfce7);cursor:pointer;">
-          <div class="step-num" style="color:#15803d;">06 · 分析</div><div class="step-name">每月成本計算表</div><div class="step-sub">Monthly Cost Analysis</div>
-        </div>
-      </a>
-      <div class="step-arrow">↓</div>
-      <a href="./kanban" target="_top" style="text-decoration:none;display:block">
-        <div class="step-card" style="border:2px solid #1d4ed8;background:linear-gradient(135deg,#eff6ff,#dbeafe);cursor:pointer;">
-          <div class="step-num" style="color:#1d4ed8;">07 · 看板</div><div class="step-name">📺 工單進度看板</div><div class="step-sub">Live Production Board</div>
-        </div>
-      </a>
-    </div>
-  </div>
-  <div class="conn-col"><div class="conn-wrap">
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">需求<br>觸發</div></div></div>
-    <div class="conn-row" style="height:63px"></div>
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">工單<br>下達</div></div></div>
-    <div class="conn-row" style="height:63px"></div>
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">進度<br>確認</div></div></div>
-  </div></div>
-  <div class="dept-col dept-mc">
-    <div class="dept-header"><span class="dept-icon">📦</span><div class="dept-name">物管 MC</div><div class="dept-sub">Material Control</div></div>
-    <div class="dept-body">
-      <div class="step-card"><div class="step-num">01 · 分析</div><div class="step-name">需求與缺料分析</div><div class="step-sub">Demand Analysis</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">02 · 採購</div><div class="step-name">採購 / 調撥決策</div><div class="step-sub">Purchase / Transfer</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">03 · 委外</div><div class="step-name">委外調撥確認</div><div class="step-sub">Outsource Confirmation</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">04 · 追料</div><div class="step-name">料件到貨追蹤</div><div class="step-sub">Material Tracking</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">05 · 配料</div><div class="step-name">工單配料發料</div><div class="step-sub">Material Kitting</div></div>
-    </div>
-  </div>
-  <div class="conn-col"><div class="conn-wrap">
-    <div class="conn-row" style="height:63px"></div>
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">入庫<br>請求</div></div></div>
-    <div class="conn-row" style="height:63px"></div>
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">備料<br>需求</div></div></div>
-    <div class="conn-row"><div><div class="conn-arrow"></div><div class="conn-label">發料<br>指令</div></div></div>
-  </div></div>
-  <div class="dept-col dept-wh">
-    <div class="dept-header"><span class="dept-icon">🏬</span><div class="dept-name">倉管 WH</div><div class="dept-sub">Warehouse Management</div></div>
-    <div class="dept-body">
-      <div class="step-card"><div class="step-num">01 · 驗收</div><div class="step-name">入庫驗收 / IQC</div><div class="step-sub">Goods Receipt &amp; QC</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">02 · 上架</div><div class="step-name">儲位上架管理</div><div class="step-sub">Putaway &amp; Slotting</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">03 · 備料</div><div class="step-name">備料 / 領料揀取</div><div class="step-sub">Pick &amp; Preparation</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">04 · 包裝</div><div class="step-name">出貨包裝作業</div><div class="step-sub">Packing &amp; Shipping</div></div>
-      <div class="step-arrow">↓</div>
-      <div class="step-card"><div class="step-num">05 · 出貨</div><div class="step-name">出貨確認 / 交運</div><div class="step-sub">Shipment Confirmation</div></div>
-      <div class="step-arrow">↓</div>
-      <a href="./daily_inbound" target="_top" style="text-decoration:none;display:block">
-        <div class="step-card" style="border:2px solid #6d28d9;background:linear-gradient(135deg,#faf5ff,#ede9fe);cursor:pointer;">
-          <div class="step-num" style="color:#6d28d9;">06 · 統計</div><div class="step-name">每日入庫筆數</div><div class="step-sub">Daily Inbound Count</div>
-        </div>
-      </a>
-      <div class="step-arrow">↓</div>
-      <a href="./daily_picking" target="_top" style="text-decoration:none;display:block">
-        <div class="step-card" style="border:2px solid #6d28d9;background:linear-gradient(135deg,#faf5ff,#ede9fe);cursor:pointer;">
-          <div class="step-num" style="color:#6d28d9;">07 · 統計</div><div class="step-name">每日備料筆數</div><div class="step-sub">Daily Prep Count</div>
-        </div>
-      </a>
-    </div>
-  </div>
-</div>
-<div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#15803d"></div> 生管 PC</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#1d4ed8"></div> 物管 MC</div>
-  <div class="legend-item"><div class="legend-dot" style="background:#6d28d9"></div> 倉管 WH</div>
-  <div class="legend-item"><div class="legend-line"></div> 跨部門協作</div>
-</div>
-<div class="upload-hint"><p>__UPLOAD_HINT__</p></div>
-</body></html>
-"""
-    components.html(
-        _flow_html
-        .replace("__BOARD_TITLE__", t("board_title"))
-        .replace("__BOARD_SUB__",   t("board_sub"))
-        .replace("__UPLOAD_HINT__", t("upload_hint")),
-        height=980, scrolling=False
-    )
+<div class="arch-root"><style>
+@property --angle { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+.arch-root *, .arch-root *::before, .arch-root *::after { box-sizing:border-box; }
+.arch-root * { margin:0; padding:0; }
+.arch-root { font-family:"Segoe UI","Microsoft JhengHei",Arial,sans-serif;
+       color:#d6e0f0; min-width:0;
+       background:
+         radial-gradient(900px 480px at 18% -8%, rgba(56,189,248,.20), transparent 60%),
+         radial-gradient(820px 460px at 88% 0%, rgba(99,102,241,.18), transparent 60%),
+         radial-gradient(700px 520px at 50% 120%, rgba(59,130,246,.14), transparent 55%),
+         linear-gradient(160deg,#0f1a30 0%,#16223d 55%,#0e1729 100%);
+       padding:22px 18px 18px; position:relative; overflow:hidden; border-radius:16px; }
+/* 科技格線背景（加強） */
+.arch-root::before { content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(96,165,250,.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96,165,250,.10) 1px, transparent 1px);
+  background-size:38px 38px;
+  -webkit-mask-image:radial-gradient(ellipse 100% 88% at 50% 35%, #000 70%, transparent 100%);
+  mask-image:radial-gradient(ellipse 100% 88% at 50% 35%, #000 70%, transparent 100%); }
+.arch-root { display:block; }
+.arch-root > * { position:relative; z-index:1; }
 
-    with st.expander(t("fmt_title")):
-        st.markdown(t("fmt_body"))
-        st.caption(t("fmt_support"))
+/* ══ 標題 ══ */
+.arch-title { text-align:center; margin-bottom:20px; }
+.arch-title h2 {
+  font-size:38px; font-weight:800; letter-spacing:0.16em;
+  background:linear-gradient(100deg,#7dd3fc 0%,#38bdf8 45%,#818cf8 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  filter:drop-shadow(0 0 18px rgba(56,189,248,.50)); }
+.arch-title .sub { font-size:14px; color:#9fb2d4; margin-top:8px; font-weight:500;
+  letter-spacing:0.20em; font-family:"Consolas","SF Mono",monospace; }
+.arch-title .sep { margin:0 10px; color:#60a5fa; }
+.arch-title .divider { width:110px; height:2px; margin:12px auto 0;
+  background:linear-gradient(90deg,transparent,#38bdf8,#818cf8,transparent);
+  box-shadow:0 0 14px rgba(56,189,248,.9); border-radius:2px; }
+
+/* ══ 三欄主佈局 ══ */
+.arch-main { display:flex; gap:12px; align-items:stretch; }
+
+/* ══ 側欄 ══ */
+.side-col { width:190px; flex-shrink:0; display:flex; flex-direction:column; gap:8px; }
+.side-box { border-radius:13px; padding:13px 15px; flex:1;
+            background:rgba(20,32,58,.6); border:1px solid rgba(96,165,250,.28);
+            -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+            box-shadow:0 4px 18px rgba(0,0,0,.4); }
+.side-box .sb-title {
+  font-size:15px; font-weight:800; margin-bottom:8px; color:#e8eefb;
+  display:flex; align-items:center; gap:5px; }
+.side-box ul { list-style:none; padding:0; }
+.side-box ul li { font-size:13px; color:#a9b8d6; padding:3px 0;
+  display:flex; align-items:flex-start; gap:4px; line-height:1.55; }
+.side-box ul li::before { content:'▸'; font-size:10px; margin-top:3px; flex-shrink:0; color:#60a5fa; }
+
+.who-box    { border-color:rgba(56,189,248,.35); }
+.who-box    .sb-title { color:#7dd3fc; }
+.who-box    ul li::before { color:#38bdf8; }
+.input-box  { border-color:rgba(96,165,250,.35); }
+.input-box  .sb-title { color:#93c5fd; }
+.input-box  ul li::before { color:#60a5fa; }
+.how-box    { border-color:rgba(129,140,248,.35); }
+.how-box    .sb-title { color:#a5b4fc; }
+.how-box    ul li::before { color:#818cf8; }
+.with-box   { border-color:rgba(56,189,248,.35); }
+.with-box   .sb-title { color:#7dd3fc; }
+.with-box   ul li::before { color:#38bdf8; }
+.output-box { border-color:rgba(96,165,250,.35); }
+.output-box .sb-title { color:#93c5fd; }
+.output-box ul li::before { color:#60a5fa; }
+.kpi-box    { border-color:rgba(129,140,248,.35); }
+.kpi-box    .sb-title { color:#a5b4fc; }
+.kpi-box    ul li::before { color:#818cf8; }
+
+/* ══ 中央區域 ══ */
+.oval-center {
+  position:relative; overflow:hidden;
+  flex:1; min-width:0;
+  background:linear-gradient(160deg, rgba(26,38,66,.85), rgba(17,26,48,.92));
+  border:1px solid rgba(96,165,250,.30); border-radius:24px;
+  padding:24px 28px 26px;
+  display:flex; flex-direction:column; gap:18px;
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  box-shadow:0 0 0 1px rgba(56,189,248,.06),
+             0 18px 50px rgba(0,0,0,.50),
+             inset 0 1px 0 rgba(148,163,184,.12); }
+/* 邊框跑馬燈 */
+.oval-center::after { content:""; position:absolute; inset:0; border-radius:24px; padding:1.5px;
+  background:conic-gradient(from var(--angle),
+    transparent 0deg, transparent 200deg,
+    #38bdf8 280deg, #bfe3ff 320deg, #38bdf8 345deg, transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite:exclude;
+  animation:angleRun 4s linear infinite; pointer-events:none; z-index:3; }
+@keyframes angleRun { to { --angle:360deg; } }
+/* 掃描線 */
+.oval-center::before { content:""; position:absolute; left:8px; right:8px; top:0; height:150px;
+  background:linear-gradient(180deg, transparent, rgba(96,165,250,.10) 70%, rgba(147,197,253,.20));
+  pointer-events:none; z-index:4; mix-blend-mode:screen;
+  animation:scanMove 4.8s linear infinite; }
+@keyframes scanMove { 0%{transform:translateY(-150px);opacity:0;} 12%{opacity:1;} 88%{opacity:1;} 100%{transform:translateY(620px);opacity:0;} }
+.oval-hdr,.dept-row { position:relative; z-index:2; }
+
+/* ── 頂部 ── */
+.oval-hdr { text-align:center; padding-bottom:4px; }
+.oval-hdr .ov-icon { font-size:40px; display:block; margin-bottom:6px;
+  filter:drop-shadow(0 0 14px rgba(56,189,248,.7)); }
+.oval-hdr .ov-title {
+  font-size:28px; font-weight:800; letter-spacing:0.12em;
+  background:linear-gradient(100deg,#7dd3fc,#38bdf8,#93c5fd);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  filter:drop-shadow(0 0 12px rgba(56,189,248,.45)); }
+
+/* ── 三部門卡片 ── */
+.dept-row { display:flex; gap:12px; align-items:stretch; }
+.dept-sep { display:flex; align-items:center; justify-content:center;
+  font-size:24px; color:#60a5fa; flex-shrink:0; width:24px;
+  font-weight:900; text-shadow:0 0 14px rgba(96,165,250,.95);
+  animation:flowPulse 2.4s ease-in-out infinite; }
+@keyframes flowPulse { 0%,100%{opacity:.35;transform:translateX(0);} 50%{opacity:1;transform:translateX(3px);} }
+.dept { flex:1; min-width:160px; border-radius:14px; overflow:hidden;
+  display:flex; flex-direction:column;
+  background:rgba(15,24,46,.6); border:1px solid rgba(148,163,184,.14);
+  box-shadow:0 8px 24px rgba(0,0,0,.40); transition:transform .2s, box-shadow .2s; }
+.dept:hover { transform:translateY(-3px); }
+.dept .dhdr { padding:16px 10px 13px; text-align:center; color:#f1f5f9; }
+.dept .dhdr .di { font-size:30px; display:block; margin-bottom:5px;
+  filter:drop-shadow(0 0 9px currentColor); }
+.dept .dhdr .dn { font-size:20px; font-weight:800; letter-spacing:0.05em; white-space:nowrap; }
+.dept .dhdr .ds { font-size:11.5px; opacity:.85; margin-top:3px; white-space:nowrap;
+  letter-spacing:0.12em; font-family:"Consolas",monospace; }
+.dept-pc .dhdr { background:linear-gradient(160deg,#0c4a6e,#0369a1,#0ea5e9); }
+.dept-mc .dhdr { background:linear-gradient(160deg,#1e3a8a,#1d4ed8,#3b82f6); }
+.dept-wh .dhdr { background:linear-gradient(160deg,#312e81,#4338ca,#6366f1); }
+.dept-pc { box-shadow:0 8px 24px rgba(0,0,0,.40), inset 0 0 0 1px rgba(56,189,248,.20); }
+.dept-mc { box-shadow:0 8px 24px rgba(0,0,0,.40), inset 0 0 0 1px rgba(96,165,250,.20); }
+.dept-wh { box-shadow:0 8px 24px rgba(0,0,0,.40), inset 0 0 0 1px rgba(129,140,248,.20); }
+.dept-pc:hover { box-shadow:0 12px 30px rgba(0,0,0,.5), 0 0 24px rgba(56,189,248,.40); }
+.dept-mc:hover { box-shadow:0 12px 30px rgba(0,0,0,.5), 0 0 24px rgba(96,165,250,.40); }
+.dept-wh:hover { box-shadow:0 12px 30px rgba(0,0,0,.5), 0 0 24px rgba(129,140,248,.40); }
+.dept .dbody { flex:1; padding:13px 13px 14px; display:flex; flex-direction:column; gap:6px;
+  background:linear-gradient(180deg, rgba(20,32,58,.5), rgba(13,20,40,.7)); }
+.ti { font-size:14.5px; color:#d6e0f0; padding:5px 7px; border-radius:6px;
+  display:flex; align-items:center; gap:7px; line-height:1.5; font-weight:500;
+  border-left:2px solid transparent; transition:background .15s; }
+.ti:hover { background:rgba(148,163,184,.07); }
+.ti::before { content:'✓'; font-weight:900; font-size:13px; flex-shrink:0;
+  filter:drop-shadow(0 0 5px currentColor); }
+.dept-pc .ti { border-left-color:rgba(56,189,248,.45); }
+.dept-mc .ti { border-left-color:rgba(96,165,250,.45); }
+.dept-wh .ti { border-left-color:rgba(129,140,248,.45); }
+.dept-pc .ti::before { color:#38bdf8; }
+.dept-mc .ti::before { color:#60a5fa; }
+.dept-wh .ti::before { color:#818cf8; }
+/* 可點擊的流程項目（保持 ✓ 樣式，但變成連結） */
+a.ti { color:#d6e0f0; text-decoration:none; cursor:pointer; }
+a.ti:hover { background:rgba(96,165,250,.14); box-shadow:0 0 12px rgba(96,165,250,.22);
+  transform:translateX(2px); }
+a.tl { font-size:14px; padding:7px 10px; border-radius:8px; font-weight:700;
+  display:flex; align-items:center; gap:7px; text-decoration:none;
+  transition:all .18s; line-height:1.4; margin-top:2px; }
+a.tl:hover { transform:translateX(3px); }
+a.tl::before { content:'▶'; font-size:9px; flex-shrink:0; }
+.dept-pc a.tl { color:#bae6fd; background:rgba(56,189,248,.10); border:1px solid rgba(56,189,248,.45); }
+.dept-pc a.tl:hover { box-shadow:0 0 16px rgba(56,189,248,.50); background:rgba(56,189,248,.20); }
+.dept-pc a.tl::before { color:#38bdf8; }
+.dept-mc a.tl { color:#bfdbfe; background:rgba(96,165,250,.10); border:1px solid rgba(96,165,250,.45); }
+.dept-mc a.tl:hover { box-shadow:0 0 16px rgba(96,165,250,.50); background:rgba(96,165,250,.20); }
+.dept-mc a.tl::before { color:#60a5fa; }
+.dept-wh a.tl { color:#c7d2fe; background:rgba(129,140,248,.10); border:1px solid rgba(129,140,248,.45); }
+.dept-wh a.tl:hover { box-shadow:0 0 16px rgba(129,140,248,.50); background:rgba(129,140,248,.20); }
+.dept-wh a.tl::before { color:#818cf8; }
+
+.oval-hdr .ov-flow {
+  display:inline-block; margin-top:12px; font-size:13.5px; font-weight:600;
+  color:#bae6fd; background:rgba(56,189,248,.08);
+  border:1px solid rgba(56,189,248,.38); border-radius:20px; padding:7px 22px;
+  letter-spacing:0.04em; box-shadow:inset 0 0 18px rgba(56,189,248,.18); }
+
+/* ══ 底部標語 ══ */
+.arch-tagline {
+  margin-top:18px; text-align:center; padding:16px 28px;
+  background:linear-gradient(135deg, rgba(8,47,73,.85), rgba(30,58,138,.88), rgba(49,46,129,.85));
+  border:1px solid rgba(96,165,250,.32); border-radius:14px;
+  color:#eaf1ff; font-size:16.5px; font-weight:700; letter-spacing:0.18em;
+  box-shadow:0 0 30px rgba(56,189,248,.18), inset 0 1px 0 rgba(148,163,184,.12); }
+
+/* ══ 上傳提示 ══ */
+.upload-hint {
+  margin-top:12px; text-align:center; padding:13px 20px;
+  background:rgba(20,32,58,.5); border:1px dashed rgba(96,165,250,.45);
+  border-radius:12px; font-size:14px; color:#a9b8d6; font-weight:500;
+  letter-spacing:0.03em; }
+</style>
+
+<div class="arch-title">
+  <h2>物料作業流程管理架構</h2>
+  <div class="sub">Material Flow Management Architecture
+    <span class="sep">|</span> PC 生管 &times; MC 物管 &times; WH 倉管</div>
+  <div class="divider"></div>
+</div>
+
+<div class="arch-main">
+
+  <!-- ══ 中央橢圓 ══ -->
+  <div class="oval-center">
+    <div class="oval-hdr">
+      <span class="ov-icon"><svg width="78" height="78" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="coreOrb" cx="38%" cy="32%" r="78%">
+            <stop offset="0%" stop-color="#e2f6ff"/>
+            <stop offset="32%" stop-color="#5cc6f5"/>
+            <stop offset="72%" stop-color="#2563eb"/>
+            <stop offset="100%" stop-color="#16235e"/>
+          </radialGradient>
+          <linearGradient id="coreRing" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7dd3fc"/>
+            <stop offset="50%" stop-color="#38bdf8"/>
+            <stop offset="100%" stop-color="#818cf8"/>
+          </linearGradient>
+          <radialGradient id="coreAmb" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.55"/>
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0"/>
+          </radialGradient>
+          <filter id="coreGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="1.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <circle cx="50" cy="50" r="44" fill="url(#coreAmb)"/>
+        <g filter="url(#coreGlow)">
+          <g>
+            <ellipse cx="50" cy="50" rx="41" ry="15" stroke="url(#coreRing)" stroke-width="2.2" opacity="0.9"/>
+            <ellipse cx="50" cy="50" rx="41" ry="15" stroke="url(#coreRing)" stroke-width="2.2" opacity="0.75" transform="rotate(60 50 50)"/>
+            <ellipse cx="50" cy="50" rx="41" ry="15" stroke="url(#coreRing)" stroke-width="2.2" opacity="0.75" transform="rotate(120 50 50)"/>
+            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="16s" repeatCount="indefinite"/>
+          </g>
+        </g>
+        <g>
+          <circle cx="91" cy="50" r="3.4" fill="#7dd3fc"/>
+          <circle cx="9" cy="50" r="2.6" fill="#a5b4fc"/>
+          <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="9s" repeatCount="indefinite"/>
+        </g>
+        <circle cx="50" cy="50" r="15.5" fill="url(#coreOrb)"/>
+        <circle cx="50" cy="50" r="15.5" fill="none" stroke="#bfe3ff" stroke-width="0.8" opacity="0.65"/>
+        <ellipse cx="45" cy="44" rx="6" ry="4" fill="#ffffff" opacity="0.5"/>
+      </svg></span>
+      <div class="ov-flow">物料需求 &rarr; 採購/調撥 &rarr; 入庫/IQC &rarr; 備料/領料 &rarr; 出貨/成本回報</div>
+    </div>
+
+    <!-- 三部門卡片 -->
+    <div class="dept-row">
+      <div class="dept dept-pc">
+        <div class="dhdr">
+          <span class="di">📊</span>
+          <div class="dn">生管 PC</div>
+          <div class="ds">Production Control</div>
+        </div>
+        <div class="dbody">
+          <a href="/monthly_cost" target="_self" class="tl">每月成本計算表</a>
+          <a href="/kanban"       target="_self" class="tl">工單進度看板</a>
+          <a href="/scheduling"   target="_self" class="tl">排程系統</a>
+          <a href="/loss_rate"    target="_self" class="tl">耗損率分析</a>
+        </div>
+      </div>
+      <div class="dept-sep">&rarr;</div>
+      <div class="dept dept-mc">
+        <div class="dhdr">
+          <span class="di">📦</span>
+          <div class="dn">物管 MC</div>
+          <div class="ds">Material Control</div>
+        </div>
+        <div class="dbody">
+          <a href="/h2o"     target="_self" class="tl">唐佑配料表</a>
+          <a href="/guozhi"  target="_self" class="tl">國智配料表</a>
+          <a href="/factory" target="_self" class="tl">廠內配料表</a>
+        </div>
+      </div>
+      <div class="dept-sep">&rarr;</div>
+      <div class="dept dept-wh">
+        <div class="dhdr">
+          <span class="di">🏬</span>
+          <div class="dn">倉管 WH</div>
+          <div class="ds">Warehouse Management</div>
+        </div>
+        <div class="dbody">
+          <a href="/daily_inbound" target="_self" class="tl">每日入庫筆數</a>
+          <a href="/daily_picking" target="_self" class="tl">每日備料筆數</a>
+          <a href="/wh_staff"      target="_self" class="tl">倉儲人員編製</a>
+          <a href="/wh_dashboard"  target="_self" class="tl">倉儲備料看板</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+<div class="arch-tagline">🛡&nbsp;&nbsp; 精準協同 &nbsp;·&nbsp; 流程透明 &nbsp;·&nbsp; 數據驅動 &nbsp;·&nbsp; 持續改善</div>
+<div class="upload-hint">__UPLOAD_HINT__</div>
+</div>
+"""
+    st.markdown(
+        "\n".join(
+            _l for _l in
+            _flow_html.replace("__UPLOAD_HINT__", t("upload_hint")).splitlines()
+            if _l.strip()
+        ),
+        unsafe_allow_html=True,
+    )

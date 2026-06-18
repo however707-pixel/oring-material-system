@@ -29,6 +29,14 @@ def ensure_calamine():
 def inject_css():
     st.markdown("""
 <style>
+    /* ══ 全域字型：英文/數字用 Arial、中文用標楷體 ══ */
+    html, body, *, *::before, *::after,
+    button, input, select, textarea, label,
+    span, div, p, li, td, th, h1, h2, h3, h4, h5, h6,
+    [class*="st-"], [data-testid] {
+        font-family: Arial, '標楷體', 'DFKai-SB', 'BiauKai', serif !important;
+    }
+
     #MainMenu { visibility: hidden !important; display: none !important; }
     footer    { visibility: hidden !important; display: none !important; }
 
@@ -256,7 +264,7 @@ body {{ background:transparent; padding:4px 0; }}
     color: #ffffff; font-size: 1.75rem; font-weight: 900;
     letter-spacing: 0.01em; line-height: 1.15;
     text-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: Arial, '標楷體', 'DFKai-SB', 'BiauKai', serif;
 }}
 .subtitle {{
     color: #bfdbfe; font-size: 0.85rem; margin-top: 5px;
@@ -283,6 +291,32 @@ def render_sidebar():
     if "lang" not in st.session_state:
         st.session_state["lang"] = "zh"
     with st.sidebar:
+        st.markdown("""
+        <style>
+        section[data-testid="stSidebar"], [data-testid="stSidebarContent"] {
+            background: linear-gradient(180deg,#1b2845 0%,#213253 50%,#18233e 100%) !important; }
+        section[data-testid="stSidebar"] { border-right: 1px solid rgba(56,189,248,0.18) !important; }
+        section[data-testid="stSidebar"] ::-webkit-scrollbar { width: 8px; }
+        section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+            background: rgba(56,189,248,0.30); border-radius: 4px; }
+        section[data-testid="stSidebar"] button[kind="secondary"],
+        section[data-testid="stSidebar"] button[data-testid="baseButton-secondary"] {
+            background: rgba(56,189,248,0.08) !important;
+            border: 1px solid rgba(96,165,250,0.35) !important; color: #cdd9f0 !important; }
+        section[data-testid="stSidebar"] button[kind="primary"],
+        section[data-testid="stSidebar"] button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg,#1d4ed8,#3b82f6) !important;
+            border: 1px solid #60a5fa !important; color: #ffffff !important; }
+        section[data-testid="stSidebar"] a,
+        section[data-testid="stSidebar"] a:link,
+        section[data-testid="stSidebar"] a:visited,
+        section[data-testid="stSidebar"] a:hover,
+        section[data-testid="stSidebar"] a[href],
+        section[data-testid="stSidebar"] a *,
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a {
+            color: #ffffff !important; }
+        </style>
+        """, unsafe_allow_html=True)
         col_zh, col_en = st.columns(2)
         with col_zh:
             if st.button("🇹🇼 中文", key="btn_zh",
@@ -357,11 +391,12 @@ def render_sidebar():
         # 物管 MC
         st.markdown(f"""
         <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
-                    background:#eff6ff; border-radius:8px; margin-bottom:3px;">
+                    background:rgba(59,130,246,0.10); border:1px solid rgba(96,165,250,0.30);
+                    border-left:3px solid #60a5fa; border-radius:8px; margin-bottom:3px;">
             <span style="font-size:1.1rem;">📦</span>
             <div>
-                <div style="font-size:1.0rem; font-weight:800; color:#1e40af; line-height:1.2;">{t("dept_mc")}</div>
-                <div style="font-size:0.67rem; color:#3b82f6; letter-spacing:0.04em;">{t("dept_mc_sub")}</div>
+                <div style="font-size:1.0rem; font-weight:800; color:#93c5fd; line-height:1.2;">{t("dept_mc")}</div>
+                <div style="font-size:0.67rem; color:#60a5fa; letter-spacing:0.04em;">{t("dept_mc_sub")}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -370,62 +405,67 @@ def render_sidebar():
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📊 {t("link_transfer")}
         </a>
         <a href="/outsource" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             🏭 {t("link_outsource")}
         </a>
         <a href="/h2o" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             💧 {t("link_h2o")}
         </a>
         <a href="/guozhi" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             🏭 {t("link_guozhi")}
         </a>
         <a href="/factory" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             🏭 {t("link_factory")}
         </a>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>料件到貨追蹤</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
         """, unsafe_allow_html=True)
 
         # 生管 PC
         st.markdown(f"""
         <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
-                    background:#f0fdf4; border-radius:8px; margin:8px 0 3px;">
+                    background:rgba(14,165,233,0.10); border:1px solid rgba(56,189,248,0.30);
+                    border-left:3px solid #38bdf8; border-radius:8px; margin:8px 0 3px;">
             <span style="font-size:1.1rem;">🏗</span>
             <div>
-                <div style="font-size:1.0rem; font-weight:800; color:#15803d; line-height:1.2;">{t("dept_pc")}</div>
-                <div style="font-size:0.67rem; color:#22c55e; letter-spacing:0.04em;">{t("dept_pc_sub")}</div>
+                <div style="font-size:1.0rem; font-weight:800; color:#7dd3fc; line-height:1.2;">{t("dept_pc")}</div>
+                <div style="font-size:0.67rem; color:#38bdf8; letter-spacing:0.04em;">{t("dept_pc_sub")}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -434,10 +474,10 @@ def render_sidebar():
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📋 {t("link_wo_progress")}
         </a>
         """, unsafe_allow_html=True)
@@ -446,73 +486,80 @@ def render_sidebar():
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📊 {t("link_shortage_detail")}
         </a>
         <a href="/production_tracker" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             🏭 {t("link_production_tracker")}
         </a>
         <a href="/monthly_cost" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📊 {t("link_monthly_cost")}
         </a>
         <a href="/scheduling" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             🗓 {t("link_scheduling")}
         </a>
         <a href="/loss_rate" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f1f5f9';this.style.color='#1e293b'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
-            📉 耗損率分析
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            📉 {t("link_loss_rate")}
         </a>
         <a href="/kanban" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
-            border-radius:8px; font-size:0.88rem; font-weight:600;
-            color:#1d4ed8 !important; text-decoration:none !important;
-            background:#eff6ff; border:1px solid #bfdbfe;
+            border-radius:8px; font-size:0.88rem; font-weight:700;
+            color:#bae6fd !important; text-decoration:none !important;
+            background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45);
             transition:background 0.15s;
-        " onmouseover="this.style.background='#dbeafe';this.style.color='#1e40af'"
-           onmouseout="this.style.background='#eff6ff';this.style.color='#1d4ed8'">
-            📺 工單進度看板
+        " onmouseover="this.style.background='rgba(56,189,248,0.22)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='rgba(56,189,248,0.12)';this.style.color='#bae6fd'">
+            📺 {t("link_kanban")}
         </a>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>客戶訂單確認</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>工單發佈</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>完工確認回報</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
         """, unsafe_allow_html=True)
 
         # 倉管 WH
         st.markdown(f"""
         <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
-                    background:#f5f3ff; border-radius:8px; margin:4px 0 3px;">
+                    background:rgba(99,102,241,0.10); border:1px solid rgba(129,140,248,0.30);
+                    border-left:3px solid #818cf8; border-radius:8px; margin:4px 0 3px;">
             <span style="font-size:1.1rem;">🏬</span>
             <div>
-                <div style="font-size:1.0rem; font-weight:800; color:#6d28d9; line-height:1.2;">{t("dept_wh")}</div>
-                <div style="font-size:0.67rem; color:#8b5cf6; letter-spacing:0.04em;">{t("dept_wh_sub")}</div>
+                <div style="font-size:1.0rem; font-weight:800; color:#a5b4fc; line-height:1.2;">{t("dept_wh")}</div>
+                <div style="font-size:0.67rem; color:#818cf8; letter-spacing:0.04em;">{t("dept_wh_sub")}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -521,41 +568,73 @@ def render_sidebar():
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(129,140,248,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📥 {t("link_daily_inbound")}
         </a>
         <a href="/daily_picking" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(129,140,248,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             📋 {t("link_daily_picking")}
         </a>
         <a href="/wh_staff" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
+        " onmouseover="this.style.background='rgba(129,140,248,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
             👥 {t("link_wh_staff")}
         </a>
         <a href="/wh_dashboard" target="_self" style="
             display:flex; align-items:center; gap:8px;
             padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
             border-radius:8px; font-size:0.88rem; font-weight:500;
-            color:#475569 !important; text-decoration:none !important;
+            color:#ffffff !important; text-decoration:none !important;
             transition:background 0.15s;
-        " onmouseover="this.style.background='#f5f3ff';this.style.color='#6d28d9'"
-           onmouseout="this.style.background='';this.style.color='#475569'">
-            🏭 倉儲備料看板
+        " onmouseover="this.style.background='rgba(129,140,248,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            🏭 {t("link_wh_dashboard")}
+        </a>
+        """, unsafe_allow_html=True)
+        st.markdown("""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>入庫驗收 / IQC</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>儲位上架管理</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>出貨包裝作業</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>出貨確認 / 交運</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        """, unsafe_allow_html=True)
+
+        # RMA
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
+                    background:rgba(45,212,191,0.10); border:1px solid rgba(45,212,191,0.30);
+                    border-left:3px solid #2dd4bf; border-radius:8px; margin:8px 0 3px;">
+            <span style="font-size:1.1rem;">🔄</span>
+            <div>
+                <div style="font-size:1.0rem; font-weight:800; color:#5eead4; line-height:1.2;">{t("dept_rma")}</div>
+                <div style="font-size:0.67rem; color:#2dd4bf; letter-spacing:0.04em;">{t("dept_rma_sub")}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <a href="/rma_summary" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(45,212,191,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            📋 {t("link_rma_summary")}
         </a>
         """, unsafe_allow_html=True)
 

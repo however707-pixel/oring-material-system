@@ -6,3 +6,7 @@ __pycache__/
 *.xlsx
 *.xls
 .streamlit/secrets.toml
+*.db
+*.bak
+data/import.log
+preview_tech.html
