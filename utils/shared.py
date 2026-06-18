@@ -315,6 +315,19 @@ def render_sidebar():
         section[data-testid="stSidebar"] a *,
         section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] a {
             color: #ffffff !important; }
+        /* ── 側欄文字全部白色 ── */
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] small,
+        section[data-testid="stSidebar"] span,
+        section[data-testid="stSidebar"] div[data-testid="stText"],
+        section[data-testid="stSidebar"] [data-testid="stCaption"],
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+        section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInput"] + div,
+        section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] small,
+        section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] span {
+            color: #e2e8f0 !important; }
         </style>
         """, unsafe_allow_html=True)
         col_zh, col_en = st.columns(2)
