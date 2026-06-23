@@ -537,6 +537,7 @@ a.tl::before { content:'▶'; font-size:9px; flex-shrink:0; }
           <a href="/monthly_cost" target="_self" class="tl">每月成本計算表</a>
           <a href="/kanban"       target="_self" class="tl">工單進度看板</a>
           <a href="/scheduling"   target="_self" class="tl">排程系統</a>
+          <a href="/outsource_schedule" target="_self" class="tl">委外工單排程</a>
           <a href="/loss_rate"    target="_self" class="tl">耗損率分析</a>
         </div>
       </div>

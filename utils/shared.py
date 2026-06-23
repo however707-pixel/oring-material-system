@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import base64
+import time as _time
 import os as _os
 from pathlib import Path
 from datetime import datetime as _dt
@@ -35,6 +36,11 @@ def inject_css():
     span, div, p, li, td, th, h1, h2, h3, h4, h5, h6,
     [class*="st-"], [data-testid] {
         font-family: Arial, '標楷體', 'DFKai-SB', 'BiauKai', serif !important;
+    }
+    /* 還原 Material 圖示字體：上面的全域字型會把 expander 箭頭等圖示也改成 Arial，
+       導致圖示的 ligature 文字（如 keyboard_arrow_right）直接顯示成英文字疊在標籤上 */
+    [data-testid="stIconMaterial"] {
+        font-family: 'Material Symbols Rounded' !important;
     }
 
     #MainMenu { visibility: hidden !important; display: none !important; }
@@ -556,6 +562,16 @@ def render_sidebar():
            onmouseout="this.style.background='rgba(56,189,248,0.12)';this.style.color='#bae6fd'">
             📺 {t("link_kanban")}
         </a>
+        <a href="/outsource_schedule" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            🏭 {t("link_outsource_schedule")}
+        </a>
         """, unsafe_allow_html=True)
         st.markdown("""
         <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
@@ -791,8 +807,23 @@ def read_source(src) -> bytes:
     if src is None:
         return b""
     if isinstance(src, str):
-        with open(src, 'rb') as f:
-            return f.read()
+        # NAS 檔案可能正被排程任務覆寫，一次性 f.read() 在 SMB 網路磁碟上
+        # 偶爾會炸 OSError([Errno 22] Invalid argument)；改用分塊讀取 + 重試降低風險
+        last_err = None
+        for _attempt in range(3):
+            try:
+                chunks = []
+                with open(src, 'rb') as f:
+                    while True:
+                        chunk = f.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                return b"".join(chunks)
+            except OSError as e:
+                last_err = e
+                _time.sleep(1)
+        raise last_err
     data = src.read()
     if hasattr(src, 'seek'):
         src.seek(0)

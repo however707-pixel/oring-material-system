@@ -73,7 +73,7 @@ def parse_supply(file_bytes):
         trans     = val(row, "異動別")
         qty_raw   = val(row, "異動數量")
         bal_raw   = val(row, "預計結存")
-        src_order = val(row, "來源訂單")
+        src_order = val(row, "備註")  # 「備註」欄存放的就是製令編號，是 BOM 對應工單的真正鍵
         prod_name = val(row, "產品名稱")
 
         try:    qty = float(qty_raw) if qty_raw else 0.0
