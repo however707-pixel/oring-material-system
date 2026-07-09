@@ -7,43 +7,67 @@ from streamlit_autorefresh import st_autorefresh
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import render_sidebar
+from utils.leave_mail import fetch_today_leaves
 from db import queries as wh_db
 
 st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
                    layout="wide", initial_sidebar_state="expanded")
 
-# 每 20 分鐘自動刷新一次（1200000 ms）
-st_autorefresh(interval=20 * 60 * 1000, key="wh_autorefresh")
+# 每 2 分鐘自動刷新；每次刷新會檢查 NAS 是否有新存檔，有就立即匯入（見下方 _auto_sync）
+st_autorefresh(interval=2 * 60 * 1000, key="wh_autorefresh")
 
+# ══════════════════════════════════════════════════════
+# 設計系統（深色 · 午夜藍 × 香檳金）
+# ══════════════════════════════════════════════════════
 st.markdown("""
 <style>
-/* ══ 倉儲看板：珍珠白 × 香檳金 ══ */
-.stApp { background:#F7F5EF !important; }
-[data-testid="stHeader"]  { background:transparent !important; }
-[data-testid="stSidebar"] { background:#fdfbf6 !important; }
-.block-container { padding:0.5rem 1.4rem 2rem !important; max-width:100% !important; }
-#MainMenu, footer, [data-testid="stToolbar"] { visibility:hidden; }
-[data-testid="stSidebar"], [data-testid="collapsedControl"] { display:none !important; }
-.block-container { padding-left:1.4rem !important; }
-::-webkit-scrollbar { width:6px; }
-::-webkit-scrollbar-track { background:#EDE5CF; }
-::-webkit-scrollbar-thumb { background:#C9A45C; border-radius:4px; }
-.js-plotly-plot .plotly .bg { fill:transparent !important; }
-html, body, [class*="css"] {
-    font-size:18px !important;
-    font-family:"Arial,標楷體,DFKai-SB,serif","微軟正黑體",sans-serif !important;
+:root{
+  --bg:#0C141D; --card:linear-gradient(160deg,#35506A,#2A3F54); --card2:#3B5167; --hilite:#3E5670;
+  --ink:#EAF1F8; --ink2:#D7E1EA; --muted:#9DB0C0; --faint:#8094A6;
+  --gold:#D9B36A; --gold-d:#B8922A; --border:#56718B; --line:#33475A; --track:#3D5365;
+  --green:#43C08F; --red:#EC6A7C; --amber:#E5B454; --blue:#5AA8F0; --radius:16px;
 }
-p { color:#1D2B3A !important; }
-label { color:#6B7280 !important; }
-div[data-testid="stButton"] > button {
-    background:#C9A45C !important;
-    border:none !important; color:#ffffff !important;
-    font-size:15px !important; font-weight:700 !important;
-    border-radius:8px !important; padding:7px 16px !important;
-    box-shadow:0 2px 10px rgba(201,164,92,0.35) !important;
+.stApp{ color:#EAF1F8 !important; background:
+   radial-gradient(1100px 540px at 100% -10%, #1A2A38 0%, rgba(26,42,56,0) 55%),
+   radial-gradient(950px 480px at -8% 0%, #15222E 0%, rgba(21,34,46,0) 50%),
+   #0C141D !important; }
+[data-testid="stHeader"]{ background:transparent !important; }
+.block-container{ padding:0.6rem 1.7rem 2.4rem !important; max-width:1720px !important; }
+#MainMenu, footer, [data-testid="stToolbar"]{ visibility:hidden; }
+[data-testid="stSidebar"], [data-testid="collapsedControl"]{ display:none !important; }
+html, body, [class*="css"]{
+  font-family:"微軟正黑體","Microsoft JhengHei","Noto Sans TC",Arial,sans-serif !important;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }
-div[data-testid="stButton"] > button:hover {
-    background:#b8922a !important;
+p{ color:#EAF1F8 !important; margin:0; } label{ color:#9DB0C0 !important; }
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:#33485A; border-radius:6px; }
+::-webkit-scrollbar-thumb:hover{ background:#D9B36A; }
+.js-plotly-plot .plotly .bg{ fill:transparent !important; }
+
+/* 收斂預設間距、列內等高，消除高高低低 */
+[data-testid="stVerticalBlock"]{ gap:.55rem; }
+[data-testid="stHorizontalBlock"]{ align-items:stretch; gap:18px; }
+
+/* 圖表卡片：近5週／年度月份用 st.columns，直接把欄位做成卡片（外框確實可見） */
+[data-testid="stColumn"]{
+  background:linear-gradient(160deg,#35506A,#2A3F54) !important; border:1px solid #56718B !important;
+  border-top:3px solid #C9A45C !important; border-radius:16px !important;
+  box-shadow:0 10px 28px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.10) !important;
+  padding:14px 18px 16px !important;
+}
+
+/* 按鈕 */
+div[data-testid="stDownloadButton"] > button, div[data-testid="stButton"] > button{
+  background:linear-gradient(180deg,#D4B069,#C9A45C) !important; border:none !important;
+  color:#1A1206 !important; font-size:14px !important; font-weight:800 !important;
+  border-radius:11px !important; padding:11px 18px !important; letter-spacing:.6px;
+  box-shadow:0 4px 16px rgba(201,164,92,.35) !important; transition:.15s ease;
+}
+div[data-testid="stDownloadButton"] > button:hover, div[data-testid="stButton"] > button:hover{
+  background:linear-gradient(180deg,#E0BE78,#D9B36A) !important;
+  box-shadow:0 7px 22px rgba(217,179,106,.5) !important; transform:translateY(-1px);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -107,30 +131,40 @@ if _has_upload:
     db_ready  = True
     src_mtime = st.session_state.get("wh_upload_ts")
     src_name  = st.session_state.get("wh_upload_name", "手動上傳")
-    sched_df  = pd.DataFrame()
 else:
     # ══════════════════════════════════════════════════════
     # 資料來源：SQLite（由 db/import_to_db.py 從 NAS 匯入）
+    # 即時同步：每次刷新檢查 NAS 是否有新存檔，有異動立即匯入
+    # （60 秒內最多檢查一次；20 分鐘排程仍保留作為備援）
     # ══════════════════════════════════════════════════════
-    @st.cache_data(ttl=20*60, show_spinner=False)
-    def load_sched(_mtime_key):
+    from db import import_to_db as wh_sync
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _auto_sync():
         try:
-            return wh_db.load_sched()
-        except Exception:
-            return pd.DataFrame()
+            return wh_sync.sync_if_newer()
+        except Exception as e:
+            return False, f"同步失敗：{e}"
+
+    # 匯入成功後 db_mtime() 隨之改變，load_wh 的快取 key 也跟著換，自動改讀新資料
+    _did_sync, _sync_msg = _auto_sync()
 
     db_ready  = wh_db.db_exists()
     src_mtime = wh_db.db_mtime() if db_ready else None
     src_name  = wh_db.source_filename() if db_ready else None
-    sched_df  = load_sched(str(src_mtime)) if db_ready else pd.DataFrame()
 
 # ══════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════
 st.markdown(
-    '<div style="margin-bottom:6px">'
-    '<a href="/" target="_self" style="color:#C9A45C;text-decoration:none;'
-    'font-size:13px;font-weight:600;opacity:0.85">← 返回主頁</a></div>',
+    '<div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+    '<a href="/" target="_self" style="color:#D9B36A;text-decoration:none;'
+    'font-size:13px;font-weight:600;opacity:0.85">← 返回主頁</a>'
+    '<a href="/wh_assessment" target="_self" style="color:#1A1206;text-decoration:none;'
+    'font-size:13px;font-weight:800;background:linear-gradient(180deg,#D4B069,#C9A45C);'
+    'padding:7px 16px;border-radius:9px;box-shadow:0 4px 14px rgba(201,164,92,.35)">'
+    '📋 年度倉儲考核依據表</a>'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -139,24 +173,27 @@ wday   = wday_names[TODAY.weekday()]
 data_ts = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
 
 st.markdown(
-    f'<div style="background:linear-gradient(90deg,#1D2B3A 0%,#253444 50%,#1D2B3A 100%);'
-    f'border:none;border-bottom:3px solid #C9A45C;border-radius:14px;padding:18px 28px;margin-bottom:18px;'
-    f'box-shadow:0 4px 20px rgba(29,43,58,0.18);'
+    f'<div style="background:linear-gradient(110deg,#13202C 0%,#22344A 50%,#13202C 100%);'
+    f'border:1px solid #56718B;'
+    f'border-radius:18px;padding:20px 30px;margin-bottom:14px;position:relative;overflow:hidden;'
+    f'box-shadow:0 10px 34px rgba(0,0,0,.40);'
     f'display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px">'
+    f'<div style="position:absolute;left:0;right:0;bottom:0;height:3px;'
+    f'background:linear-gradient(90deg,transparent,#C9A45C 28%,#E6C77A 50%,#C9A45C 72%,transparent)"></div>'
     f'<div>'
-    f'<div style="color:#C9A45C;font-size:13px;font-weight:600;letter-spacing:1.5px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
-    f'<div style="color:#a8916a;font-size:13px;margin-top:4px">'
+    f'<div style="color:#D9B36A;font-size:13px;font-weight:700;letter-spacing:2px">ORing &nbsp;·&nbsp; 倉管 WD</div>'
+    f'<div style="color:#9fb0c0;font-size:13px;margin-top:5px">'
     f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 資料：{data_ts}</div>'
     f'</div>'
     f'<div style="text-align:center">'
-    f'<div style="color:#ffffff;font-size:38px;font-weight:900;line-height:1.15;letter-spacing:0.5px">'
+    f'<div style="color:#ffffff;font-size:36px;font-weight:900;line-height:1.1;letter-spacing:2px">'
     f'倉儲備料即時看板</div>'
-    f'<div style="color:#C9A45C;font-size:13px;font-weight:400;letter-spacing:4px;margin-top:5px">'
+    f'<div style="color:#D9B36A;font-size:12px;font-weight:400;letter-spacing:5px;margin-top:6px">'
     f'WAREHOUSE MATERIAL PREP DASHBOARD</div>'
     f'</div>'
     f'<div style="text-align:right">'
-    f'<div style="color:#ffffff;font-size:30px;font-weight:900">{TODAY.strftime("%Y / %m / %d")}</div>'
-    f'<div style="color:#C9A45C;font-size:18px;font-weight:700;margin-top:2px">（週{wday}）</div>'
+    f'<div style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:1px">{TODAY.strftime("%Y / %m / %d")}</div>'
+    f'<div style="color:#D9B36A;font-size:17px;font-weight:700;margin-top:3px">（週{wday}）</div>'
     f'</div></div>',
     unsafe_allow_html=True
 )
@@ -165,21 +202,23 @@ st.markdown(
 if db_ready:
     ts_str = src_mtime.strftime('%m/%d %H:%M') if src_mtime else "手動上傳"
     _mode_badge = (
-        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">📂 手動上傳模式</span>'
+        '<span style="color:#D9B36A;font-size:12px;font-weight:600">📂 手動上傳模式</span>'
         if _has_upload else
-        f'<span style="color:#C9A45C;margin-left:16px;font-size:12px">🔄 每 20 分鐘自動更新</span>'
+        '<span style="color:#D9B36A;font-size:12px;font-weight:600">🔄 NAS 有新存檔即自動同步</span>'
     )
     _clear_hint = (
-        '<span style="color:#94a3b8;margin-left:12px;font-size:11px">（重新整理頁面可清除上傳）</span>'
+        '<span style="color:#8094A6;font-size:11px">（重新整理頁面可清除上傳）</span>'
         if _has_upload else ""
     )
     st.markdown(
-        f'<div style="background:#ffffff;border:1px solid #b2dfdb;'
-        f'border-radius:8px;padding:8px 16px;font-size:13px;color:#2E9D70;margin-bottom:4px">'
-        f'✅ &nbsp;資料已載入 &nbsp;·&nbsp; '
-        f'<b style="color:#2E9D70">{src_name or "wh_dashboard.db"}</b>'
-        f'<span style="color:#6B7280;margin-left:8px">（{ts_str}）</span>'
-        f'{_mode_badge}{_clear_hint}'
+        f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;'
+        f'background:linear-gradient(160deg,#35506A,#2A3F54);border:1px solid #56718B;border-radius:12px;'
+        f'padding:9px 16px;margin-bottom:14px;box-shadow:0 4px 16px rgba(0,0,0,.28)">'
+        f'<span style="background:#163A2C;color:#43C08F;font-size:12px;font-weight:700;'
+        f'padding:3px 11px;border-radius:20px">✅ 資料已載入</span>'
+        f'<span style="color:#EAF1F8;font-size:13px;font-weight:800">{src_name or "wh_dashboard.db"}</span>'
+        f'<span style="color:#8094A6;font-size:12px">（{ts_str}）</span>'
+        f'<span style="flex:1"></span>{_mode_badge}{_clear_hint}'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -195,15 +234,15 @@ if db_ready:
                 st.session_state["wh_upload_name"]  = _reup.name
                 st.session_state["wh_upload_ts"]    = pd.Timestamp.now()
                 st.rerun()
-            if st.button("🗑 清除上傳，切換回 NAS / 資料庫模式", use_container_width=True):
+            if st.button("🗑 清除上傳，切換回 NAS / 資料庫模式", width='stretch'):
                 st.session_state.pop("wh_upload_bytes", None)
                 st.session_state.pop("wh_upload_name", None)
                 st.session_state.pop("wh_upload_ts", None)
                 st.rerun()
 else:
     st.markdown(
-        '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);'
-        'border-radius:8px;padding:10px 16px;margin-bottom:8px;color:#ef4444;font-size:14px">'
+        '<div style="background:rgba(236,106,124,0.12);border:1px solid rgba(236,106,124,0.5);'
+        'border-radius:12px;padding:12px 16px;margin-bottom:10px;color:#EC6A7C;font-size:14px">'
         '⚠️ &nbsp;NAS 離線或尚未建立資料庫。請上傳「調件備料統計表.xlsx」以繼續。</div>',
         unsafe_allow_html=True
     )
@@ -250,6 +289,26 @@ def _prev_workday(d):
 
 YESTERDAY = _prev_workday(TODAY)
 
+# ── 每日標準（KPI 卡指標與月標準線共用；月標準 = 日標準 × 22 工作天）──
+STD_DAYS = 22
+STD_B_Q13, STD_B_Q4 = 250, 300   # 備料 日標準（第1~3季 / 第4季）
+STD_I_Q13, STD_I_Q4 = 150, 200   # 上架(入庫) 日標準（第1~3季 / 第4季）
+_Q_NUM = (YESTERDAY.month - 1) // 3 + 1   # KPI 卡顯示前一工作日，指標依其所屬季
+b_target_day = STD_B_Q4 if _Q_NUM == 4 else STD_B_Q13
+i_target_day = STD_I_Q4 if _Q_NUM == 4 else STD_I_Q13
+
+# ── 防呆設定：廠內／委外判定 & 待完成有效狀態 ──────────
+# 待完成備料只計入這些狀態，排除空白／已完成等髒資料
+# （例：來源誤鍵、需求筆數爆量又無狀態的列，不應灌進待完成）
+PENDING_STATUSES = ('待備料', '備料中')
+
+def _inhouse(df):
+    """廠內判定：需求單位或單別含 生產加工／廠內／場內（『場』為常見錯字）。"""
+    unit = df['需求單位'].astype(str)
+    dan  = df['單別'].astype(str)
+    return (unit.str.contains('生產加工|廠內|場內', na=False)
+            | dan.str.contains('廠內|場內', na=False))
+
 # ── 備料（調撥單）──────────────────────────────────────
 # 已完成：K欄（完成日）= 昨日 且 M欄（狀態）= 已完成 → 加總 G欄（需求筆數）
 b_done_rows = diao[
@@ -259,21 +318,23 @@ b_done_rows = diao[
 ]
 b_done = int(b_done_rows['需求筆數'].sum())
 
-# 已完成拆分：E欄（需求單位）含「生產加工」或「廠內」→ 廠內，其餘 → 委外
-_inhouse_mask = b_done_rows['需求單位'].astype(str).str.contains('生產加工|廠內', na=False)
+# 已完成拆分：廠內（含「場內」錯字）／委外
+_inhouse_mask = _inhouse(b_done_rows)
 b_done_inhouse  = int(b_done_rows[_inhouse_mask]['需求筆數'].sum())
 b_done_outsource = b_done - b_done_inhouse
 
-# 待完成：F欄（需求日）有值 且 <= 昨日 且 K欄（完成日）空白 → 加總 G欄
-b_pend_rows = diao[
+# 待完成：需求日有值且<=昨日、完成日空白，且狀態為待備料/備料中
+# （狀態防呆：排除空白等髒資料，避免單一爆量列灌爆數字）
+_pend_base = (
     diao['需求日'].notna() &
     (diao['需求日'].dt.date <= YESTERDAY) &
     diao['完成日'].isna()
-]
+)
+b_pend_rows = diao[_pend_base & diao['狀態'].isin(PENDING_STATUSES)]
 b_pend = int(b_pend_rows['需求筆數'].sum())
 
-# 待完成拆分：E欄（需求單位）含「生產加工」或「廠內」→ 廠內，其餘 → 委外
-_pend_inhouse_mask = b_pend_rows['需求單位'].astype(str).str.contains('生產加工|廠內', na=False)
+# 待完成拆分：廠內（含「場內」錯字）／委外
+_pend_inhouse_mask = _inhouse(b_pend_rows)
 b_pend_inhouse   = int(b_pend_rows[_pend_inhouse_mask]['需求筆數'].sum())
 b_pend_outsource = b_pend - b_pend_inhouse
 
@@ -281,9 +342,10 @@ b_total = b_done + b_pend
 b_rate  = b_done / b_total if b_total else 0
 
 # ── 入庫 ────────────────────────────────────────────────
-# 已完成：調撥單 M欄=上架 且 K欄=昨日 → 加總 H欄（完成筆數）
+# 已完成：調撥單 E欄（需求單位）=入庫 且 K欄（完成日）=昨日 → 加總 H欄（完成筆數）
+# （改依 E欄 判定，不看 M欄狀態，避免「上架W」等狀態變體漏算）
 ib_done_rows = diao[
-    (diao['狀態'] == '上架') &
+    diao['需求單位'].astype(str).str.contains('入庫', na=False) &
     diao['完成日'].notna() &
     (diao['完成日'].dt.date == YESTERDAY)
 ]
@@ -293,307 +355,473 @@ i_done = int(ib_done_rows['完成筆數'].sum())
 ib_pend_rows = inbound[inbound['完成日'].isna()]
 i_pend = int(ib_pend_rows['筆數'].sum())
 
-i_total = i_done + i_pend
+# 完成率分母：待完成只計「已逾期」（預計完成日<=昨日；空白視為逾期），
+# 未到期單據不算進昨日該完成的量（口徑比照備料卡）；待完成顯示值仍為全部 i_pend
+_ib_not_due = (ib_pend_rows['預計完成日'].notna() &
+               (ib_pend_rows['預計完成日'].dt.date > YESTERDAY))
+i_pend_overdue = int(ib_pend_rows[~_ib_not_due]['筆數'].sum())
+
+i_total = i_done + i_pend_overdue
 i_rate  = i_done / i_total if i_total else 0
 
-# ── 前日最高績效：備料 / 入庫 分開計算 ────────────────
-# 備料最高
-b_by_person = (
-    b_done_rows.groupby('備料人員')['需求筆數'].sum()
-    .reset_index().rename(columns={'備料人員':'人員','需求筆數':'筆數'})
-)
-b_total_done = int(b_by_person['筆數'].sum())
-if not b_by_person.empty and b_total_done > 0:
-    top_b_row  = b_by_person.loc[b_by_person['筆數'].idxmax()]
-    top_b_name = str(top_b_row['人員'])
-    top_b_cnt  = int(top_b_row['筆數'])
-    top_b_pct  = round(top_b_cnt / b_total_done * 100, 1)
-else:
-    top_b_name = "—"; top_b_cnt = 0; top_b_pct = 0.0
-
-# 入庫最高
-i_by_person = (
-    ib_done_rows.groupby('備料人員')['完成筆數'].sum()
-    .reset_index().rename(columns={'備料人員':'人員','完成筆數':'筆數'})
-) if not ib_done_rows.empty else pd.DataFrame(columns=['人員','筆數'])
-i_total_done = int(i_by_person['筆數'].sum()) if not i_by_person.empty else 0
-if not i_by_person.empty and i_total_done > 0:
-    top_i_row  = i_by_person.loc[i_by_person['筆數'].idxmax()]
-    top_i_name = str(top_i_row['人員'])
-    top_i_cnt  = int(top_i_row['筆數'])
-    top_i_pct  = round(top_i_cnt / i_total_done * 100, 1)
-else:
-    top_i_name = "—"; top_i_cnt = 0; top_i_pct = 0.0
 
 # ══════════════════════════════════════════════════════
-# SECTION 1：早會 KPI 三卡片
+# 共用：區段標題
 # ══════════════════════════════════════════════════════
-st.markdown(
-    f'<div style="color:#6B7280;font-size:16px;font-weight:700;letter-spacing:1px;margin-bottom:12px">'
-    f'📊 前日進度概況（{YESTERDAY.strftime("%m/%d")}）</div>',
-    unsafe_allow_html=True
-)
+def _sec(icon, title, sub=""):
+    sub_html = (f'<span style="color:#8094A6;font-size:13px;font-weight:500;'
+                f'margin-left:10px">{sub}</span>') if sub else ""
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:9px;margin:8px 0 12px">'
+        f'<span style="width:5px;height:21px;border-radius:3px;'
+        f'background:linear-gradient(#D9B36A,#B8922A)"></span>'
+        f'<span style="color:#EAF1F8;font-size:17px;font-weight:800;letter-spacing:.5px">{icon} {title}</span>'
+        f'{sub_html}</div>',
+        unsafe_allow_html=True
+    )
+
+
+# ══════════════════════════════════════════════════════
+# SECTION 1：早會 KPI 三卡片（等高 grid）
+# ══════════════════════════════════════════════════════
+_sec("📊", "前日進度概況", YESTERDAY.strftime("%m/%d"))
 
 def _kpi_card(title, done, pend, rate, icon, daily_target=None,
               done_breakdown=None, pend_breakdown=None):
     total = done + pend
     pct   = int(rate * 100)
 
-    # 廠內／委外拆分小標籤（例：廠內 180・委外 79）
+    # 廠內／委外拆分小標籤
     def _bd_label(bd):
         if not bd: return ""
         in_cnt, out_cnt = bd
         return (
-            f'<div style="color:#9CA3AF;font-size:12px;margin-top:4px;white-space:nowrap">'
+            f'<div style="color:#8094A6;font-size:12px;margin-top:5px;white-space:nowrap">'
             f'廠內 {in_cnt:,}・委外 {out_cnt:,}</div>'
         )
     done_breakdown_html = _bd_label(done_breakdown)
     pend_breakdown_html = _bd_label(pend_breakdown)
 
-    if rate >= 0.8:   status_txt,status_c = "達標",    "#2E9D70"
-    elif rate >= 0.5: status_txt,status_c = "持續推進", "#d97706"
-    else:             status_txt,status_c = "進度落後", "#B23A48"
+    if rate >= 0.8:   status_txt, status_c = "達標",    "#43C08F"
+    elif rate >= 0.5: status_txt, status_c = "持續推進", "#E5B454"
+    else:             status_txt, status_c = "進度落後", "#EC6A7C"
 
     # Q3 目標比較區塊
     q3_block = ""
     if daily_target:
         diff     = done - daily_target
-        diff_c   = "#2E9D70" if diff >= 0 else "#B23A48"
+        diff_c   = "#43C08F" if diff >= 0 else "#EC6A7C"
         diff_sym = "▲" if diff >= 0 else "▼"
         diff_lbl = "達標" if diff >= 0 else "未達標"
         bar_pct  = min(int(done / daily_target * 100), 100)
         q3_block = (
-            f'<div style="margin-top:14px;border-top:1px dashed #E6D8B8;padding-top:10px">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-            f'<span style="color:#6B7280;font-size:13px;font-weight:600">🎯 第3季每日指標：{daily_target:,} 筆</span>'
-            f'<span style="color:{diff_c};font-size:13px;font-weight:700">'
-            f'{diff_sym} {abs(diff)} &nbsp;{diff_lbl}</span>'
+            f'<div style="margin-top:14px;border-top:1px dashed #56718B;padding-top:11px">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">'
+            f'<span style="color:#9DB0C0;font-size:13px;font-weight:600">🎯 第{_Q_NUM}季每日指標：{daily_target:,} 筆</span>'
+            f'<span style="color:{diff_c};font-size:13px;font-weight:800">{diff_sym} {abs(diff)} &nbsp;{diff_lbl}</span>'
             f'</div>'
             f'<div style="display:flex;align-items:center;gap:10px">'
-            f'<div style="flex:1;background:#f5ede0;border-radius:4px;height:7px;overflow:hidden">'
+            f'<div style="flex:1;background:#3D5365;border-radius:5px;height:8px;overflow:hidden">'
             f'<div style="width:{bar_pct}%;height:100%;'
-            f'background:{"linear-gradient(90deg,#2E9D70,#3bb892)" if diff>=0 else "linear-gradient(90deg,#B23A48,#e05a6a)"}"></div>'
+            f'background:{"linear-gradient(90deg,#2E9D70,#43C08F)" if diff>=0 else "linear-gradient(90deg,#B23A48,#EC6A7C)"}"></div>'
             f'</div>'
-            f'<span style="color:{diff_c};font-size:13px;font-weight:700;min-width:36px">{bar_pct}%</span>'
+            f'<span style="color:{diff_c};font-size:13px;font-weight:800;min-width:38px;text-align:right">{bar_pct}%</span>'
             f'</div></div>'
         )
 
     return (
-        f'<div style="background:#FFFFFF;'
-        f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
-        f'border-radius:14px;padding:22px 24px;'
-        f'box-shadow:0 2px 16px rgba(29,43,58,0.08);height:100%">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
-        f'<div style="color:#1D2B3A;font-size:15px;font-weight:700;letter-spacing:1px">{icon} {title}</div>'
-        f'<div style="background:#fafaf5;border:1px solid #E6D8B8;border-radius:20px;'
-        f'padding:3px 12px;color:{status_c};font-size:13px;font-weight:600">{status_txt}</div>'
+        f'<div style="background:linear-gradient(160deg,#35506A,#2A3F54);border:1px solid #56718B;border-top:3px solid #C9A45C;'
+        f'border-radius:16px;padding:22px 24px;box-shadow:0 10px 28px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.10);'
+        f'height:100%;display:flex;flex-direction:column;justify-content:space-between">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center">'
+        f'<div style="color:#EAF1F8;font-size:16px;font-weight:800;letter-spacing:.5px">{icon} {title}</div>'
+        f'<div style="background:#3B5167;border:1px solid #56718B;border-radius:20px;'
+        f'padding:3px 13px;color:{status_c};font-size:13px;font-weight:700">{status_txt}</div>'
         f'</div>'
-        f'<div style="display:flex;gap:0;margin-bottom:18px">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF">'
-        f'<div style="color:#2E9D70;font-size:54px;font-weight:900;line-height:1">{done:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">已完成</div>'
-        f'{done_breakdown_html}</div>'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF">'
-        f'<div style="color:#B23A48;font-size:54px;font-weight:900;line-height:1">{pend:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">待完成</div>'
-        f'{pend_breakdown_html}</div>'
-        f'<div style="flex:1;text-align:center">'
-        f'<div style="color:#C9A45C;font-size:54px;font-weight:900;line-height:1">{pct}%</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">完成率</div></div>'
+        f'<div style="display:flex;gap:12px;margin:18px 0">'
+        f'<div style="flex:1;text-align:center;background:#26394D;border:1px solid #46607A;'
+        f'border-radius:12px;padding:14px 6px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)">'
+        f'<div style="color:#43C08F;font-size:46px;font-weight:900;line-height:1">{done:,}</div>'
+        f'<div style="color:#9DB0C0;font-size:14px;margin-top:6px">已完成</div>{done_breakdown_html}</div>'
+        f'<div style="flex:1;text-align:center;background:#26394D;border:1px solid #46607A;'
+        f'border-radius:12px;padding:14px 6px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)">'
+        f'<div style="color:#EC6A7C;font-size:46px;font-weight:900;line-height:1">{pend:,}</div>'
+        f'<div style="color:#9DB0C0;font-size:14px;margin-top:6px">待完成</div>{pend_breakdown_html}</div>'
+        f'<div style="flex:1;text-align:center;background:#26394D;border:1px solid #46607A;'
+        f'border-radius:12px;padding:14px 6px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)">'
+        f'<div style="color:#D9B36A;font-size:46px;font-weight:900;line-height:1">{pct}%</div>'
+        f'<div style="color:#9DB0C0;font-size:14px;margin-top:6px">完成率</div></div>'
         f'</div>'
-        f'<div style="background:#f5ede0;border-radius:4px;height:8px;overflow:hidden">'
-        f'<div style="display:flex;height:100%">'
-        f'<div style="width:{pct}%;background:linear-gradient(90deg,#2E9D70,#3bb892)"></div>'
-        f'<div style="width:{100-pct}%;background:#f5c6cc"></div>'
-        f'</div></div>'
-        f'<div style="color:#6B7280;font-size:13px;margin-top:6px;text-align:right">'
-        f'目標總筆數：{total:,}</div>'
+        f'<div>'
+        f'<div style="background:#3D5365;border-radius:5px;height:9px;overflow:hidden;display:flex">'
+        f'<div style="width:{pct}%;background:linear-gradient(90deg,#2E9D70,#43C08F)"></div>'
+        f'<div style="width:{100-pct}%;background:#3A2A31"></div>'
+        f'</div>'
+        f'<div style="color:#9DB0C0;font-size:13px;margin-top:7px;text-align:right">目標總筆數：{total:,}</div>'
         f'{q3_block}</div>'
+        f'</div>'
     )
 
-# 第三卡片：備料最高 / 入庫最高 分開顯示
-def _top_person_card():
-    def _half(label, name, cnt, pct, num_c, bar_c):
-        bar_w = min(int(pct), 100)
-        return (
-            f'<div style="flex:1;padding:14px 16px;'
-            f'background:#fdfaf5;border-radius:10px;border:1px solid #EDE5CF">'
-            f'<div style="color:#6B7280;font-size:13px;letter-spacing:0.5px;margin-bottom:8px">{label}</div>'
-            f'<div style="color:#1D2B3A;font-size:30px;font-weight:900;line-height:1">{name}</div>'
-            f'<div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">'
-            f'<span style="color:{num_c};font-size:38px;font-weight:900">{cnt:,}</span>'
-            f'<span style="color:#6B7280;font-size:14px">筆</span>'
-            f'<span style="color:#C9A45C;font-size:17px;font-weight:700;margin-left:4px">{pct}%</span>'
+# 第三卡片：本週（週一~週五）每日已完成備料筆數
+def _week_prep_card():
+    def _tgt(d):                                    # 每日備料目標基準（第4季自動調升）
+        return STD_B_Q4 if d.month >= 10 else STD_B_Q13
+    mon = TODAY - timedelta(days=TODAY.weekday())   # 本週一
+    wlabels = ['一', '二', '三', '四', '五']
+    days = [mon + timedelta(days=i) for i in range(5)]
+    vals = []
+    for d in days:
+        if d > TODAY:
+            vals.append(None)                        # 未到
+        else:
+            m = ((diao['狀態'] == '已完成') &
+                 diao['完成日'].notna() &
+                 (diao['完成日'].dt.date == d))
+            vals.append(int(diao[m]['需求筆數'].sum()))
+    nums  = [v for v in vals if v is not None]
+    total = sum(nums)
+    maxc  = max(nums) if nums else 0
+    scale = max([maxc] + [_tgt(d) for d in days])     # 比例尺：取最大值與目標的較大者
+
+    rows = ""
+    for d, lbl, v in zip(days, wlabels, vals):
+        tgt = _tgt(d)
+        line_pos = tgt / scale * 100                  # 基準線位置（跨季的週各日可能不同）
+        bg = '#3E5670' if d == TODAY else 'transparent'
+        if v is None:
+            valhtml = '<span style="color:#6E8094;font-size:15px">—</span>'
+            barw = 0
+            bar_color = 'transparent'
+        else:
+            met = v >= tgt
+            cnt_color = '#43C08F' if met else '#E5B454'      # 達標綠／未達標琥珀
+            bar_color = '#43C08F' if met else '#E5B454'
+            valhtml = (f'<span style="color:{cnt_color};font-size:23px;font-weight:900">{v:,}</span>'
+                       f'<span style="color:#9DB0C0;font-size:12px"> 筆</span>')
+            barw = int(v / scale * 100)
+        rows += (
+            f'<div style="display:flex;align-items:center;gap:14px;padding:9px 8px;'
+            f'border-bottom:1px solid #33475A;background:{bg};border-radius:8px">'
+            f'<div style="flex:0 0 50px;text-align:center">'
+            f'<div style="color:#EAF1F8;font-size:15px;font-weight:800">週{lbl}</div>'
+            f'<div style="color:#8094A6;font-size:11px">{d.strftime("%m/%d")}</div></div>'
+            f'<div style="flex:1;min-width:0">'
+            f'<div style="text-align:right">{valhtml}</div>'
+            f'<div style="position:relative;background:#3D5365;border-radius:4px;height:9px;margin-top:5px">'
+            f'<div style="width:{barw}%;height:100%;border-radius:4px;background:{bar_color}"></div>'
+            f'<div style="position:absolute;top:-3px;bottom:-3px;left:{line_pos:.1f}%;width:2px;'
+            f'background:#EC6A7C"></div>'
             f'</div>'
-            f'<div style="color:#6B7280;font-size:12px;margin-top:4px">佔當日該項目總量</div>'
-            f'<div style="background:#EDE5CF;border-radius:3px;height:5px;overflow:hidden;margin-top:8px">'
-            f'<div style="width:{bar_w}%;height:100%;background:{bar_c}"></div></div>'
-            f'</div>'
+            f'</div></div>'
         )
 
     return (
-        f'<div style="background:#FFFFFF;'
-        f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
-        f'border-radius:14px;padding:20px 22px;'
-        f'box-shadow:0 2px 16px rgba(29,43,58,0.08);height:100%">'
-        f'<div style="color:#1D2B3A;font-size:15px;font-weight:700;letter-spacing:1px;margin-bottom:14px">'
-        f'🏆 前日最高績效</div>'
-        f'<div style="display:flex;gap:10px">'
-        + _half("📦 備料", top_b_name, top_b_cnt, top_b_pct, "#2E9D70", "#2E9D70")
-        + _half("🏭 上架", top_i_name, top_i_cnt, top_i_pct, "#B23A48", "#B23A48")
-        + f'</div></div>'
-    )
-
-c1, c2, c3 = st.columns(3)
-c1.markdown(_kpi_card("備料", b_done, b_pend, b_rate, "📦", daily_target=200,
-                      done_breakdown=(b_done_inhouse, b_done_outsource),
-                      pend_breakdown=(b_pend_inhouse, b_pend_outsource)), unsafe_allow_html=True)
-c2.markdown(_kpi_card("上架", i_done, i_pend, i_rate, "🏭", daily_target=100), unsafe_allow_html=True)
-c3.markdown(_top_person_card(), unsafe_allow_html=True)
-
-st.markdown("<div style='margin-top:20px'></div>", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════
-# SECTION 2：人員今日完成筆數 + 入庫延遲警示
-# ══════════════════════════════════════════════════════
-col_person, col_alert = st.columns([3, 2])
-
-with col_person:
-    st.markdown(
-        '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:12px">'
-        '📦 預計出貨量（5週 pcs）</div>',
-        unsafe_allow_html=True
-    )
-    if sched_df.empty:
-        st.markdown(
-            '<div style="background:#fdfaf5;border:1px solid #E6D8B8;border-radius:8px;'
-            'padding:20px;text-align:center;color:#6B7280">— 無法讀取排程資料 —</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        # 計算5週數據（同工單看板邏輯）
-        _wd_s  = TODAY.weekday()
-        _wmon  = TODAY - timedelta(days=_wd_s)
-        _slabs, _srq, _slq = [], [], []
-        for _wi in range(5):
-            _ws = _wmon + timedelta(weeks=_wi)
-            _we = _ws + timedelta(days=4)
-            _wn = _ws.isocalendar()[1]
-            _sub = sched_df[
-                sched_df['出貨日'].notna() &
-                (sched_df['出貨日'] >= _ws) &
-                (sched_df['出貨日'] <= _we)
-            ]
-            _tq = int(_sub['預計產量'].dropna().sum())
-            _rq = int(_sub[_sub['料況狀態']=='已齊料']['預計產量'].dropna().sum())
-            _slabs.append(f"W{_wn}<br>{_ws.strftime('%m/%d')}~{_we.strftime('%m/%d')}")
-            _srq.append(_rq)
-            _slq.append(_tq - _rq)
-
-        fig_ship = go.Figure()
-        fig_ship.add_trace(go.Bar(
-            name="已齊料 pcs", x=_slabs, y=_srq,
-            marker=dict(color="rgba(46,157,112,0.80)", line=dict(color="#2E9D70", width=1.5)),
-        ))
-        fig_ship.add_trace(go.Bar(
-            name="缺料 pcs", x=_slabs, y=_slq,
-            marker=dict(color="rgba(178,58,72,0.70)", line=dict(color="#B23A48", width=1.5)),
-        ))
-        # 頂部標籤
-        _annots = []
-        for _i, (_rq2, _lq2) in enumerate(zip(_srq, _slq)):
-            _tot = _rq2 + _lq2
-            if _tot > 0:
-                _annots.append(dict(
-                    x=_slabs[_i], y=_tot,
-                    text=f"<b>共 {_tot:,}</b><br><span style='font-size:12px'>齊 {_rq2:,} ｜ 缺 {_lq2:,}</span>",
-                    xanchor="center", yanchor="bottom", showarrow=False,
-                    font=dict(size=13, color="#1D2B3A", family="Arial,標楷體,DFKai-SB,serif"),
-                    bgcolor="rgba(253,250,245,0.9)",
-                    bordercolor="#E6D8B8", borderwidth=1, borderpad=4,
-                ))
-        fig_ship.update_layout(
-            barmode="stack",
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            annotations=_annots,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                        font=dict(color="#1D2B3A", size=13), bgcolor="rgba(255,255,255,0.8)"),
-            xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
-                       family="Arial,標楷體,DFKai-SB,serif")),
-            yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
-                       tickfont=dict(color="#6B7280", size=12), zeroline=False),
-            margin=dict(l=10, r=10, t=60, b=10), height=320,
-            font=dict(family="Arial,標楷體,DFKai-SB,serif"),
-        )
-        st.plotly_chart(fig_ship, use_container_width=True,
-                        config=dict(staticPlot=True))
-
-with col_alert:
-    # ── 今日即時訊息 ────────────────────────────────────
-    today_b_rows = diao[
-        (diao['狀態'] == '已完成') &
-        diao['完成日'].notna() &
-        (diao['完成日'].dt.date == TODAY)
-    ]
-    today_i_rows = diao[
-        (diao['狀態'] == '上架') &
-        diao['完成日'].notna() &
-        (diao['完成日'].dt.date == TODAY)
-    ]
-    today_b_cnt = int(today_b_rows['需求筆數'].sum())
-    today_i_cnt = int(today_i_rows['完成筆數'].sum())
-
-    # 今日新增：開單日 = 今日（不論狀態）
-    today_new_rows = diao[
-        diao['開單日'].notna() &
-        (diao['開單日'].dt.date == TODAY)
-    ]
-    today_new_cnt = int(today_new_rows['需求筆數'].sum())
-
-    st.markdown(
-        f'<div style="background:#FFFFFF;'
-        f'border:1px solid #E6D8B8;border-top:3px solid #C9A45C;'
-        f'border-radius:12px;padding:16px 18px;height:100%;'
-        f'box-shadow:0 2px 14px rgba(29,43,58,0.08)">'
-        f'<div style="color:#1D2B3A;font-size:15px;font-weight:700;letter-spacing:0.5px;margin-bottom:14px">'
-        f'⚡ 今日即時進度（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</div>'
-        f'<div style="display:flex;gap:0">'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
-        f'<div style="color:#2E9D70;font-size:52px;font-weight:900;line-height:1">{today_b_cnt:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">📦 備料完成</div></div>'
-        f'<div style="flex:1;text-align:center;border-right:1px solid #EDE5CF;padding:10px 0">'
-        f'<div style="color:#B23A48;font-size:52px;font-weight:900;line-height:1">{today_i_cnt:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">🏭 上架完成</div></div>'
-        f'<div style="flex:1;text-align:center;padding:10px 0">'
-        f'<div style="color:#3B82F6;font-size:52px;font-weight:900;line-height:1">{today_new_cnt:,}</div>'
-        f'<div style="color:#6B7280;font-size:14px;margin-top:6px">➕ 今日新增</div></div>'
+        f'<div style="background:linear-gradient(160deg,#35506A,#2A3F54);border:1px solid #56718B;border-top:3px solid #C9A45C;'
+        f'border-radius:16px;padding:20px 22px;box-shadow:0 10px 28px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.10);'
+        f'height:100%;display:flex;flex-direction:column">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">'
+        f'<span style="color:#EAF1F8;font-size:16px;font-weight:800;letter-spacing:.5px">📦 本週備料完成</span>'
+        f'<span style="color:#9DB0C0;font-size:12px">週一~週五 共 '
+        f'<b style="color:#43C08F">{total:,}</b> 筆</span>'
         f'</div>'
-        f'<div style="margin-top:14px;border-top:1px solid #EDE5CF;padding-top:12px">'
-        f'<div style="color:#6B7280;font-size:13px;margin-bottom:8px">今日備料人員</div>',
-        unsafe_allow_html=True
+        f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
+        f'<span style="display:inline-block;width:13px;height:2px;background:#EC6A7C"></span>'
+        f'<span style="color:#8094A6;font-size:11px">每日目標基準 {_tgt(TODAY)} 筆</span>'
+        f'</div>'
+        f'<div style="display:flex;flex-direction:column;justify-content:space-around;flex:1">{rows}</div>'
+        f'</div>'
     )
-    if not today_b_rows.empty:
-        by_p = today_b_rows.groupby('備料人員')['需求筆數'].sum().sort_values(ascending=False)
-        for person, cnt in by_p.items():
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;padding:5px 0;'
-                f'border-bottom:1px solid #f5ede0">'
-                f'<span style="color:#1D2B3A;font-size:14px">{person}</span>'
-                f'<span style="color:#C9A45C;font-size:14px;font-weight:700">{int(cnt)} 筆</span>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-    else:
-        st.markdown('<div style="color:#6B7280;font-size:13px">— 今日尚無備料完成記錄 —</div>',
-                    unsafe_allow_html=True)
-    st.markdown('</div></div>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════
+# 今日出勤（來源：Outlook「Apollo HR」請假信，10 分鐘快取）
+# ══════════════════════════════════════════════════════
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _today_leaves_cached(day_key):
+    return fetch_today_leaves()
+
+_leaves, _lv_err = _today_leaves_cached(f"{TODAY.isoformat()}#v2")
+
+if _lv_err:
+    _att_body = (f'<span style="color:#8094A6;font-size:13px">'
+                 f'出勤資料暫無法讀取（{_lv_err}）</span>')
+elif not _leaves:
+    _att_body = ('<span style="color:#43C08F;font-size:15.5px;font-weight:800;'
+                 'letter-spacing:1px">✅ 全員出勤</span>')
+else:
+    _chips = "".join(
+        f'<span style="display:inline-block;background:rgba(236,106,124,.13);'
+        f'border:1px solid rgba(236,106,124,.55);color:#FFC2CB;border-radius:20px;'
+        f'padding:4px 14px;margin:3px 8px 3px 0;font-size:13.5px;font-weight:800">'
+        f'{r["name"]}'
+        f'<span style="color:#EC8A99;font-weight:600">（{r["type"]}・{r["part"]}）</span>'
+        f'</span>'
+        for r in _leaves
+    )
+    _n_full = sum(1 for r in _leaves if r["part"] == "全天")
+    _n_half = sum(1 for r in _leaves if "半天" in r["part"])
+    _n_rest = len(_leaves) - _n_full - _n_half
+    _cnt = []
+    if _n_full:
+        _cnt.append(f"{_n_full} 位休整天")
+    if _n_half:
+        _cnt.append(f"{_n_half} 位休半天")
+    if _n_rest:
+        _cnt.append(f"{_n_rest} 位部分請假")
+    _att_body = (
+        _chips
+        + f'<span style="color:#9DB0C0;font-size:12.5px;margin-left:4px">'
+          f'今日 {"、".join(_cnt)}，其餘同仁出勤</span>'
+    )
+
+st.markdown(
+    f'<div style="background:linear-gradient(160deg,#35506A,#2A3F54);'
+    f'border:1px solid #56718B;border-left:4px solid #C9A45C;border-radius:14px;'
+    f'padding:11px 20px;margin-bottom:16px;display:flex;align-items:center;'
+    f'gap:14px;flex-wrap:wrap;box-shadow:0 6px 18px rgba(0,0,0,.35)">'
+    f'<span style="color:#EAF1F8;font-size:15px;font-weight:800;letter-spacing:1.5px;'
+    f'white-space:nowrap">👥 今日出勤</span>'
+    f'<span style="display:flex;align-items:center;flex-wrap:wrap;flex:1">{_att_body}</span>'
+    f'</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));'
+    'gap:18px;align-items:stretch">'
+    + _kpi_card("備料", b_done, b_pend, b_rate, "📦", daily_target=b_target_day,
+                done_breakdown=(b_done_inhouse, b_done_outsource),
+                pend_breakdown=(b_pend_inhouse, b_pend_outsource))
+    + _kpi_card("上架", i_done, i_pend, i_rate, "🏭", daily_target=i_target_day)
+    + _week_prep_card()
+    + '</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown("<div style='margin-top:22px'></div>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════
+# SECTION 2：今日即時進度 ＆ 待完成明細（三欄，與上方三卡對齊）
+#   欄1（備料卡下方）＝今日備料　欄2（上架卡下方）＝今日上架＋上架待完成明細
+#   欄3（本週卡下方）＝備料待完成明細
+# ══════════════════════════════════════════════════════
+_sec("⚡", "今日即時進度 ＆ 待完成明細", f"{TODAY.strftime('%m/%d')} {NOW.strftime('%H:%M')} 止")
+
+# ── 今日即時進度資料 ──
+today_b_rows = diao[(diao['狀態'] == '已完成') & diao['完成日'].notna() &
+                    (diao['完成日'].dt.date == TODAY)]
+today_i_rows = diao[(diao['狀態'] == '上架') & diao['完成日'].notna() &
+                    (diao['完成日'].dt.date == TODAY)]
+today_b_cnt = int(today_b_rows['需求筆數'].sum())
+today_i_cnt = int(today_i_rows['完成筆數'].sum())
+today_new_rows = diao[diao['開單日'].notna() & (diao['開單日'].dt.date == TODAY)]
+today_new_cnt = int(today_new_rows['需求筆數'].sum())
+
+_CARD = ('background:linear-gradient(160deg,#35506A,#2A3F54);border:1px solid #56718B;border-top:3px solid #C9A45C;'
+         'border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.10);'
+         'height:100%;display:flex;flex-direction:column;overflow:hidden;')
+
+# ── 待完成明細共用表格樣式 ──
+_th = ('style="position:sticky;top:0;background:#3B5167;color:#EAF1F8;padding:10px 12px;'
+       'font-size:13px;font-weight:700;text-align:center;border-bottom:2px solid #C9A45C"')
+_td = ('style="padding:9px 12px;font-size:14px;color:#D7E1EA;text-align:center;'
+       'border-bottom:1px solid #33475A"')
+_tdn = ('style="padding:9px 12px;font-size:15px;color:#EC6A7C;font-weight:800;text-align:center;'
+        'border-bottom:1px solid #33475A"')
+
+def _date_label(d):
+    if pd.isna(d):
+        return "—", "#8094A6"
+    lbl = f'{d.strftime("%m/%d")}（{"一二三四五六日"[d.weekday()]}）'
+    if d < TODAY:    return lbl, "#EC6A7C"   # 逾期
+    elif d == TODAY: return lbl, "#D9B36A"   # 今日
+    return lbl, "#EAF1F8"                    # 未來排程
+
+def _pend_table(rows, date_col, unit_col, qty_col, date_header, unit_header, max_h=340):
+    """依 日期＋單位 彙總的待完成明細表（張數／數量）"""
+    by_day = (
+        rows.assign(_day=rows[date_col].dt.date)
+        .groupby(['_day', unit_col], dropna=False)[qty_col]
+        .agg(張數='count', 數量='sum').reset_index()
+        .sort_values(['_day', unit_col], na_position='last')
+    )
+    body, prev = "", None
+    for i, (_, r) in enumerate(by_day.iterrows()):
+        lbl, c = _date_label(r['_day'])
+        show = lbl if lbl != prev else ""
+        prev = lbl
+        body += (
+            f'<tr style="background:{"#3B5167" if i % 2 else "transparent"}">'
+            f'<td {_td}><span style="color:{c};font-weight:800">{show}</span></td>'
+            f'<td {_td}>{r[unit_col]}</td><td {_td}>{int(r["張數"])}</td>'
+            f'<td {_tdn}>{int(r["數量"]):,}</td></tr>'
+        )
+    return (
+        f'<div style="overflow:auto;flex:1;max-height:{max_h}px;border:1px solid #33475A;border-radius:10px">'
+        f'<table style="width:100%;border-collapse:collapse">'
+        f'<thead><tr><th {_th}>{date_header}</th><th {_th}>{unit_header}</th>'
+        f'<th {_th}>張數</th><th {_th}>數量</th></tr></thead>'
+        f'<tbody>{body}</tbody></table></div>'
+    )
+
+# ── 欄3：備料待完成（含未來需求日；僅列 廠內・唐佑・國智）──
+SCHED_UNITS = ("廠內", "唐佑", "國智")
+
+sched_rows = diao[diao['完成日'].isna() & diao['狀態'].isin(PENDING_STATUSES)].copy()
+# 「場內」為「廠內」常見錯字，先正規化再歸類
+# 需求單位可能空白（半鍵入列）；pandas3 astype(str) 會保留 NaN，先 fillna 再轉字串
+sched_rows['需求單位'] = sched_rows['需求單位'].fillna('').astype(str).str.replace('場內', '廠內')
+
+def _canon_unit(u):
+    for k in SCHED_UNITS:
+        if k in u:
+            return k
+    return None
+
+sched_rows['單位'] = sched_rows['需求單位'].map(_canon_unit)
+sched_rows = sched_rows[sched_rows['單位'].notna()]
+
+has_pend = not sched_rows.empty
+if has_pend:
+    _pend_detail = sched_rows[
+        ["編號", "單別", "單號", "開單日", "單位", "需求日",
+         "需求筆數", "備料人員", "狀態", "備註"]
+    ].rename(columns={"單位": "需求單位"}).sort_values("需求日")
+
+    sched_total = int(sched_rows['需求筆數'].sum())
+    _in_qty  = int(sched_rows[sched_rows['單位'] == '廠內']['需求筆數'].sum())
+    _out_qty = sched_total - _in_qty
+
+    pend_body = _pend_table(sched_rows, '需求日', '單位', '需求筆數', '需求日', '需求單位')
+    pend_sub = (f'含未來需求日　｜　僅列 廠內・唐佑・國智　｜　'
+                f'廠內 {_in_qty:,} · 委外 {_out_qty:,}')
+else:
+    sched_total = 0
+    pend_body = ('<div style="flex:1;display:flex;align-items:center;justify-content:center;'
+                 'color:#8094A6;font-size:15px;padding:36px">— 目前沒有待完成備料 —</div>')
+    pend_sub = '全部完成 🎉'
+
+pend_card = (
+    f'<div style="{_CARD}padding:18px 20px">'
+    f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+    f'<span style="color:#EAF1F8;font-size:16px;font-weight:800">📦 備料待完成</span>'
+    f'<span style="color:#EC6A7C;font-size:20px;font-weight:900">共 {sched_total:,} 筆</span>'
+    f'</div>'
+    f'<div style="color:#9DB0C0;font-size:13px;margin-bottom:12px">{pend_sub}</div>'
+    f'{pend_body}</div>'
+)
+
+# ── 共用：大數字統計、每人筆數列表 ──
+def _stat(num, label, color):
+    return (f'<div style="flex:1;text-align:center;padding:8px 0">'
+            f'<div style="color:{color};font-size:46px;font-weight:900;line-height:1">{num:,}</div>'
+            f'<div style="color:#9DB0C0;font-size:13px;margin-top:7px">{label}</div></div>')
+
+def _person_list(rows, qty_col, empty_msg):
+    if rows.empty:
+        return f'<div style="color:#8094A6;font-size:13px;padding:10px 0">{empty_msg}</div>'
+    by_p = rows.groupby('備料人員')[qty_col].sum().sort_values(ascending=False)
+    return "".join(
+        f'<div style="display:flex;justify-content:space-between;padding:8px 2px;'
+        f'border-bottom:1px solid #33475A">'
+        f'<span style="color:#D7E1EA;font-size:14px">{p}</span>'
+        f'<span style="color:#D9B36A;font-size:14px;font-weight:800">{int(c):,} 筆</span></div>'
+        for p, c in by_p.items()
+    )
+
+# ── 欄1：今日備料 ──
+prep_today_card = (
+    f'<div style="{_CARD}padding:18px 20px">'
+    f'<div style="color:#EAF1F8;font-size:16px;font-weight:800;margin-bottom:14px">'
+    f'⚡ 今日備料 <span style="color:#8094A6;font-size:12px;font-weight:500">'
+    f'（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</span></div>'
+    f'<div style="display:flex;background:#3B5167;border:1px solid #33475A;border-radius:12px;padding:6px 0">'
+    + _stat(today_b_cnt, "📦 備料完成", "#43C08F")
+    + '<div style="width:1px;background:#33475A;margin:6px 0"></div>'
+    + _stat(today_new_cnt, "➕ 今日新增", "#5AA8F0")
+    + '</div>'
+    f'<div style="color:#9DB0C0;font-size:13px;margin:15px 0 4px">今日備料人員</div>'
+    f'<div style="overflow:auto;flex:1;max-height:300px">'
+    f'{_person_list(today_b_rows, "需求筆數", "— 今日尚無備料完成記錄 —")}</div>'
+    f'</div>'
+)
+
+# ── 欄2：今日上架 ＋ 上架待完成明細 ──
+ib_detail_rows = inbound[inbound['完成日'].isna()].copy()
+ib_has = not ib_detail_rows.empty
+if ib_has:
+    ib_detail_rows['單別'] = ib_detail_rows['單別'].fillna('—').astype(str)
+    _ib_detail = ib_detail_rows[
+        ["編號", "單別", "單號", "驗畢日期", "接單日期", "預計完成日",
+         "取單日", "筆數", "入庫人員", "備註"]
+    ].sort_values("預計完成日")
+    ib_table = _pend_table(ib_detail_rows, '預計完成日', '單別', '筆數',
+                           '預計完成日', '單別', max_h=220)
+else:
+    ib_table = ('<div style="flex:1;display:flex;align-items:center;justify-content:center;'
+                'color:#8094A6;font-size:15px;padding:24px">— 目前沒有待上架單據 —</div>')
+
+putaway_today_card = (
+    f'<div style="{_CARD}padding:18px 20px">'
+    f'<div style="color:#EAF1F8;font-size:16px;font-weight:800;margin-bottom:14px">'
+    f'⚡ 今日上架 <span style="color:#8094A6;font-size:12px;font-weight:500">'
+    f'（{TODAY.strftime("%m/%d")} {NOW.strftime("%H:%M")} 止）</span></div>'
+    f'<div style="display:flex;background:#3B5167;border:1px solid #33475A;border-radius:12px;padding:6px 0">'
+    + _stat(today_i_cnt, "🏭 上架完成", "#43C08F")
+    + '<div style="width:1px;background:#33475A;margin:6px 0"></div>'
+    + _stat(i_pend, "⏳ 待上架", "#EC6A7C")
+    + '</div>'
+    f'<div style="color:#9DB0C0;font-size:13px;margin:15px 0 4px">今日上架人員</div>'
+    f'<div style="overflow:auto;max-height:120px">'
+    f'{_person_list(today_i_rows, "完成筆數", "— 今日尚無上架完成記錄 —")}</div>'
+    f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:15px 0 4px">'
+    f'<span style="color:#9DB0C0;font-size:13px">上架待完成明細</span>'
+    f'<span style="color:#EC6A7C;font-size:15px;font-weight:900">共 {i_pend:,} 筆</span>'
+    f'</div>'
+    f'{ib_table}'
+    f'</div>'
+)
+
+st.markdown(
+    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));'
+    'gap:18px;align-items:stretch">'
+    + prep_today_card + putaway_today_card + pend_card + '</div>',
+    unsafe_allow_html=True
+)
+
+_dl_shown = has_pend or ib_has
+if _dl_shown:
+    st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+if has_pend:
+    _pend_buf = io.BytesIO()
+    with pd.ExcelWriter(_pend_buf, engine="openpyxl") as _pend_writer:
+        _pend_detail.to_excel(_pend_writer, index=False, sheet_name="備料待完成")
+    _pend_buf.seek(0)
+    st.download_button(
+        "⬇️　下載備料待完成明細（Excel）",
+        data=_pend_buf,
+        file_name=f"備料待完成明細_{TODAY.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width='stretch',
+    )
+if ib_has:
+    _ib_buf = io.BytesIO()
+    with pd.ExcelWriter(_ib_buf, engine="openpyxl") as _ib_writer:
+        _ib_detail.to_excel(_ib_writer, index=False, sheet_name="上架待完成")
+    _ib_buf.seek(0)
+    st.download_button(
+        "⬇️　下載上架待完成明細（Excel）",
+        data=_ib_buf,
+        file_name=f"上架待完成明細_{TODAY.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width='stretch',
+    )
 
 st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 3：近5週 — 備料 / 入庫 各自獨立圖表＋表格
+# 圖表共用工具
 # ══════════════════════════════════════════════════════
-
 def _workdays_in_week(wk_start, wk_end):
     """計算日期區間內的工作日數（排除週六日）"""
     count = 0
@@ -604,12 +832,99 @@ def _workdays_in_week(wk_start, wk_end):
         d += timedelta(days=1)
     return max(count, 1)
 
-st.markdown(
-    '<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:14px">'
-    '📅 近5週完成筆數</div>', unsafe_allow_html=True
-)
+def _bar_chart(labels, values, color_fill, color_line, height=260, trend=True, std=None):
+    fig = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker=dict(color=color_fill, line=dict(color=color_line, width=1.5)),
+        text=[f"{v:,}" if v else "0" for v in values],
+        textposition="outside",
+        textfont=dict(color=color_line, size=14, family="'微軟正黑體',Arial,sans-serif"),
+        hoverinfo="skip",
+    ))
+    # ── 標準線：各期標準量（實線階梯；如 Q4 調升會在該期跳高） ──
+    if std is not None:
+        fig.add_trace(go.Scatter(
+            x=labels, y=std, mode="lines",
+            line=dict(color="#7FA3C8", width=3, shape="hv"),
+            hoverinfo="skip", showlegend=False, cliponaxis=False,
+        ))
+        # 各標準段中點加白底數值標籤，箭頭指向標準線
+        seg_start = 0
+        for i in range(1, len(std) + 1):
+            if i == len(std) or std[i] != std[seg_start]:
+                mid = (seg_start + i - 1) // 2
+                fig.add_annotation(
+                    x=labels[mid], y=std[seg_start],
+                    text=f"<b>{std[seg_start]:,} 筆</b>",
+                    showarrow=True, arrowhead=2, arrowwidth=1.5,
+                    arrowcolor="#EAF1F8", ax=0, ay=-28,
+                    font=dict(color="#FFFFFF", size=13.5,
+                              family="'微軟正黑體',Arial,sans-serif"),
+                )
+                seg_start = i
+    # ── 趨勢曲線：連接各期完成筆數，讓「本週／本月是成長還是下降」一眼可見 ──
+    #    空期（未來月份=0）以 None 斷開，避免曲線掉到 0 造成誤判。
+    if trend:
+        trend_y = [v if v else None for v in values]
+        if sum(v is not None for v in trend_y) >= 2:
+            fig.add_trace(go.Scatter(
+                x=labels, y=trend_y, mode="lines+markers",
+                line=dict(color="#F5C542", width=3, shape="spline"),
+                marker=dict(color="#F5C542", size=7,
+                            line=dict(color="#1B2A3A", width=1.5)),
+                connectgaps=False, hoverinfo="skip", showlegend=False,
+                cliponaxis=False,
+            ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False, bargap=0.35,
+        xaxis=dict(showgrid=False, tickfont=dict(color="#C7D3DE", size=13,
+                   family="'微軟正黑體',Arial,sans-serif")),
+        yaxis=dict(showgrid=True, gridcolor="#283845",
+                   tickfont=dict(color="#8094A6", size=12), zeroline=False),
+        margin=dict(l=10, r=10, t=34, b=10), height=height,
+    )
+    return fig
 
-# 計算本週一 & 各週數據
+def _mini_table(row_label, labels, values, val_color, workdays=None):
+    """HTML 小表格：完成筆數 + 每日平均"""
+    th_lbl = ('style="background:#3B5167;color:#EAF1F8;padding:9px 12px;'
+              'font-size:13px;font-weight:800;border:1px solid #33475A;'
+              'text-align:center;white-space:nowrap"')
+    th     = ('style="background:#3B5167;color:#EAF1F8;padding:9px 12px;'
+              'font-size:13px;font-weight:700;text-align:center;border:1px solid #56718B"')
+    td_val = (f'style="background:linear-gradient(160deg,#35506A,#2A3F54);color:{val_color};padding:9px 12px;'
+              f'font-size:15px;font-weight:900;border:1px solid #33475A;text-align:center"')
+    td_avg = ('style="background:#3B5167;color:#D9B36A;padding:8px 12px;'
+              'font-size:14px;font-weight:700;border:1px solid #33475A;text-align:center"')
+
+    ths = "".join(f"<th {th}>{l}</th>" for l in labels)
+    tds = "".join(f"<td {td_val}>{v:,}</td>" for v in values)
+
+    avg_row = ""
+    if workdays:
+        avgs = [round(v / wd, 1) if wd > 0 else 0 for v, wd in zip(values, workdays)]
+        tda  = "".join(f"<td {td_avg}>{a}</td>" for a in avgs)
+        avg_row = f'<tr><td {th_lbl}>每日平均</td>{tda}</tr>'
+
+    return (
+        f'<div style="overflow-x:auto;margin-top:10px;border-radius:10px;border:1px solid #33475A">'
+        f'<table style="width:100%;border-collapse:collapse">'
+        f'<tr><th {th_lbl}>{row_label}</th>{ths}</tr>'
+        f'<tr><td {th_lbl}>完成筆數</td>{tds}</tr>'
+        f'{avg_row}'
+        f'</table></div>'
+    )
+
+_CHART_CFG = dict(staticPlot=True, displayModeBar=False)
+_SUBHEAD_B = '<div style="color:#43C08F;font-size:15px;font-weight:800;margin:2px 0 2px">📦 備料</div>'
+_SUBHEAD_I = '<div style="color:#EC6A7C;font-size:15px;font-weight:800;margin:2px 0 2px">🏭 上架</div>'
+
+# ══════════════════════════════════════════════════════
+# SECTION 3：近5週 — 備料 / 上架 等高卡片
+# ══════════════════════════════════════════════════════
+_sec("📅", "近5週完成筆數")
+
 _wd0 = TODAY.weekday()
 this_mon = TODAY - timedelta(days=_wd0)
 
@@ -629,105 +944,54 @@ for w in range(5, 0, -1):
     wd   = _workdays_in_week(wk_start, min(wk_end, TODAY))  # 本週只算到今天
     week_short.append(f"{lbl}\n{wk_start.strftime('%m/%d')}")
     week_labels.append(f"{lbl}<br>{wk_start.strftime('%m/%d')}~{wk_end.strftime('%m/%d')}")
-    week_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
-    week_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
+    week_b.append(int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum()))
+    week_i.append(int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum()))
     week_workdays.append(wd)
 
-def _bar_chart(labels, values, color_fill, color_line, height=240):
-    fig = go.Figure(go.Bar(
-        x=labels, y=values,
-        marker=dict(color=color_fill, line=dict(color=color_line, width=1.5)),
-        text=[f"{v:,}" if v else "0" for v in values],
-        textposition="outside",
-        textfont=dict(color=color_line, size=14, family="Arial,標楷體,DFKai-SB,serif"),
-    ))
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        xaxis=dict(showgrid=False, tickfont=dict(color="#1D2B3A", size=13,
-                   family="Arial,標楷體,DFKai-SB,serif")),
-        yaxis=dict(showgrid=True, gridcolor="#EDE5CF",
-                   tickfont=dict(color="#6B7280", size=12), zeroline=False),
-        margin=dict(l=10, r=10, t=36, b=10), height=height,
-    )
-    return fig
-
-def _mini_table(row_label, labels, values, val_color, workdays=None):
-    """HTML 小表格：完成筆數 + 每日平均"""
-    th_style = (f'style="background:#1D2B3A;color:#ffffff;padding:8px 12px;'
-                f'font-size:13px;font-weight:700;text-align:center;'
-                f'border:1px solid #E6D8B8;font-family:Arial,標楷體,DFKai-SB,serif"')
-    td_label = (f'style="background:#fdfaf5;color:#1D2B3A;padding:8px 12px;'
-                f'font-size:13px;font-weight:700;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif;white-space:nowrap"')
-    td_val   = (f'style="background:#ffffff;color:{val_color};padding:8px 12px;'
-                f'font-size:15px;font-weight:900;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif"')
-    td_avg   = (f'style="background:#fdfaf5;color:#C9A45C;padding:8px 12px;'
-                f'font-size:14px;font-weight:700;border:1px solid #E6D8B8;'
-                f'text-align:center;font-family:Arial,標楷體,DFKai-SB,serif"')
-
-    ths  = "".join(f"<th {th_style}>{l}</th>" for l in labels)
-    tds  = "".join(f"<td {td_val}>{v:,}</td>" for v in values)
-
-    avg_row = ""
-    if workdays:
-        avgs = [round(v / wd, 1) if wd > 0 else 0
-                for v, wd in zip(values, workdays)]
-        tda  = "".join(f"<td {td_avg}>{a}</td>" for a in avgs)
-        avg_row = f'<tr><td {td_label}>每日平均</td>{tda}</tr>'
-
-    return (
-        f'<div style="overflow-x:auto;margin-top:6px">'
-        f'<table style="width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden">'
-        f'<tr><th {td_label}>{row_label}</th>{ths}</tr>'
-        f'<tr><td {td_label}>完成筆數</td>{tds}</tr>'
-        f'{avg_row}'
-        f'</table></div>'
-    )
-
 col_w1, col_w2 = st.columns(2)
-
 with col_w1:
-    st.markdown('<div style="color:#2E9D70;font-size:15px;font-weight:700;margin-bottom:4px">📦 備料</div>',
-                unsafe_allow_html=True)
-    st.plotly_chart(_bar_chart(week_labels, week_b,
-                               "rgba(46,157,112,0.75)", "#2E9D70"),
-                    use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table("近5週", week_short, week_b, "#2E9D70",
+    st.markdown(_SUBHEAD_B, unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(week_labels, week_b, "rgba(67,192,143,0.85)", "#43C08F"),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_mini_table("近5週", week_short, week_b, "#43C08F",
                             workdays=week_workdays), unsafe_allow_html=True)
-
 with col_w2:
-    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 上架</div>',
-                unsafe_allow_html=True)
-    st.plotly_chart(_bar_chart(week_labels, week_i,
-                               "rgba(178,58,72,0.70)", "#B23A48"),
-                    use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table("近5週", week_short, week_i, "#B23A48",
+    st.markdown(_SUBHEAD_I, unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(week_labels, week_i, "rgba(236,106,124,0.82)", "#EC6A7C"),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_mini_table("近5週", week_short, week_i, "#EC6A7C",
                             workdays=week_workdays), unsafe_allow_html=True)
 
-st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top:26px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════
-# SECTION 4：年度月份 — 備料 / 入庫 各自獨立圖表＋表格
+# SECTION 4：年度月份 — 備料 / 上架 等高卡片
 # ══════════════════════════════════════════════════════
-st.markdown(
-    f'<div style="color:#1D2B3A;font-size:16px;font-weight:800;letter-spacing:0.3px;margin-bottom:14px">'
-    f'📆 年度月份完成筆數（{TODAY.year}年）</div>', unsafe_allow_html=True
-)
+_sec("📆", "年度月份完成筆數", f"{TODAY.year} 年")
 
-month_labels_long  = [f"{m}月" for m in range(1, 13)]
-month_labels_short = [f"{m}月" for m in range(1, 13)]
+month_labels = [f"{m}月" for m in range(1, 13)]
 month_b, month_i = [], []
 
 for m in range(1, 13):
     mask = (diao['完成日'].notna() &
             (diao['完成日'].dt.year == TODAY.year) &
             (diao['完成日'].dt.month == m))
-    month_b.append(int(diao[mask & (diao['狀態']=='已完成')]['需求筆數'].sum()))
-    month_i.append(int(diao[mask & (diao['狀態']=='上架')]['完成筆數'].sum()))
+    month_b.append(int(diao[mask & (diao['狀態'] == '已完成')]['需求筆數'].sum()))
+    month_i.append(int(diao[mask & (diao['狀態'] == '上架')]['完成筆數'].sum()))
 
-# 各月工作日數
+# ── 月標準線：日標準 × 22 個工作天換算；第4季（10~12月）調升 ──
+month_std_b = [(STD_B_Q4 if m >= 10 else STD_B_Q13) * STD_DAYS for m in range(1, 13)]
+month_std_i = [(STD_I_Q4 if m >= 10 else STD_I_Q13) * STD_DAYS for m in range(1, 13)]
+
+def _std_legend(q13_day, q4_day):
+    return (
+        f'<div style="display:flex;align-items:center;gap:6px;margin:0 0 2px">'
+        f'<span style="display:inline-block;width:18px;border-top:3px solid #7FA3C8"></span>'
+        f'<span style="color:#8094A6;font-size:11px">月標準線：1~9月 {q13_day*STD_DAYS:,} 筆'
+        f'（{q13_day} 筆/天×22天）｜10~12月 {q4_day*STD_DAYS:,} 筆'
+        f'（{q4_day} 筆/天×22天）</span></div>'
+    )
+
 def _workdays_in_month(year, m):
     from calendar import monthrange
     _, last = monthrange(year, m)
@@ -740,28 +1004,26 @@ def _workdays_in_month(year, m):
 month_workdays = [_workdays_in_month(TODAY.year, m) for m in range(1, 13)]
 
 col_m1, col_m2 = st.columns(2)
-
 with col_m1:
-    st.markdown('<div style="color:#2E9D70;font-size:15px;font-weight:700;margin-bottom:4px">📦 備料</div>',
-                unsafe_allow_html=True)
-    st.plotly_chart(_bar_chart(month_labels_long, month_b,
-                               "rgba(46,157,112,0.75)", "#2E9D70", height=260),
-                    use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_b, "#2E9D70",
+    st.markdown(_SUBHEAD_B, unsafe_allow_html=True)
+    st.markdown(_std_legend(STD_B_Q13, STD_B_Q4), unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(month_labels, month_b, "rgba(67,192,143,0.85)", "#43C08F", height=270,
+                               std=month_std_b),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels, month_b, "#43C08F",
                             workdays=month_workdays), unsafe_allow_html=True)
-
 with col_m2:
-    st.markdown('<div style="color:#B23A48;font-size:15px;font-weight:700;margin-bottom:4px">🏭 上架</div>',
-                unsafe_allow_html=True)
-    st.plotly_chart(_bar_chart(month_labels_long, month_i,
-                               "rgba(178,58,72,0.70)", "#B23A48", height=260),
-                    use_container_width=True, config=dict(staticPlot=True))
-    st.markdown(_mini_table(f"{TODAY.year}", month_labels_short, month_i, "#B23A48",
+    st.markdown(_SUBHEAD_I, unsafe_allow_html=True)
+    st.markdown(_std_legend(STD_I_Q13, STD_I_Q4), unsafe_allow_html=True)
+    st.plotly_chart(_bar_chart(month_labels, month_i, "rgba(236,106,124,0.82)", "#EC6A7C", height=270,
+                               std=month_std_i),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_mini_table(f"{TODAY.year}", month_labels, month_i, "#EC6A7C",
                             workdays=month_workdays), unsafe_allow_html=True)
 
 # 頁尾
 st.markdown(
-    f'<div style="text-align:center;color:#1e3a5f;font-size:11px;margin-top:24px;letter-spacing:1px">'
+    f'<div style="text-align:center;color:#6E8094;font-size:11px;margin-top:26px;letter-spacing:1.5px">'
     f'DATA · {src_name or "wh_dashboard.db"}'
     f' &nbsp;｜&nbsp; {NOW.strftime("%H:%M")} 更新</div>',
     unsafe_allow_html=True

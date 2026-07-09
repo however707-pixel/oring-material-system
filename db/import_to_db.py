@@ -61,6 +61,38 @@ def find_latest_sched():
         return None
 
 
+def last_imported_mtime():
+    """回傳最近一次匯入的來源檔 mtime（datetime），查不到回 None。"""
+    if not os.path.exists(DB_PATH):
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT source_mtime FROM import_log ORDER BY imported_at DESC LIMIT 1"
+        ).fetchone()
+        conn.close()
+        if row and row[0]:
+            return datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        pass
+    return None
+
+
+def sync_if_newer():
+    """NAS 檔比上次匯入新就立即匯入（給看板即時同步用，不會 sys.exit）。
+
+    回傳 (did_import, msg)。20 分鐘排程仍保留作為備援。"""
+    src_file, src_mtime = find_latest_wh()
+    if not src_file:
+        return False, "NAS 離線"
+    last = last_imported_mtime()
+    # import_log 只存到秒，比較前先去掉微秒，避免同一檔被反覆重匯
+    if last and src_mtime.replace(microsecond=0) <= last:
+        return False, "已是最新"
+    main(src_file)
+    return True, f"已同步 {os.path.basename(src_file)}"
+
+
 # ── 小工具 ───────────────────────────────────────────────
 def _d(v):
     """轉日期字串 YYYY-MM-DD 或 None"""
@@ -103,7 +135,11 @@ def parse_transfer(xls):
     rows = []
     for _, r in df.iterrows():
         oid = _s(r.get("編號"))
-        if not oid:
+        # 編號為純 dash（如「-」）＝公式預填的空殼列
+        if not oid or not oid.strip("-"):
+            continue
+        # 無單號、無狀態、無筆數的列也是空殼（單別欄公式串出的殘影）
+        if _s(r.get("單號")) is None and _s(r.get("狀態")) is None and not _i(r.get("需求筆數")):
             continue
         rows.append((
             oid, _s(r.get("單別")), _s(r.get("單號")), _d(r.get("開單日")),
@@ -121,7 +157,10 @@ def parse_inbound(xls):
     rows = []
     for _, r in df.iterrows():
         oid = _s(r.get("編號"))
-        if not oid:
+        # 空殼列過濾：編號純 dash，或如「3410-」只有單別串出的編號而無實際內容
+        if not oid or not oid.strip("-"):
+            continue
+        if _s(r.get("單號")) is None and _i(r.get("筆數")) is None and _d(r.get("完成日")) is None:
             continue
         rows.append((
             oid, _s(r.get("單別")), _s(r.get("單號")), _d(r.get("驗畢日期")),
@@ -252,6 +291,25 @@ def main(src_arg=None):
               complete_date=excluded.complete_date, inbound_staff=excluded.inbound_staff,
               note=excluded.note, updated_at=CURRENT_TIMESTAMP
         """, inbound_rows)
+
+        # 同步刪除：來源 Excel 已移除的列（如手動刪掉的誤鍵單）。
+        # Excel 為唯一事實來源；upsert 只增改不刪，會留下孤兒列灌爆待完成統計。
+        # 安全閥：若待刪比例過高，可能是誤抓到殘缺檔，略過刪除以保護歷史資料。
+        def _sync_delete(table, file_ids):
+            db_ids = {row[0] for row in cur.execute(f"SELECT id FROM {table}")}
+            stale = db_ids - file_ids
+            if not stale:
+                return
+            if len(stale) > max(len(db_ids) * 0.2, 50):
+                print(f"[WARN] {table}：來源檔缺少 {len(stale)} 筆既有編號（>20%），"
+                      f"疑似殘缺檔，略過刪除。")
+                return
+            cur.executemany(f"DELETE FROM {table} WHERE id=?",
+                            [(i,) for i in stale])
+            print(f"[INFO] {table}：刪除來源檔已移除的 {len(stale)} 列")
+
+        _sync_delete("transfer_orders", {t[0] for t in transfer_rows})
+        _sync_delete("inbound_orders",  {t[0] for t in inbound_rows})
 
         # 錯料追蹤：無自然鍵，整表重建
         cur.execute("DELETE FROM error_returns")
