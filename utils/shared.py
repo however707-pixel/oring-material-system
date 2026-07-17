@@ -313,6 +313,18 @@ def render_sidebar():
         section[data-testid="stSidebar"] button[data-testid="baseButton-secondary"] {
             background: rgba(56,189,248,0.08) !important;
             border: 1px solid rgba(96,165,250,0.35) !important; color: #cdd9f0 !important; }
+        /* 語言切換等橫排按鈕：特異度需壓過 inject_css 的淡色 pill 規則，
+           否則深色側欄上會變成白底白字看不清楚 */
+        section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] .stButton > button[kind="secondary"] {
+            background: rgba(56,189,248,0.10) !important;
+            color: #dbe7fb !important;
+            border: 1.5px solid rgba(96,165,250,0.50) !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08) !important; }
+        section[data-testid="stSidebar"] [data-testid="stHorizontalBlock"] .stButton > button[kind="secondary"]:hover {
+            background: rgba(56,189,248,0.22) !important;
+            color: #ffffff !important;
+            border-color: #7dd3fc !important;
+            box-shadow: 0 4px 14px rgba(56,189,248,0.35) !important; }
         section[data-testid="stSidebar"] button[kind="primary"],
         section[data-testid="stSidebar"] button[data-testid="baseButton-primary"] {
             background: linear-gradient(135deg,#1d4ed8,#3b82f6) !important;
