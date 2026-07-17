@@ -58,38 +58,49 @@ def _import_pywin32():
         return pythoncom, win32com.client
 
 
-def _parse_leave(body, today):
-    """解析一封請假信；若請假區間涵蓋 today 回傳 dict，否則 None。"""
+def _parse_mail(body):
+    """解析一封請假信的原始欄位；格式不符回傳 None。"""
     m_n = _RE_NAME.search(body)
     m_r = _RE_RANGE.search(body)
     if not (m_n and m_r):
         return None
-    name = _norm_name(m_n.group(1))
     try:
         d1 = datetime.strptime(m_r.group(1), "%Y/%m/%d").date()
         d2 = datetime.strptime(m_r.group(3), "%Y/%m/%d").date()
     except ValueError:
         return None
-    if not (d1 <= today <= d2):
-        return None
-    t1 = m_r.group(2).zfill(5)
-    t2 = m_r.group(4).zfill(5)
     m_t = _RE_TYPE.search(body)
-    ltype = m_t.group(1) if m_t else "請假"
-    hours = (int(m_t.group(2)) + int(m_t.group(3)) / 60.0) if m_t else 8.0
+    return {
+        "name": _norm_name(m_n.group(1)),
+        "d1": d1, "d2": d2,
+        "t1": m_r.group(2).zfill(5), "t2": m_r.group(4).zfill(5),
+        "type": m_t.group(1) if m_t else "請假",
+        "hours": (int(m_t.group(2)) + int(m_t.group(3)) / 60.0) if m_t else 8.0,
+    }
 
-    # 判定「今天」休多少：單日直接用時數；跨日依當天涵蓋時段估算
-    if d1 == d2:
-        day_hours, s, e = hours, t1, t2
-    elif today == d1:
-        s, e = t1, "17:30"
-        day_hours = 8 if t1 <= "09:00" else 4
-    elif today == d2:
-        s, e = "08:30", t2
-        day_hours = 8 if t2 >= "17:00" else 4
+
+def _day_hours(raw, d):
+    """raw 請假單在 d 當天的請假時數（單日用實際時數，跨日依起迄時段推估）"""
+    if raw["d1"] == raw["d2"]:
+        return raw["hours"]
+    if d == raw["d1"]:
+        return 8 if raw["t1"] <= "09:00" else 4
+    if d == raw["d2"]:
+        return 8 if raw["t2"] >= "17:00" else 4
+    return 8
+
+
+def _today_view(raw, today):
+    """組成看板「今日出勤」顯示用的當日休假 dict。"""
+    day_hours = _day_hours(raw, today)
+    if raw["d1"] == raw["d2"]:
+        s, e = raw["t1"], raw["t2"]
+    elif today == raw["d1"]:
+        s, e = raw["t1"], "17:30"
+    elif today == raw["d2"]:
+        s, e = "08:30", raw["t2"]
     else:
         s, e = "08:30", "17:30"
-        day_hours = 8
 
     if day_hours >= 7:
         part = "全天"
@@ -103,22 +114,43 @@ def _parse_leave(body, today):
     else:
         part = f"{day_hours:g}時"
 
-    return {"name": name, "type": ltype, "part": part, "time": f"{s}~{e}",
-            "start": f"{d1} {t1}", "end": f"{d2} {t2}"}
+    return {"name": raw["name"], "type": raw["type"], "part": part,
+            "time": f"{s}~{e}",
+            "start": f'{raw["d1"]} {raw["t1"]}', "end": f'{raw["d2"]} {raw["t2"]}'}
 
 
-def fetch_today_leaves(today=None, lookback_days=60):
+def _month_hours(raws, today, holidays):
+    """本月 1 日～今天的請假總工時：全天=8、半天=4、零星時數照實計；僅計工作日。"""
+    m0 = today.replace(day=1)
+    total = 0.0
+    for r in raws:
+        d = max(r["d1"], m0)
+        stop = min(r["d2"], today)
+        while d <= stop:
+            if d.weekday() < 5 and d not in holidays:
+                h = _day_hours(r, d)
+                if h >= 7:
+                    h = 8
+                elif h >= 3:
+                    h = 4
+                total += h
+            d += timedelta(days=1)
+    return total
+
+
+def fetch_today_leaves(today=None, lookback_days=60, holidays=frozenset()):
     """
     掃描 Outlook 各帳戶的收件匣與 mayohr 子資料夾，
-    回傳 (今日休假清單, 錯誤訊息或 None)。
+    回傳 (今日休假清單, 本月請假總工時, 錯誤訊息或 None)。
     清單元素：{"name","type","part","time",...}，僅含倉庫同仁，
     全天在前、姓名排序。
+    本月總工時＝月初～今天的工作日（排除 holidays），全天=8、半天=4 小時。
     """
     today = today or date.today()
     try:
         pythoncom, win32client = _import_pywin32()
     except ImportError:
-        return [], "未安裝 pywin32 套件（請執行 pip install pywin32）"
+        return [], 0.0, "未安裝 pywin32 套件（請執行 pip install pywin32）"
 
     pythoncom.CoInitialize()
     try:
@@ -139,11 +171,12 @@ def fetch_today_leaves(today=None, lookback_days=60):
             except Exception:
                 pass
         if not folders:
-            return [], "Outlook 中找不到收件匣"
+            return [], 0.0, "Outlook 中找不到收件匣"
 
         cutoff = datetime.combine(today - timedelta(days=lookback_days),
                                   datetime.min.time())
-        seen, leaves = set(), []
+        month_start = today.replace(day=1)
+        seen, raws = set(), []
         for folder in folders:
             try:
                 items = folder.Items
@@ -164,18 +197,24 @@ def fetch_today_leaves(today=None, lookback_days=60):
                     body = it.Body or ""
                 except Exception:
                     continue
-                rec = _parse_leave(body, today)
-                if not rec or rec["name"] not in WAREHOUSE_STAFF:
+                raw = _parse_mail(body)
+                if not raw or raw["name"] not in WAREHOUSE_STAFF:
                     continue
-                key = (rec["name"], rec["start"], rec["end"], rec["type"])
+                # 只留與「本月～今天」有交集的請假單（今日休假必在其中）
+                if raw["d2"] < month_start or raw["d1"] > today:
+                    continue
+                key = (raw["name"], raw["d1"], raw["t1"],
+                       raw["d2"], raw["t2"], raw["type"])
                 if key in seen:
                     continue
                 seen.add(key)
-                leaves.append(rec)
+                raws.append(raw)
 
+        leaves = [_today_view(r, today) for r in raws
+                  if r["d1"] <= today <= r["d2"]]
         leaves.sort(key=lambda r: (r["part"] != "全天", r["name"]))
-        return leaves, None
+        return leaves, _month_hours(raws, today, holidays), None
     except Exception as e:
-        return [], f"無法讀取 Outlook（{type(e).__name__}）"
+        return [], 0.0, f"無法讀取 Outlook（{type(e).__name__}）"
     finally:
         pythoncom.CoUninitialize()

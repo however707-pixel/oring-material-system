@@ -11,6 +11,7 @@
 import os
 import re
 import sys
+import json
 import glob
 import sqlite3
 from datetime import date, datetime
@@ -21,6 +22,14 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH  = os.path.join(BASE_DIR, "data", "wh_dashboard.db")
 SCHEMA   = os.path.join(BASE_DIR, "db", "schema.sql")
+RECOVERY_JSON = os.path.join(BASE_DIR, "data", "wh_recovery_overrides.json")
+
+# parse_transfer 輸出的 tuple 欄位索引（供資料復原校正計算用）
+_TR_DEMAND_UNIT   = 4
+_TR_DEMAND_QTY    = 6
+_TR_COMPLETE_QTY  = 7
+_TR_COMPLETE_DATE = 10
+_TR_STATUS        = 11
 
 _NAS_DIR  = r"\\192.168.2.34\MO_Storage\ORing MO\ORing-MO 工作\資材部\每日調撥與送燒ic(NEW)\3月-6月進貨資料表\調件備料統計表"
 _FILE_PFX = "調件備料統計"
@@ -225,6 +234,75 @@ def parse_schedule(path):
     return rows
 
 
+# ── 資料復原校正 ─────────────────────────────────────────
+def _recovery_rows(transfer_rows):
+    """來源檔遺失日的『完成筆數』人工校正（見 data/wh_recovery_overrides.json）。
+
+    對設定檔內每個日期，計算 transfer_rows 中當日『備料已完成』(狀態=已完成→Σ需求筆數)
+    與『上架已完成』(需求單位含入庫 或 狀態=上架→Σ完成筆數) 的現有總額，
+    只補足與目標值的差額（不足才補、已達標不補），產生 RECOVER- 開頭的補償列。
+
+    這些列會併進 transfer_rows 一起 upsert，因此：
+      · 每次同步都重新計算差額 → 顯示值恆等於目標，且不會與陸續補回的真實列重複計算；
+      · id 在 file_ids 內 → _sync_delete 不會刪；跨每 2 分鐘的自動同步存活；
+      · 日/週/月各視圖都由同一批列彙總 → 一次到位。
+    停用：清空設定檔 dates（或刪本函式呼叫），下次匯入即自動移除 RECOVER- 列。
+    """
+    if not os.path.exists(RECOVERY_JSON):
+        return []
+    try:
+        with open(RECOVERY_JSON, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception as e:
+        print(f"[WARN] 讀取資料復原設定失敗，略過校正：{e}")
+        return []
+
+    out = []
+    for day, spec in (cfg.get("dates") or {}).items():
+        same_day = [r for r in transfer_rows if r[_TR_COMPLETE_DATE] == day]
+        base_prep = sum((r[_TR_DEMAND_QTY] or 0) for r in same_day
+                        if r[_TR_STATUS] == "已完成")
+        base_inb_unit = sum((r[_TR_COMPLETE_QTY] or 0) for r in same_day
+                            if r[_TR_DEMAND_UNIT] and "入庫" in str(r[_TR_DEMAND_UNIT]))
+        base_inb_stat = sum((r[_TR_COMPLETE_QTY] or 0) for r in same_day
+                            if r[_TR_STATUS] == "上架")
+        base_inb = max(base_inb_unit, base_inb_stat)
+        if base_inb_unit != base_inb_stat:
+            print(f"[WARN] {day} 上架基底兩口徑不一致（需求單位={base_inb_unit}／"
+                  f"狀態={base_inb_stat}），取較大值計算差額")
+
+        reason = spec.get("reason", "來源檔遺失，人工校正")
+        daykey = day.replace("-", "")
+
+        tgt_prep = spec.get("prep")
+        if tgt_prep is not None:
+            d = int(tgt_prep) - int(base_prep)
+            if d > 0:
+                out.append((
+                    f"RECOVER-B-{daykey}", "復原", None, day, "(資料復原)", day,
+                    d, d, "系統復原", day, day, "已完成", reason,
+                    None, None, None, None,
+                ))
+            elif d < 0:
+                print(f"[INFO] {day} 備料現有 {base_prep} ≥ 目標 {tgt_prep}，不補")
+
+        tgt_inb = spec.get("inbound")
+        if tgt_inb is not None:
+            d = int(tgt_inb) - int(base_inb)
+            if d > 0:
+                out.append((
+                    f"RECOVER-S-{daykey}", "復原", None, day, "入庫", day,
+                    d, d, "系統復原", day, day, "上架", reason,
+                    None, None, None, None,
+                ))
+            elif d < 0:
+                print(f"[INFO] {day} 上架現有 {base_inb} ≥ 目標 {tgt_inb}，不補")
+
+    if out:
+        print(f"[INFO] 套用資料復原校正 {len(out)} 列：{', '.join(r[0] for r in out)}")
+    return out
+
+
 # ── 主流程 ───────────────────────────────────────────────
 def init_db(conn):
     with open(SCHEMA, encoding="utf-8") as f:
@@ -249,6 +327,7 @@ def main(src_arg=None):
 
     xls = pd.ExcelFile(src_file)
     transfer_rows = parse_transfer(xls)
+    transfer_rows += _recovery_rows(transfer_rows)   # 來源檔遺失日的完成筆數校正
     inbound_rows  = parse_inbound(xls)
     error_rows    = parse_error(xls)
 

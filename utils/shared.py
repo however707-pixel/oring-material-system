@@ -12,8 +12,6 @@ import streamlit.components.v1 as components
 
 PRIORITY_WHS = ["電子倉", "包材倉", "機構倉", "成品倉"]
 
-ORING_LOGO = "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"
-
 # ── 套件安裝 ──────────────────────────────────────────────────────────────────
 
 def ensure_calamine():
@@ -57,6 +55,12 @@ def inject_css():
     [data-testid="stToolbar"]     { visibility: hidden !important; }
     [data-testid="stDecoration"]  { display: none !important; }
     [data-testid="stStatusWidget"]{ visibility: hidden !important; }
+
+    /* ── 主內容區：縮小預設頂部留白，整體上移（個別頁面可用後載 CSS 覆蓋） ── */
+    [data-testid="stMainBlockContainer"],
+    .block-container {
+        padding-top: 0.6rem !important;
+    }
 
     /* ══ 側欄：永遠展開，CSS 層面完全鎖定，無視 JS 的 aria-expanded ══ */
     [data-testid="stSidebar"],
@@ -407,11 +411,54 @@ def render_sidebar():
             letter-spacing:0.12em; text-transform:uppercase; margin-bottom:10px;">
             {t("nav_title")}</div>""", unsafe_allow_html=True)
 
+        # PMC
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
+                    background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.30);
+                    border-left:3px solid #f59e0b; border-radius:8px; margin-bottom:3px;">
+            <span style="font-size:1.1rem;">📑</span>
+            <div>
+                <div style="font-size:1.0rem; font-weight:800; color:#fcd34d; line-height:1.2;">PMC</div>
+                <div style="font-size:0.67rem; color:#f59e0b; letter-spacing:0.04em;">Production Material Control</div>
+            </div>
+        </div>
+        <a href="/pmc_order_tracking" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(245,158,11,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            📑 {t("link_pmc_order")}
+        </a>
+        <a href="/wo_material_trace" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(245,158,11,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            📋 {t("link_wo_trace")}
+        </a>
+        <a href="/tangyou_shortage_reply" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(245,158,11,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            ✉️ {t("link_tangyou_reply")}
+        </a>
+        """, unsafe_allow_html=True)
+
         # 物管 MC
         st.markdown(f"""
         <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
                     background:rgba(59,130,246,0.10); border:1px solid rgba(96,165,250,0.30);
-                    border-left:3px solid #60a5fa; border-radius:8px; margin-bottom:3px;">
+                    border-left:3px solid #60a5fa; border-radius:8px; margin:8px 0 3px;">
             <span style="font-size:1.1rem;">📦</span>
             <div>
                 <div style="font-size:1.0rem; font-weight:800; color:#93c5fd; line-height:1.2;">{t("dept_mc")}</div>
@@ -471,9 +518,9 @@ def render_sidebar():
             🏭 {t("link_factory")}
         </a>
         """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>料件到貨追蹤</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        st.markdown(f"""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">{t("todo_title")}</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_mc_arrival")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
         """, unsafe_allow_html=True)
 
         # 生管 PC
@@ -510,6 +557,16 @@ def render_sidebar():
         " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
            onmouseout="this.style.background='';this.style.color='#ffffff'">
             📊 {t("link_shortage_detail")}
+        </a>
+        <a href="/full_material_trace" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(56,189,248,0.14)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            🏭 {t("link_full_trace")}
         </a>
         <a href="/production_tracker" target="_self" style="
             display:flex; align-items:center; gap:8px;
@@ -573,11 +630,11 @@ def render_sidebar():
             🏭 {t("link_outsource_schedule")}
         </a>
         """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>客戶訂單確認</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>工單發佈</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>完工確認回報</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        st.markdown(f"""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">{t("todo_title")}</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_pc_confirm")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_pc_release")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_pc_report")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
         """, unsafe_allow_html=True)
 
         # 倉管 WH
@@ -633,13 +690,23 @@ def render_sidebar():
            onmouseout="this.style.background='';this.style.color='#ffffff'">
             🏭 {t("link_wh_dashboard")}
         </a>
+        <a href="/wh_assessment" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(129,140,248,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            📋 {t("link_wh_assessment")}
+        </a>
         """, unsafe_allow_html=True)
-        st.markdown("""
-        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">待建流程 · To-do</div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>入庫驗收 / IQC</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>儲位上架管理</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>出貨包裝作業</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>出貨確認 / 交運</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">待建</span></div>
+        st.markdown(f"""
+        <div style="margin:7px 0 3px 6px;font-size:0.62rem;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;color:#b3c0db;">{t("todo_title")}</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_wh_iqc")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_wh_putaway")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_wh_packing")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px 6px 18px;margin-left:6px;margin-bottom:2px;border-radius:8px;font-size:0.84rem;font-weight:500;color:#dde6f5;border-left:2px dashed rgba(148,163,184,0.45);"><span style="font-size:0.8rem;opacity:0.7;">🔧</span><span>{t("todo_wh_shipping")}</span><span style="margin-left:auto;font-size:0.58rem;font-weight:700;color:#fcd34d;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.45);border-radius:6px;padding:1px 6px;">{t("todo_badge")}</span></div>
         """, unsafe_allow_html=True)
 
         # RMA
@@ -664,6 +731,55 @@ def render_sidebar():
         " onmouseover="this.style.background='rgba(45,212,191,0.16)';this.style.color='#eaf1ff'"
            onmouseout="this.style.background='';this.style.color='#ffffff'">
             📋 {t("link_rma_summary")}
+        </a>
+        """, unsafe_allow_html=True)
+
+        # 製程站
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:8px; padding:9px 10px 7px;
+                    background:rgba(20,184,166,0.10); border:1px solid rgba(45,212,191,0.30);
+                    border-left:3px solid #14b8a6; border-radius:8px; margin:8px 0 3px;">
+            <span style="font-size:1.1rem;">🛠</span>
+            <div>
+                <div style="font-size:1.0rem; font-weight:800; color:#99f6e4; line-height:1.2;">{t("dept_ps")}</div>
+                <div style="font-size:0.67rem; color:#2dd4bf; letter-spacing:0.04em;">{t("dept_ps_sub")}</div>
+            </div>
+        </div>
+        <a href="/assembly" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(45,212,191,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            🔩 {t("link_assembly")}
+        </a>
+        <a href="/test_station" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(45,212,191,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            🧪 {t("link_test_station")}
+        </a>
+        <div style="display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff; cursor:default;">
+            📦 {t("link_packaging")}
+        </div>
+        <a href="/total_worktime" target="_self" style="
+            display:flex; align-items:center; gap:8px;
+            padding:7px 10px 7px 18px; margin-left:6px; margin-bottom:2px;
+            border-radius:8px; font-size:0.88rem; font-weight:500;
+            color:#ffffff !important; text-decoration:none !important;
+            transition:background 0.15s;
+        " onmouseover="this.style.background='rgba(45,212,191,0.16)';this.style.color='#eaf1ff'"
+           onmouseout="this.style.background='';this.style.color='#ffffff'">
+            ⏱ {t("link_total_worktime")}
         </a>
         """, unsafe_allow_html=True)
 

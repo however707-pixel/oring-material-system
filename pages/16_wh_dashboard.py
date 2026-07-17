@@ -91,6 +91,7 @@ TW_HOLIDAYS = {
     date(2026,  4,  5),  # 清明節
     date(2026,  6, 19),  # 端午節
     date(2026,  6, 20),  # 端午節補假
+    date(2026,  7, 10),  # 颱風停班
     date(2026,  9, 26),  # 中秋節
     date(2026, 10, 10),  # 國慶日
 }
@@ -538,16 +539,25 @@ def _week_prep_card():
 
 @st.cache_data(ttl=600, show_spinner=False)
 def _today_leaves_cached(day_key):
-    return fetch_today_leaves()
+    return fetch_today_leaves(holidays=frozenset(TW_HOLIDAYS))
 
-_leaves, _lv_err = _today_leaves_cached(f"{TODAY.isoformat()}#v2")
+_leaves, _month_lv_hrs, _lv_err = _today_leaves_cached(f"{TODAY.isoformat()}#v3")
+
+# 本月（1日～今天）請假總工時：全天=8、半天=4 小時
+_month_lv_txt = (
+    f'<span style="color:#5E7186;margin:0 8px">｜</span>'
+    f'<span style="color:#9DB0C0;font-size:12.5px;white-space:nowrap">本月請假累計 '
+    f'<b style="color:#D9B36A;font-size:14.5px">{_month_lv_hrs:g}</b> 小時'
+    f'<span style="color:#5E7186;font-size:11px">（全天8h・半天4h）</span></span>'
+)
 
 if _lv_err:
     _att_body = (f'<span style="color:#8094A6;font-size:13px">'
                  f'出勤資料暫無法讀取（{_lv_err}）</span>')
 elif not _leaves:
     _att_body = ('<span style="color:#43C08F;font-size:15.5px;font-weight:800;'
-                 'letter-spacing:1px">✅ 全員出勤</span>')
+                 'letter-spacing:1px">✅ 全員出勤</span>'
+                 + _month_lv_txt)
 else:
     _chips = "".join(
         f'<span style="display:inline-block;background:rgba(236,106,124,.13);'
@@ -572,6 +582,7 @@ else:
         _chips
         + f'<span style="color:#9DB0C0;font-size:12.5px;margin-left:4px">'
           f'今日 {"、".join(_cnt)}，其餘同仁出勤</span>'
+        + _month_lv_txt
     )
 
 st.markdown(
@@ -823,11 +834,11 @@ st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
 # 圖表共用工具
 # ══════════════════════════════════════════════════════
 def _workdays_in_week(wk_start, wk_end):
-    """計算日期區間內的工作日數（排除週六日）"""
+    """計算日期區間內的工作日數（排除週六日及國定假日/停班日）"""
     count = 0
     d = wk_start
     while d <= wk_end:
-        if d.weekday() < 5:
+        if d.weekday() < 5 and d not in TW_HOLIDAYS:
             count += 1
         d += timedelta(days=1)
     return max(count, 1)
@@ -886,6 +897,47 @@ def _bar_chart(labels, values, color_fill, color_line, height=260, trend=True, s
     )
     return fig
 
+# 每日平均專屬識別色（青藍）：與長條綠/紅、趨勢黃、標準線灰藍皆不同，
+# 兩張卡共用同一色 → 看到青藍就知道是「每日平均」
+_AVG_LINE = "#54C0E8"
+_AVG_FILL = "#2C7DA0"   # 實色填滿（不透明）
+
+def _avg_chart(labels, avg, height=180):
+    """每日平均獨立圖表：青藍折線＋實色面積，數值以白字直接標在點上（與表格同口徑）"""
+    avg_y = [a if a else None for a in avg]        # 無資料期（未來月份）不畫線
+    sizes = [7] * len(avg_y)
+    for i in range(len(avg_y) - 1, -1, -1):        # 最近一期的點加大強調
+        if avg_y[i] is not None:
+            sizes[i] = 10
+            break
+    _vmax = max((a for a in avg if a), default=0)
+    fig = go.Figure(go.Scatter(
+        x=labels, y=avg_y, mode="lines+markers+text",
+        line=dict(color=_AVG_LINE, width=2.5, shape="spline", smoothing=0.6),
+        marker=dict(color=_AVG_LINE, size=sizes,
+                    line=dict(color="#1B2A3A", width=2)),
+        fill="tozeroy", fillcolor=_AVG_FILL,
+        text=[f"{a:,.1f}" if a else "" for a in avg],
+        textposition="top center",
+        textfont=dict(color="#EAF1F8", size=12.5,
+                      family="'微軟正黑體',Arial,sans-serif"),
+        connectgaps=False, hoverinfo="skip", showlegend=False,
+        cliponaxis=False,
+    ))
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        xaxis=dict(showgrid=False, tickfont=dict(color="#C7D3DE", size=13,
+                   family="'微軟正黑體',Arial,sans-serif")),
+        yaxis=dict(visible=False, range=[0, _vmax * 1.35 or 1]),
+        margin=dict(l=10, r=10, t=30, b=10), height=height,
+    )
+    return fig
+
+def _avgs(vals, wds):
+    """每期完成筆數 ÷ 該期工作日數（與表格「每日平均」同口徑）"""
+    return [round(v / wd, 1) if wd else 0 for v, wd in zip(vals, wds)]
+
 def _mini_table(row_label, labels, values, val_color, workdays=None):
     """HTML 小表格：完成筆數 + 每日平均"""
     th_lbl = ('style="background:#3B5167;color:#EAF1F8;padding:9px 12px;'
@@ -917,6 +969,14 @@ def _mini_table(row_label, labels, values, val_color, workdays=None):
     )
 
 _CHART_CFG = dict(staticPlot=True, displayModeBar=False)
+def _avg_title():
+    """每日平均獨立圖表的小標題（色鍵用每日平均專屬青藍色，文字用中性色）"""
+    return (
+        f'<div style="display:flex;align-items:center;gap:7px;margin:10px 0 0">'
+        f'<span style="display:inline-block;width:14px;border-top:3px solid {_AVG_LINE};border-radius:2px"></span>'
+        f'<span style="color:#C7D3DE;font-size:13px;font-weight:700">每日平均 '
+        f'<span style="color:#5E7186;font-weight:600;font-size:11.5px">筆／天</span></span></div>'
+    )
 _SUBHEAD_B = '<div style="color:#43C08F;font-size:15px;font-weight:800;margin:2px 0 2px">📦 備料</div>'
 _SUBHEAD_I = '<div style="color:#EC6A7C;font-size:15px;font-weight:800;margin:2px 0 2px">🏭 上架</div>'
 
@@ -953,11 +1013,17 @@ with col_w1:
     st.markdown(_SUBHEAD_B, unsafe_allow_html=True)
     st.plotly_chart(_bar_chart(week_labels, week_b, "rgba(67,192,143,0.85)", "#43C08F"),
                     width='stretch', config=_CHART_CFG)
+    st.markdown(_avg_title(), unsafe_allow_html=True)
+    st.plotly_chart(_avg_chart(week_labels, _avgs(week_b, week_workdays)),
+                    width='stretch', config=_CHART_CFG)
     st.markdown(_mini_table("近5週", week_short, week_b, "#43C08F",
                             workdays=week_workdays), unsafe_allow_html=True)
 with col_w2:
     st.markdown(_SUBHEAD_I, unsafe_allow_html=True)
     st.plotly_chart(_bar_chart(week_labels, week_i, "rgba(236,106,124,0.82)", "#EC6A7C"),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_avg_title(), unsafe_allow_html=True)
+    st.plotly_chart(_avg_chart(week_labels, _avgs(week_i, week_workdays)),
                     width='stretch', config=_CHART_CFG)
     st.markdown(_mini_table("近5週", week_short, week_i, "#EC6A7C",
                             workdays=week_workdays), unsafe_allow_html=True)
@@ -997,7 +1063,8 @@ def _workdays_in_month(year, m):
     _, last = monthrange(year, m)
     d0 = date(year, m, 1)
     end = date(year, m, last)
-    if end > TODAY: end = TODAY  # 當月只算到今天
+    yday = TODAY - timedelta(days=1)
+    if end > yday: end = yday  # 當月只算到昨天（今天尚未過完，不計入分母）
     if end < d0: return 1
     return _workdays_in_week(d0, end)
 
@@ -1010,6 +1077,9 @@ with col_m1:
     st.plotly_chart(_bar_chart(month_labels, month_b, "rgba(67,192,143,0.85)", "#43C08F", height=270,
                                std=month_std_b),
                     width='stretch', config=_CHART_CFG)
+    st.markdown(_avg_title(), unsafe_allow_html=True)
+    st.plotly_chart(_avg_chart(month_labels, _avgs(month_b, month_workdays)),
+                    width='stretch', config=_CHART_CFG)
     st.markdown(_mini_table(f"{TODAY.year}", month_labels, month_b, "#43C08F",
                             workdays=month_workdays), unsafe_allow_html=True)
 with col_m2:
@@ -1017,6 +1087,9 @@ with col_m2:
     st.markdown(_std_legend(STD_I_Q13, STD_I_Q4), unsafe_allow_html=True)
     st.plotly_chart(_bar_chart(month_labels, month_i, "rgba(236,106,124,0.82)", "#EC6A7C", height=270,
                                std=month_std_i),
+                    width='stretch', config=_CHART_CFG)
+    st.markdown(_avg_title(), unsafe_allow_html=True)
+    st.plotly_chart(_avg_chart(month_labels, _avgs(month_i, month_workdays)),
                     width='stretch', config=_CHART_CFG)
     st.markdown(_mini_table(f"{TODAY.year}", month_labels, month_i, "#EC6A7C",
                             workdays=month_workdays), unsafe_allow_html=True)

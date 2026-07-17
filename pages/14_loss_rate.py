@@ -150,15 +150,30 @@ def load_tangyu(file_bytes: bytes, filename: str) -> pd.DataFrame:
     return agg, df[["料號", "品名", "耗損數量", "工單號", "使用機種"]]
 
 
-# ── 解析國智格式 (.xlsx, 彙總 sheet index 2, A=料號 col0, B=數量 col1) ─────────
+# ── 解析國智格式 (.xlsx) ──────────────────────────────────────────────────────
+#   完整檔：≥3 個 sheet，彙總表在 index 2（A=料號、B=數量）
+#   單頁複本（如「複本 工單耗損拋料維修明細」）：僅明細表，表頭列含「品號」，
+#   E=品號、H=出庫異動數量，一料多筆需依料號加總
 @st.cache_data(show_spinner=False)
 def load_guozhi(file_bytes: bytes) -> pd.DataFrame:
     xl = pd.ExcelFile(BytesIO(file_bytes))
-    df = pd.read_excel(xl, sheet_name=xl.sheet_names[2], header=0)
-    df = df.rename(columns={df.columns[0]: "料號", df.columns[1]: "耗損數量"})
-    df["料號"]     = df["料號"].astype(str).str.strip()
+    if len(xl.sheet_names) >= 3:
+        df = pd.read_excel(xl, sheet_name=xl.sheet_names[2], header=0)
+        df = df.rename(columns={df.columns[0]: "料號", df.columns[1]: "耗損數量"})
+    else:
+        raw = pd.read_excel(xl, sheet_name=0, header=None, nrows=15)
+        hdr_rows = raw.index[
+            raw.apply(lambda r: r.fillna("").astype(str).str.contains("品號").any(), axis=1)
+        ]
+        if len(hdr_rows) == 0:
+            raise ValueError("無彙總表（第 3 個 sheet），且找不到含「品號」的表頭列")
+        df = pd.read_excel(xl, sheet_name=0, header=int(hdr_rows[0]))
+        qty_col = next((c for c in df.columns if "數量" in str(c)), df.columns[7])
+        df = df.rename(columns={"品號": "料號", qty_col: "耗損數量"})
+    df["料號"]     = df["料號"].fillna("").astype(str).str.strip()
     df["耗損數量"] = pd.to_numeric(df["耗損數量"], errors="coerce").fillna(0).astype(int)
-    df = df[df["料號"].notna() & (df["料號"] != "nan")].copy()
+    df = df[(df["料號"] != "") & (df["料號"] != "nan")].copy()
+    df = df.groupby("料號", as_index=False, sort=False)["耗損數量"].sum()
     return df[["料號", "耗損數量"]]
 
 

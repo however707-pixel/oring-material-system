@@ -62,6 +62,32 @@ def count_workdays(start: date, end: date) -> int:
 # 工具函式
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _to_int(v, default=0):
+    """穩健轉整數：NaN、空字串、非數字一律回 default（避免 int('') 直接報錯）。"""
+    if pd.isna(v):
+        return default
+    s = str(v).strip()
+    if s == '' or s.lower() == 'nan':
+        return default
+    try:
+        return int(float(s))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(v, default=0.0):
+    """穩健轉浮點：NaN、空字串、非數字一律回 default。"""
+    if pd.isna(v):
+        return default
+    s = str(v).strip()
+    if s == '' or s.lower() == 'nan':
+        return default
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return default
+
+
 def parse_date_str(s):
     """將 '5/28'、'6/1' 等字串轉為 date，跨年自動判斷。"""
     try:
@@ -195,11 +221,11 @@ def parse_file(uploaded):
     for _, r in df.iterrows():
         wo       = str(r.iloc[1]).strip() if pd.notna(r.iloc[1]) else ''
         product  = str(r.iloc[2]).strip() if pd.notna(r.iloc[2]) else ''
-        qty      = r.iloc[3]
-        rate     = float(r.iloc[5]) if pd.notna(r.iloc[5]) else 0.0
+        qty      = _to_int(r.iloc[3], default=None)
+        rate     = _to_float(r.iloc[5])
         hint     = str(r.iloc[8]).strip() if pd.notna(r.iloc[8]) else ''
-        need_n   = int(r.iloc[9])  if pd.notna(r.iloc[9])  else 0
-        lack_n   = int(r.iloc[10]) if pd.notna(r.iloc[10]) else 0
+        need_n   = _to_int(r.iloc[9])
+        lack_n   = _to_int(r.iloc[10])
         mat_text = r.iloc[11]
         delay_mat = str(r.iloc[13]).strip() if pd.notna(r.iloc[13]) else ''
 
@@ -233,9 +259,9 @@ def parse_file(uploaded):
             mat_status   = '已齊料'
             qi_liao_date = qi_liao_date or TODAY
         elif rate == 0.0:
-            mat_status = '完全缺料'
+            mat_status = '未備料'
         else:
-            mat_status = f'缺料 {rate:.0%}'
+            mat_status = f'齊料 {rate:.0%}'
 
         # 齊料緩衝 & 達標差距
         buffer_days = None
@@ -440,8 +466,8 @@ def build_diff_map(path_new, path_old):
                 changed.append(f'📦 進料{arrow} ({md_old.strftime("%m/%d")}→{md_new.strftime("%m/%d")})')
 
         # ③ 料齊率：改善或惡化
-        rate_new = float(r_new.iloc[5]) if pd.notna(r_new.iloc[5]) else 0.0
-        rate_old = float(r_old.iloc[5]) if pd.notna(r_old.iloc[5]) else 0.0
+        rate_new = _to_float(r_new.iloc[5])
+        rate_old = _to_float(r_old.iloc[5])
         if abs(rate_new - rate_old) > 0.001:
             arrow = '↑改善' if rate_new > rate_old else '↓惡化'
             changed.append(f'料齊率{arrow} ({rate_old:.0%}→{rate_new:.0%})')
@@ -574,7 +600,7 @@ with fd2:
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
         sel_status = st.selectbox("料況篩選",
-            ["全部", "已齊料", "缺料中", "完全缺料", "不達標（<14天）"])
+            ["全部", "已齊料", "缺料中", "未備料", "不達標（<14天）"])
     with fc2:
         sel_delay = st.selectbox("進料延遲",
             ["全部", "有逾期料", "IQC 中", "無問題"])
@@ -596,8 +622,8 @@ if sel_status == "已齊料":
     dff = dff[dff["料況狀態"] == "已齊料"]
 elif sel_status == "缺料中":
     dff = dff[dff["料況狀態"] != "已齊料"]
-elif sel_status == "完全缺料":
-    dff = dff[dff["料況狀態"] == "完全缺料"]
+elif sel_status == "未備料":
+    dff = dff[dff["料況狀態"] == "未備料"]
 elif sel_status == "不達標（<14天）":
     dff = dff[dff["達標差距"].notna() & (dff["達標差距"] < 0)]
 
@@ -947,9 +973,9 @@ with tab1:
                         cell.fill = row_fill
                         if "已齊料" in str(val):
                             cell.font = FONT_GREEN
-                        elif "完全缺料" in str(val):
+                        elif "未備料" in str(val):
                             cell.font = FONT_RED
-                        elif "缺料" in str(val):
+                        elif "齊料" in str(val):
                             cell.font = FONT_ORANGE
                     # 變更欄 上色
                     elif ci == changed_col:

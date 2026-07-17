@@ -513,10 +513,19 @@ else:
             return ["background-color:#f0fdf4; color:#15803d;"] * len(row)
         return ["background-color:#fff1f2; color:#dc2626;"] * len(row)
 
-    st.dataframe(
-        df_detail_show[detail_cols].style.apply(highlight_detail, axis=1),
-        use_container_width=True, height=520, hide_index=True,
-    )
+    _show = df_detail_show[detail_cols]
+    # Pandas Styler 對整表逐格上色有 262144 格上限；料號太多時跳過上色避免報錯
+    _STYLER_MAX = 262144
+    if _show.size <= _STYLER_MAX:
+        st.dataframe(
+            _show.style.apply(highlight_detail, axis=1),
+            use_container_width=True, height=520, hide_index=True,
+        )
+    else:
+        st.caption(f"⚠️ 共 {len(_show):,} 筆，資料量過大已略過顏色標示；如需紅綠標示請切換為「僅缺料料號」。")
+        st.dataframe(
+            _show, use_container_width=True, height=520, hide_index=True,
+        )
 
 # ── 匯出 ──────────────────────────────────────────────────────────────────────
 st.divider()
