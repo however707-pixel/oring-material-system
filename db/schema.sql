@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS shipment_schedule (
     material_rate   REAL,               -- 整體料齊率 (0~1)
     ship_date       DATE,               -- 產銷出貨日
     status_note     TEXT,               -- 進料狀況內容／重點提示
+    iqc_flag        INTEGER DEFAULT 0,  -- 缺的料在 IQC 驗收中（1/0）
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -87,7 +88,9 @@ CREATE TABLE IF NOT EXISTS import_log (
     transfer_rows   INTEGER,
     inbound_rows    INTEGER,
     error_rows      INTEGER,
-    schedule_rows   INTEGER
+    schedule_rows   INTEGER,
+    sched_file      TEXT,        -- 簡版-工單缺料狀況.xlsx 路徑
+    sched_mtime     TIMESTAMP    -- 該檔存檔時間（出貨排程的資料版本）
 );
 
 -- ============================================================

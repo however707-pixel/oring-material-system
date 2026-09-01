@@ -4,12 +4,17 @@ import math
 import io
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, render_nas_loader, source_is_csv
+from utils.transfer_registry import (
+    parse_registry, pending_map, status_map,
+    NAS_REG_DIR, NAS_REG_PFX, PENDING_SHEETS,
+)
 
 _NAS_TRANSFER_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 工作/資材部/每日調撥與送燒ic(NEW)/生管互調料通知"
 _NAS_TRANSFER_PFX = "加工廠互調料滙整表-"
@@ -47,9 +52,29 @@ with st.sidebar:
         types=["xlsx", "xls", "xlsm"],
     )
 
+    st.markdown("**🔁 新版互調料登記表**")
+    st.caption("自動抓 `@新版互調料表` 內最新版，只讀待備料／待轉倉／待進料，**已完成不抓**")
+    reg_file = render_nas_loader(
+        key="h2o_registry",
+        nas_dir=NAS_REG_DIR,
+        prefix=NAS_REG_PFX,
+        label="📂 上傳 @新版-加工廠互調料彙整表（選填覆蓋）",
+        types=["xlsx", "xlsm"],
+    )
+    if reg_file is not None:
+        include_legacy = st.checkbox(
+            "待調撥量併計舊版滙整表", value=False,
+            help="新版登記表為主要來源。舊版滙整表若仍有未結案的調撥可勾選一併計入，"
+                 "但同一筆料有可能被重複計算。",
+        )
+    else:
+        include_legacy = True
+
     st.markdown("**📅 分析區間**")
-    date_start = st.date_input("起始日", datetime(2026, 5, 1),  format="YYYY/MM/DD")
-    date_end   = st.date_input("結束日", datetime(2026, 5, 31), format="YYYY/MM/DD")
+    # 預設＝今天起 30 天（原本寫死 2026/5/1～5/31，日子一過就整張表都算不到缺料）
+    _today = date.today()
+    date_start = st.date_input("起始日", _today,                    format="YYYY/MM/DD")
+    date_end   = st.date_input("結束日", _today + timedelta(days=30), format="YYYY/MM/DD")
 
     if date_end < date_start:
         st.error("⚠️ 結束日不可早於起始日！")
@@ -78,6 +103,7 @@ if not h2o_file or not sd_file:
       <li>ERP → 品管/廠務系統 → <b>H2O 缺料明細表</b> → 匯出 Excel（含工作表 H2O），上傳至左側</li>
       <li>ERP → 供需管理 → <b>供需表（分倉）</b> → 匯出 Excel，上傳至左側</li>
       <li>（選填）上傳<b>加工廠互調料彙整表</b>，可追蹤已調撥進度</li>
+      <li><b>新版互調料登記表</b>由 NAS <code>@新版互調料表</code> 自動載入：已登記的<b>待備料／待轉倉／待進料</b>（料號、數量）會併入待調撥量，<b>已完成不抓</b></li>
       <li>設定<b>分析區間</b>（起始日 ～ 結束日）</li>
       <li>系統自動試算唐佑 / 國智各廠預計領用量與缺料量</li>
     </ol>
@@ -88,6 +114,7 @@ if not h2o_file or not sd_file:
       <tr><td style="padding:5px 10px;">🟢 國智</td><td style="padding:5px 10px;">供需表中 <code>修研/華盈/國智代工倉</code> 的預計領用量與結存</td></tr>
       <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔴 缺料</td><td style="padding:5px 10px;">區間內預計結存 &lt; 0，需從廠內倉調撥補料</td></tr>
       <tr><td style="padding:5px 10px;">🟡 已調撥</td><td style="padding:5px 10px;">互調料彙整表中已記錄調撥，扣除後結存充足</td></tr>
+      <tr style="background:#dcfce7;"><td style="padding:5px 10px;">🔁 已登記</td><td style="padding:5px 10px;">新版互調料表已登記 <code>待備料 / 待轉倉 / 待進料</code>，不必重開調撥單（<code>已完成</code>不列入）</td></tr>
     </table>
     </div>
     """, unsafe_allow_html=True)
@@ -162,6 +189,43 @@ with st.spinner("分析中，請稍候..."):
             kuo_pending_map  = grp['J'].sum().to_dict()   # J = 國智待調撥
         except Exception as e:
             st.warning(f"加工廠互調料滙整表讀取失敗（略過）：{e}")
+
+    # ── 讀取新版互調料登記表（只抓未完成的待備料／待轉倉／待進料）──
+    @st.cache_data(show_spinner=False, ttl=600)
+    def _parse_registry_cached(cache_key: str, data: bytes):
+        return parse_registry(io.BytesIO(data))
+
+    def _load_registry(src):
+        if src is None:
+            return None, []
+        try:
+            if isinstance(src, str):
+                key = f"{src}|{os.path.getmtime(src)}"
+                with open(src, 'rb') as f:
+                    data = f.read()
+            else:
+                data = src.getvalue()
+                key = f"upload|{getattr(src, 'name', '')}|{len(data)}"
+        except Exception as e:
+            return None, [f"檔案讀取失敗：{e}"]
+        return _parse_registry_cached(key, data)
+
+    reg_df, reg_warns = _load_registry(reg_file)
+    for _w in reg_warns:
+        st.warning(f"新版互調料登記表：{_w}")
+
+    tang_reg_map = pending_map(reg_df, '唐佑')
+    kuo_reg_map  = pending_map(reg_df, '國智')
+    tang_reg_txt = status_map(reg_df, '唐佑')
+    kuo_reg_txt  = status_map(reg_df, '國智')
+    has_registry = bool(tang_reg_map or kuo_reg_map)
+
+    # 待調撥量 = 新版登記表未完成量 ＋（可選）舊版滙整表
+    if has_registry and not include_legacy:
+        tang_pending_map, kuo_pending_map = {}, {}
+    for _m, _add in ((tang_pending_map, tang_reg_map), (kuo_pending_map, kuo_reg_map)):
+        for _k, _v in _add.items():
+            _m[_k] = (_m.get(_k, 0) or 0) + _v
 
     has_transfer = bool(tang_pending_map or kuo_pending_map)
 
@@ -530,6 +594,8 @@ with st.spinner("分析中，請稍候..."):
                             k_pending if insufficient and k_net > 0 else None),
             '國智代工倉 待調撥量':    k_pending if (has_transfer and k_deficit > 0) else None,
             '國智代工倉 實際應調撥量': k_actual  if has_transfer else None,
+            '唐佑 登記明細':          tang_reg_txt.get(pno_str, '') if has_registry else None,
+            '國智 登記明細':          kuo_reg_txt.get(pno_str, '')  if has_registry else None,
             '唐佑 最早開工日':        t_earliest,
             '國智 最早開工日':        k_earliest,
             '合計委外缺料':          int(t_qty + k_qty) if (t_qty + k_qty) else None,
@@ -550,7 +616,8 @@ with st.spinner("分析中，請稍候..."):
 # =========================
 # 統計卡片
 # =========================
-col1, col2, col3, col4, col5 = st.columns(5)
+_mcols = st.columns(6 if has_registry else 5)
+col1, col2, col3, col4, col5 = _mcols[:5]
 col1.metric("H2O 料號總數",   f"{len(df_out)} 個")
 col2.metric("有委外缺料料號", f"{len(has_any)} 個")
 col3.metric("唐佑總缺料量",   f"{int(df_out['_唐佑qty'].fillna(0).sum()):,}")
@@ -558,6 +625,13 @@ col4.metric("國智總缺料量",   f"{int(df_out['_國智qty'].fillna(0).sum())
 col5.metric("⚠️ 庫存不足料號", f"{len(short_warn)} 個",
             delta=None if len(short_warn)==0 else f"需人工配料",
             delta_color="inverse")
+if has_registry:
+    _reg_hit = sum(
+        1 for _p in df_out['料號']
+        if str(_p).strip() in tang_reg_map or str(_p).strip() in kuo_reg_map
+    )
+    _mcols[5].metric("🔁 已登記待調撥", f"{_reg_hit} 個",
+                     delta=f"登記表未完成 {len(reg_df):,} 筆", delta_color="off")
 
 st.divider()
 
@@ -572,24 +646,34 @@ fill_dash_cols = ['唐佑代工倉 缺料量','國智代工倉 缺料量','合�
 if has_transfer:
     fill_dash_cols += ['唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
                        '國智代工倉 待調撥量','國智代工倉 實際應調撥量']
+if has_registry:
+    fill_dash_cols += ['唐佑 登記明細','國智 登記明細']
 for col in fill_dash_cols:
     df_display[col] = df_display[col].fillna('-')
 # 合計委外缺料去掉小數
 df_display['合計委外缺料'] = df_display['合計委外缺料'].apply(
     lambda x: str(int(float(x))) if x not in ('-', None, '') else '-'
 )
+# 待調撥量／實際應調撥量：欄內混有 None 會被 pandas 轉成 float，顯示成 6000.0 → 去小數
+if has_transfer:
+    for _c in ['唐佑代工倉 待調撥量', '唐佑代工倉 實際應調撥量',
+               '國智代工倉 待調撥量', '國智代工倉 實際應調撥量']:
+        df_display[_c] = df_display[_c].apply(
+            lambda v: f"{int(float(v)):,}" if isinstance(v, (int, float)) else v)
 
 # 欄位順序：有互調表時插入4個新欄
 if has_transfer:
-    disp_cols = [
-        '料號','SPQ',
-        '唐佑 最早開工日',
-        '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
-        '國智 最早開工日',
-        '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
-        '合計委外缺料','預計進料日','預計數量',
-        '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
-    ]
+    disp_cols = ['料號','SPQ','唐佑 最早開工日',
+                 '唐佑代工倉 缺料量','唐佑代工倉 待調撥量']
+    if has_registry:
+        disp_cols += ['唐佑 登記明細']
+    disp_cols += ['唐佑代工倉 實際應調撥量',
+                  '國智 最早開工日','國智代工倉 缺料量','國智代工倉 待調撥量']
+    if has_registry:
+        disp_cols += ['國智 登記明細']
+    disp_cols += ['國智代工倉 實際應調撥量',
+                  '合計委外缺料','預計進料日','預計數量',
+                  '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
 else:
     disp_cols = [
         '料號','SPQ',
@@ -626,60 +710,146 @@ st.dataframe(
 )
 
 # =========================
+# 新版互調料登記表：未完成登記明細（已完成不抓）
+# =========================
+reg_view = None
+if reg_df is not None and not reg_df.empty:
+    st.divider()
+    st.markdown("#### 🔁 新版互調料表　未完成登記明細")
+    _cnt = reg_df['狀態'].value_counts()
+    st.caption(
+        "　｜　".join(f"**{_s}** {int(_cnt.get(_s, 0)):,} 筆" for _s in PENDING_SHEETS)
+        + f"　｜　⏰ 逾期 {int(reg_df['逾期'].sum()):,} 筆"
+        + f"　｜　🔥 急料 {int(reg_df['急料'].sum()):,} 筆"
+        + "　（「已完成」工作表不列入）"
+    )
+
+    _f1, _f2, _f3 = st.columns([2.2, 2.2, 1.6])
+    with _f1:
+        _sts = st.multiselect("狀態", PENDING_SHEETS, default=PENDING_SHEETS, key="reg_sts")
+    with _f2:
+        _facs = sorted(reg_df['廠別'].unique().tolist())
+        _fdef = [f for f in ['唐佑', '國智'] if f in _facs] or _facs
+        _fac  = st.multiselect("調入廠別", _facs, default=_fdef, key="reg_fac")
+    with _f3:
+        _only_h2o  = st.checkbox("只看 H2O 料號", value=True,  key="reg_only_h2o")
+        _only_late = st.checkbox("只看逾期",      value=False, key="reg_only_late")
+
+    rv = reg_df[reg_df['狀態'].isin(_sts) & reg_df['廠別'].isin(_fac)]
+    if _only_h2o:
+        rv = rv[rv['品號'].isin({str(x).strip() for x in parts})]
+    if _only_late:
+        rv = rv[rv['逾期']]
+
+    if rv.empty:
+        st.info("目前條件下沒有未完成的登記。")
+    else:
+        reg_view = rv.copy()
+        for _c in ['開單日', '通知日', '填表日期', '預計進貨日', '最終完成日']:
+            reg_view[_c] = reg_view[_c].dt.date
+        reg_view['數量']     = reg_view['數量'].astype('Int64')
+        reg_view['逾期天數'] = reg_view['逾期天數'].apply(
+            lambda v: f"⏰ 逾期 {int(v)} 天" if pd.notna(v) else '')
+        reg_view['急料']     = reg_view['急料'].map({True: '🔥 急料', False: ''})
+        reg_view = reg_view[['狀態','廠別','品號','數量','轉出倉別','單號及領料單號',
+                             '開單日','通知日','預計進貨日','最終完成日',
+                             '填表人','逾期天數','急料','備註']]
+
+        _h2o_pnos = {str(x).strip() for x in parts}
+
+        def _reg_row_style(row):
+            if row['逾期天數']:
+                return ['background-color:#fce7f3; color:#9d174d; font-weight:600;'] * len(row)
+            if row['品號'] in _h2o_pnos:
+                return ['background-color:#eff6ff; color:#1e3a8a;'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(
+            reg_view.style.apply(_reg_row_style, axis=1),
+            use_container_width=True,
+            height=400,
+            hide_index=True,
+        )
+        st.caption(
+            f"顯示 {len(reg_view):,} 筆　·　"
+            "粉紅＝逾期（待備料 最終完成日 >3 天、待轉倉 通知日 >7 天、待進料 預計進貨日 >2 天）"
+            "　·　淺藍＝H2O 缺料料號"
+        )
+
+# =========================
 # 匯出 Excel
 # =========================
-def build_excel(df, start, end, with_transfer=False):
+# 各欄底色/字色：(底色, 字色, 粗體)；用欄位鍵比對，插欄不會跑位
+_XL_KEY_STYLE = {
+    '唐佑代工倉 缺料量':          ('FFE8F5E2', 'FF2D6A18', True),
+    '唐佑代工倉 待調撥量':        ('FFC5DFB0', 'FF2D6A18', True),
+    '唐佑 登記明細':              ('FFEAF4E2', 'FF2D6A18', False),
+    '唐佑代工倉 實際應調撥量':    ('FFB0D096', 'FF1A4D0A', True),
+    '國智代工倉 缺料量':          ('FFD9E8FF', 'FF1E3A8A', True),
+    '國智代工倉 待調撥量':        ('FFB8D4EE', 'FF1E3A8A', True),
+    '國智 登記明細':              ('FFE4EEF9', 'FF1E3A8A', False),
+    '國智代工倉 實際應調撥量':    ('FFA0C4E8', 'FF0F2460', True),
+    '預計進料日':                 ('FFE8F4FD', None, False),
+    '預計數量':                   ('FFD6EEF8', None, False),
+    '可調撥來源倉（倉代碼/可用量）': ('FFFFF0CC', None, False),
+}
+
+
+def build_excel(df, start, end, with_transfer=False, with_registry=False, reg_rows=None):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'H2O委外領用試算'
     thin   = Side(style='thin', color='FFCCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
+    # specs：(表頭, 表頭底色, 資料欄鍵, 欄寬, 對齊)
     if with_transfer:
-        # 14 欄
-        total_cols = 14
-        headers = [
-            '料號','SPQ',
-            '唐佑代工倉\n缺料量','唐佑代工倉\n待調撥量','唐佑代工倉\n實際應調撥量',
-            '國智代工倉\n缺料量','國智代工倉\n待調撥量','國智代工倉\n實際應調撥量',
-            '合計委外\n缺料','預計進料日','預計數量',
-            '可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N',
+        specs = [
+            ('料號',                'FFD9E8FF', '料號',               28, 'left'),
+            ('SPQ',                 'FFF2F2F2', 'SPQ',                 8, 'center'),
+            ('唐佑代工倉\n缺料量',   'FFD6EACB', '唐佑代工倉 缺料量',   14, 'center'),
+            ('唐佑代工倉\n待調撥量', 'FFC5DFB0', '唐佑代工倉 待調撥量', 14, 'center'),
         ]
-        hdr_color = [
-            'FFD9E8FF','FFF2F2F2',
-            'FFD6EACB','FFC5DFB0','FFB0D096',   # 唐佑：淡綠色系
-            'FFD9E8FF','FFB8D4EE','FFA0C4E8',   # 國智：淡藍色系
-            'FFFFF2CC','FFE8F4FD','FFD6EEF8',   # 合計、預計進料日、預計數量
-            'FFF5E6FF','FFFDE8D0','FFF2F2F2',
+        if with_registry:
+            specs.append(('唐佑\n登記明細', 'FFEAF4E2', '唐佑 登記明細', 22, 'left'))
+        specs.append(('唐佑代工倉\n實際應調撥量', 'FFB0D096', '唐佑代工倉 實際應調撥量', 16, 'center'))
+        specs += [
+            ('國智代工倉\n缺料量',   'FFD9E8FF', '國智代工倉 缺料量',   14, 'center'),
+            ('國智代工倉\n待調撥量', 'FFB8D4EE', '國智代工倉 待調撥量', 14, 'center'),
         ]
-        col_order = [
-            '料號','SPQ',
-            '唐佑代工倉 缺料量','唐佑代工倉 待調撥量','唐佑代工倉 實際應調撥量',
-            '國智代工倉 缺料量','國智代工倉 待調撥量','國智代工倉 實際應調撥量',
-            '合計委外缺料','預計進料日','預計數量',
-            '可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N',
+        if with_registry:
+            specs.append(('國智\n登記明細', 'FFE4EEF9', '國智 登記明細', 22, 'left'))
+        specs.append(('國智代工倉\n實際應調撥量', 'FFA0C4E8', '國智代工倉 實際應調撥量', 16, 'center'))
+        specs += [
+            ('合計委外\n缺料',  'FFFFF2CC', '合計委外缺料', 14, 'center'),
+            ('預計進料日',      'FFE8F4FD', '預計進料日',   14, 'center'),
+            ('預計數量',        'FFD6EEF8', '預計數量',     12, 'center'),
         ]
-        col_widths  = [28,8, 14,14,16, 14,14,16, 14,14,12, 32,42,28]
-        left_cols   = {1,12,13,14}
-        wrap_col    = 13
-        note_col    = 13
-        src_col     = 12
     else:
-        # 10 欄
-        total_cols = 10
-        headers   = ['料號','SPQ','唐佑代工倉\n缺料量','國智代工倉\n缺料量','合計委外\n缺料',
-                     '預計進料日','預計數量','可調撥來源倉\n（倉代碼/可用量）','⚠️ 配料說明\n（庫存不足時）','Customer P/N']
-        hdr_color = ['FFD9E8FF','FFF2F2F2','FFD6EACB','FFD9E8FF','FFFFF2CC',
-                     'FFE8F4FD','FFD6EEF8','FFF5E6FF','FFFDE8D0','FFF2F2F2']
-        col_order = ['料號','SPQ','唐佑代工倉 缺料量','國智代工倉 缺料量','合計委外缺料',
-                     '預計進料日','預計數量','可調撥來源倉（倉代碼/可用量）','⚠️ 配料說明','Customer P/N']
-        col_widths  = [28,8,14,14,14, 14,12, 32,42,28]
-        left_cols   = {1,8,9,10}
-        wrap_col    = 9
-        note_col    = 9
-        src_col     = 8
+        specs = [
+            ('料號',              'FFD9E8FF', '料號',             28, 'left'),
+            ('SPQ',               'FFF2F2F2', 'SPQ',               8, 'center'),
+            ('唐佑代工倉\n缺料量', 'FFD6EACB', '唐佑代工倉 缺料量', 14, 'center'),
+            ('國智代工倉\n缺料量', 'FFD9E8FF', '國智代工倉 缺料量', 14, 'center'),
+            ('合計委外\n缺料',     'FFFFF2CC', '合計委外缺料',      14, 'center'),
+            ('預計進料日',         'FFE8F4FD', '預計進料日',        14, 'center'),
+            ('預計數量',           'FFD6EEF8', '預計數量',          12, 'center'),
+        ]
+    specs += [
+        ('可調撥來源倉\n（倉代碼/可用量）', 'FFF5E6FF', '可調撥來源倉（倉代碼/可用量）', 32, 'left'),
+        ('⚠️ 配料說明\n（庫存不足時）',     'FFFDE8D0', '⚠️ 配料說明',                   42, 'left'),
+        ('Customer P/N',                  'FFF2F2F2', 'Customer P/N',                 28, 'left'),
+    ]
 
-    merge_end = chr(64 + total_cols)
+    headers    = [x[0] for x in specs]
+    hdr_color  = [x[1] for x in specs]
+    col_order  = [x[2] for x in specs]
+    col_widths = [x[3] for x in specs]
+    left_cols  = {i for i, x in enumerate(specs, 1) if x[4] == 'left'}
+    total_cols = len(specs)
+    note_col   = col_order.index('⚠️ 配料說明') + 1
+
+    merge_end = get_column_letter(total_cols)
     ws.merge_cells(f'A1:{merge_end}1')
     c = ws['A1']
     c.value = f'H2O 缺料委外領用試算　{start.strftime("%Y/%m/%d")} ～ {end.strftime("%Y/%m/%d")}'
@@ -697,63 +867,87 @@ def build_excel(df, start, end, with_transfer=False):
     ws.row_dimensions[2].height = 32
 
     for r_i, row_dict in enumerate(df.to_dict('records'), 3):
-        vals = [row_dict.get(col) for col in col_order]
-        for c_i, val in enumerate(vals, 1):
+        for c_i, key in enumerate(col_order, 1):
+            val  = row_dict.get(key)
             cell = ws.cell(row=r_i, column=c_i, value=val)
             cell.font   = Font(name='Arial', size=9)
             cell.border = border
             cell.alignment = Alignment(
                 horizontal='left' if c_i in left_cols else 'center',
                 vertical='center',
-                wrap_text=(c_i == wrap_col),
+                wrap_text=(c_i == note_col or key.endswith('登記明細')),
             )
-            # 顏色標記
-            if c_i == 3 and val:   # 唐佑缺料量 → 淡綠色
-                cell.fill = PatternFill('solid', start_color='FFE8F5E2')
-                cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
-            elif c_i == (6 if with_transfer else 4) and val:  # 國智缺料量 → 淡藍色
-                cell.fill = PatternFill('solid', start_color='FFD9E8FF')
-                cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-            elif c_i == src_col and val:
-                cell.fill = PatternFill('solid', start_color='FFFFF0CC')
-            elif c_i == note_col and val:
-                cell.fill = PatternFill('solid', start_color='FFFDE8D0')
-                cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
-                ws.row_dimensions[r_i].height = 52
-            # 待調撥量 & 實際應調撥量：唐佑=綠系, 國智=藍系；預計進料日/預計數量
-            if with_transfer:
-                if c_i == 4:   # 唐佑 待調撥量 → 綠
-                    cell.fill = PatternFill('solid', start_color='FFC5DFB0')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF2D6A18')
-                elif c_i == 5: # 唐佑 實際應調撥量 → 深綠
-                    cell.fill = PatternFill('solid', start_color='FFB0D096')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF1A4D0A')
-                elif c_i == 7: # 國智 待調撥量 → 藍
-                    cell.fill = PatternFill('solid', start_color='FFB8D4EE')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF1E3A8A')
-                elif c_i == 8: # 國智 實際應調撥量 → 深藍
-                    cell.fill = PatternFill('solid', start_color='FFA0C4E8')
-                    cell.font = Font(name='Arial', size=9, bold=True, color='FF0F2460')
-                elif c_i == 10 and val:  # 預計進料日
-                    cell.fill = PatternFill('solid', start_color='FFE8F4FD')
-                elif c_i == 11 and val:  # 預計數量
-                    cell.fill = PatternFill('solid', start_color='FFD6EEF8')
-            else:
-                if c_i == 6 and val:   # 預計進料日
-                    cell.fill = PatternFill('solid', start_color='FFE8F4FD')
-                elif c_i == 7 and val:  # 預計數量
-                    cell.fill = PatternFill('solid', start_color='FFD6EEF8')
+            if key == '⚠️ 配料說明':
+                if val:
+                    cell.fill = PatternFill('solid', start_color='FFFDE8D0')
+                    cell.font = Font(name='Arial', size=8, bold=True, color='FFC0392B')
+                    ws.row_dimensions[r_i].height = 52
+            elif key in _XL_KEY_STYLE:
+                fc, tc, bold = _XL_KEY_STYLE[key]
+                # 待調撥量／實際應調撥量：空白也上色（沿用原本呈現）
+                always = key.endswith('待調撥量') or key.endswith('實際應調撥量')
+                if val or always:
+                    cell.fill = PatternFill('solid', start_color=fc)
+                    if tc:
+                        cell.font = Font(name='Arial', size=9, bold=bold, color=tc)
 
     for i, w in enumerate(col_widths, 1):
-        ws.column_dimensions[chr(64+i)].width = w
+        ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = 'A3'
+
+    # ── 第 2 張表：新版互調料表未完成登記明細（已完成不列入）──
+    if reg_rows is not None and not reg_rows.empty:
+        ws2   = wb.create_sheet('未完成互調料登記')
+        rcols = list(reg_rows.columns)
+        rw    = {'狀態': 10, '廠別': 10, '品號': 32, '數量': 12, '轉出倉別': 12,
+                 '單號及領料單號': 20, '開單日': 12, '通知日': 12, '預計進貨日': 12,
+                 '最終完成日': 12, '填表人': 10, '逾期天數': 14, '急料': 10, '備註': 22}
+        end_col = get_column_letter(len(rcols))
+        ws2.merge_cells(f'A1:{end_col}1')
+        t = ws2['A1']
+        t.value = '新版互調料表　未完成登記明細（待備料／待轉倉／待進料，已完成不列入）'
+        t.font  = Font(name='Arial', bold=True, size=12, color='FFFFFFFF')
+        t.fill  = PatternFill('solid', start_color='FF0F2460')
+        t.alignment = Alignment(horizontal='center', vertical='center')
+        ws2.row_dimensions[1].height = 24
+
+        for i, h in enumerate(rcols, 1):
+            cell = ws2.cell(row=2, column=i, value=h)
+            cell.font  = Font(name='Arial', bold=True, size=9)
+            cell.fill  = PatternFill('solid', start_color='FFD9E8FF')
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = border
+        ws2.row_dimensions[2].height = 22
+
+        pink = PatternFill('solid', start_color='FFFCE7F3')
+        for r_i, rec in enumerate(reg_rows.to_dict('records'), 3):
+            late = bool(str(rec.get('逾期天數') or '').strip())
+            for c_i, key in enumerate(rcols, 1):
+                v = rec.get(key)
+                if v is not None and not isinstance(v, str) and pd.isna(v):
+                    v = None
+                cell = ws2.cell(row=r_i, column=c_i, value=v)
+                cell.border = border
+                cell.alignment = Alignment(
+                    horizontal='left' if key in ('品號', '單號及領料單號', '備註') else 'center',
+                    vertical='center')
+                if late:
+                    cell.fill = pink
+                    cell.font = Font(name='Arial', size=9, bold=True, color='FF9D174D')
+                else:
+                    cell.font = Font(name='Arial', size=9)
+
+        for i, h in enumerate(rcols, 1):
+            ws2.column_dimensions[get_column_letter(i)].width = rw.get(h, 14)
+        ws2.freeze_panes = 'A3'
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
 
-buf = build_excel(df_out, start, end, with_transfer=has_transfer)
+buf = build_excel(df_out, start, end, with_transfer=has_transfer,
+                  with_registry=has_registry, reg_rows=reg_view)
 st.download_button(
     label="⬇️ 匯出試算結果（Excel）",
     data=buf,

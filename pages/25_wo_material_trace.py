@@ -279,7 +279,13 @@ with tab_wo:
     with c3:
         all_dates = st.checkbox("不限開工日", value=False)
     with c4:
-        kw = st.text_input("搜尋 製令 / 品號 / 訂單 / 客戶", placeholder="輸入關鍵字")
+        # 由戰情室下鑽帶入的工單號（/wo_material_trace?wo=XXX），預填進搜尋框
+        try:
+            _wo_q = st.query_params.get("wo", "") or ""
+        except Exception:
+            _wo_q = ""
+        kw = st.text_input("搜尋 製令 / 品號 / 訂單 / 客戶", value=_wo_q,
+                           placeholder="輸入關鍵字")
     f1, f2, f3 = st.columns([2.2, 2, 1.8])
     with f1:
         view = st.selectbox("料況", ["全部", "⛔ 缺料無單", "🕐 待確認交期", "🚚 在途中",

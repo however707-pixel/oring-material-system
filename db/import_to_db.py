@@ -70,36 +70,67 @@ def find_latest_sched():
         return None
 
 
-def last_imported_mtime():
-    """回傳最近一次匯入的來源檔 mtime（datetime），查不到回 None。"""
+def _sched_mtime(path):
+    """簡版-工單缺料狀況 的存檔時間（無檔回 None）。"""
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path)) if path else None
+    except OSError:
+        return None
+
+
+def _last_log(col):
+    """import_log 最新一筆的某欄（datetime），查不到回 None。"""
     if not os.path.exists(DB_PATH):
         return None
     try:
         conn = sqlite3.connect(DB_PATH)
-        row = conn.execute(
-            "SELECT source_mtime FROM import_log ORDER BY imported_at DESC LIMIT 1"
-        ).fetchone()
-        conn.close()
+        try:
+            row = conn.execute(
+                f"SELECT {col} FROM import_log ORDER BY imported_at DESC LIMIT 1"
+            ).fetchone()
+        except sqlite3.OperationalError:      # 舊 db 還沒有該欄位
+            return None
+        finally:
+            conn.close()
         if row and row[0]:
-            return datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+            return datetime.strptime(str(row[0])[:19], "%Y-%m-%d %H:%M:%S")
     except Exception:
         pass
     return None
 
 
+def last_imported_mtime():
+    """回傳最近一次匯入的來源檔 mtime（datetime），查不到回 None。"""
+    return _last_log("source_mtime")
+
+
 def sync_if_newer():
     """NAS 檔比上次匯入新就立即匯入（給看板即時同步用，不會 sys.exit）。
 
+    **兩個來源檔都要比對**：調件備料統計（備料／上架 KPI）與
+    簡版-工單缺料狀況（出貨排程）。只看前者的話，早會檔更新了卻不會重匯，
+    戰情室的出貨概況就會跟看板（讀現場檔）對不起來。
     回傳 (did_import, msg)。20 分鐘排程仍保留作為備援。"""
     src_file, src_mtime = find_latest_wh()
     if not src_file:
         return False, "NAS 離線"
-    last = last_imported_mtime()
+
     # import_log 只存到秒，比較前先去掉微秒，避免同一檔被反覆重匯
-    if last and src_mtime.replace(microsecond=0) <= last:
+    last_wh = last_imported_mtime()
+    wh_newer = not (last_wh and src_mtime.replace(microsecond=0) <= last_wh)
+
+    sched_path = find_latest_sched()
+    sm = _sched_mtime(sched_path)
+    last_sched = _last_log("sched_mtime")
+    sched_newer = bool(sm) and not (last_sched and sm.replace(microsecond=0) <= last_sched)
+
+    if not (wh_newer or sched_newer):
         return False, "已是最新"
+
     main(src_file)
-    return True, f"已同步 {os.path.basename(src_file)}"
+    what = "、".join(([os.path.basename(src_file)] if wh_newer else [])
+                     + ([_SCHED_FILE] if sched_newer else []))
+    return True, f"已同步 {what}"
 
 
 # ── 小工具 ───────────────────────────────────────────────
@@ -195,6 +226,44 @@ def parse_error(xls):
     return rows
 
 
+def _md_to_date(m, d, today=None):
+    """把 m/d 轉成日期；超過 180 天前的視為明年（跨年單）。無效組合回 None。"""
+    today = today or date.today()
+    try:
+        dt = date(today.year, int(m), int(d))
+    except ValueError:
+        return None                       # 例：'2026/9/11' 會抓到 26/9 這種無效組合
+    if (today - dt).days > 180:
+        try:
+            dt = date(today.year + 1, int(m), int(d))
+        except ValueError:
+            return None
+    return dt
+
+
+def _parse_ship_date(raw, today=None):
+    """出貨日解析：與 15_kanban.py 的 parse_ship_date 同一套規則。
+
+    多個日期（如 '2026/9/11(pull in 8/28)'、'8/25*100、8/28*50'）取**最小值**，
+    無效的 m/d 組合直接略過。舊版只取第一個配對又不驗證，會把
+    '2026/9/11(pull in 8/28)' 抓成 26/9 → 整張工單沒有出貨日而從排程消失。
+    """
+    if pd.isna(raw):
+        return None
+    s = str(raw).strip()
+    if s in ("", "nan", "None", "TBD", "試產", "00:00:00"):
+        return None
+    if hasattr(raw, "date"):
+        return raw.date()
+    try:
+        return pd.to_datetime(s).date()
+    except Exception:
+        pass
+    dates = [_md_to_date(m, d, today) for m, d in re.findall(r"(\d{1,2})/(\d{1,2})", s)]
+    dates = [d for d in dates if d]
+    return min(dates) if dates else None
+
+
 def parse_schedule(path):
     """簡版-工單缺料狀況 LIST"""
     df = pd.read_excel(path, sheet_name="LIST", header=0)
@@ -214,23 +283,15 @@ def parse_schedule(path):
                 rate = 0.0
         note = _s(r.iloc[8])             # 重點提示
 
-        # 出貨日（沿用原 dashboard 解析邏輯）
-        ship = None
-        raw_ship = r.iloc[12]
-        if pd.notna(raw_ship):
-            s = str(raw_ship).strip()
-            if s not in ("", "nan", "None", "TBD", "試產", "00:00:00"):
-                try:
-                    ship = pd.to_datetime(s).strftime("%Y-%m-%d")
-                except Exception:
-                    found = re.findall(r"(\d{1,2})/(\d{1,2})", s)
-                    if found:
-                        m2, d2 = int(found[0][0]), int(found[0][1])
-                        try:
-                            ship = date(today.year, m2, d2).strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-        rows.append((wo, product, qty, rate, ship, note))
+        # 進料狀況內容（L欄）：含 IQC 表示該工單缺的料正在 IQC 驗收中，
+        # 看板卡片把 IQC 與真缺料分開顯示，戰情室也要有同一維度
+        mat_text = r.iloc[11]
+        iqc = int(bool(pd.notna(mat_text) and re.search(r"IQC", str(mat_text), re.IGNORECASE)))
+
+        ship_date = _parse_ship_date(r.iloc[12], today)
+        ship = ship_date.strftime("%Y-%m-%d") if ship_date else None
+
+        rows.append((wo, product, qty, rate, ship, note, iqc))
     return rows
 
 
@@ -307,6 +368,21 @@ def _recovery_rows(transfer_rows):
 def init_db(conn):
     with open(SCHEMA, encoding="utf-8") as f:
         conn.executescript(f.read())
+    _migrate(conn)
+
+
+def _migrate(conn):
+    """既有 db 的欄位補丁（CREATE TABLE IF NOT EXISTS 不會補欄位）。"""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(shipment_schedule)")}
+    if "iqc_flag" not in cols:
+        conn.execute("ALTER TABLE shipment_schedule ADD COLUMN iqc_flag INTEGER DEFAULT 0")
+        print("[INFO] shipment_schedule：新增 iqc_flag 欄位")
+
+    log_cols = {row[1] for row in conn.execute("PRAGMA table_info(import_log)")}
+    for col, ddl in (("sched_file", "TEXT"), ("sched_mtime", "TIMESTAMP")):
+        if col not in log_cols:
+            conn.execute(f"ALTER TABLE import_log ADD COLUMN {col} {ddl}")
+            print(f"[INFO] import_log：新增 {col} 欄位")
 
 
 def main(src_arg=None):
@@ -332,6 +408,7 @@ def main(src_arg=None):
     error_rows    = parse_error(xls)
 
     sched_path = find_latest_sched()
+    sched_mtime = _sched_mtime(sched_path)
     sched_rows = parse_schedule(sched_path) if sched_path else []
 
     conn = sqlite3.connect(DB_PATH)
@@ -403,21 +480,26 @@ def main(src_arg=None):
             cur.execute("DELETE FROM shipment_schedule")
             cur.executemany("""
                 INSERT INTO shipment_schedule
-                  (work_order, product_no, planned_qty, material_rate, ship_date, status_note, updated_at)
-                VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                  (work_order, product_no, planned_qty, material_rate, ship_date,
+                   status_note, iqc_flag, updated_at)
+                VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
                 ON CONFLICT(work_order) DO UPDATE SET
                   product_no=excluded.product_no, planned_qty=excluded.planned_qty,
                   material_rate=excluded.material_rate, ship_date=excluded.ship_date,
-                  status_note=excluded.status_note, updated_at=CURRENT_TIMESTAMP
+                  status_note=excluded.status_note, iqc_flag=excluded.iqc_flag,
+                  updated_at=CURRENT_TIMESTAMP
             """, sched_rows)
 
         # 匯入紀錄
         cur.execute("""
             INSERT INTO import_log
-              (source_file, source_mtime, transfer_rows, inbound_rows, error_rows, schedule_rows)
-            VALUES (?,?,?,?,?,?)
+              (source_file, source_mtime, transfer_rows, inbound_rows, error_rows,
+               schedule_rows, sched_file, sched_mtime)
+            VALUES (?,?,?,?,?,?,?,?)
         """, (src_file, src_mtime.strftime("%Y-%m-%d %H:%M:%S"),
-              len(transfer_rows), len(inbound_rows), len(error_rows), len(sched_rows)))
+              len(transfer_rows), len(inbound_rows), len(error_rows), len(sched_rows),
+              sched_path,
+              sched_mtime.strftime("%Y-%m-%d %H:%M:%S") if sched_mtime else None))
 
         conn.commit()
         print(f"[OK] 調撥單 {len(transfer_rows)} ｜入庫 {len(inbound_rows)} ｜"

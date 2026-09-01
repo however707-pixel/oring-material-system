@@ -7,8 +7,15 @@ import plotly.express as px
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar
+from utils.workdays import net_workdays
 
 st.set_page_config(page_title="排程系統", page_icon="🗓", layout="wide")
+
+# ── 由戰情室下鑽帶入的工單號（/scheduling?wo=XXX）──
+try:
+    _WO_FROM_URL = st.query_params.get("wo", "") or ""
+except Exception:
+    _WO_FROM_URL = ""
 inject_css()
 render_header(title="排程系統", subtitle="Production Scheduling System", badge="生管 PC")
 render_sidebar()
@@ -17,45 +24,18 @@ TODAY      = date.today()
 MIN_BUFFER = 10   # 最低齊料緩衝（2個工作週 = 10個工作天）
 REF_YEAR   = TODAY.year
 
-# ── 2026 台灣國定假日（週六日已由 weekday() 排除，這裡只需填平日補假）─────────
-# 資料來源：勞動部行政院公告，如有異動請自行更新
-TAIWAN_HOLIDAYS = {
-    # 元旦
-    date(2026, 1, 1),   # 元旦
-    date(2026, 1, 2),   # 彈性放假
-    # 春節
-    date(2026, 2, 16),  # 除夕（彈性放假）
-    date(2026, 2, 17),  # 春節初一
-    date(2026, 2, 18),  # 春節初二
-    date(2026, 2, 19),  # 春節初三
-    date(2026, 2, 20),  # 春節初四
-    # 228 和平紀念日（2/28 週六，3/2 週一補假）
-    date(2026, 3, 2),
-    # 兒童節（4/4 週六，4/3 週五補假）
-    date(2026, 4, 3),
-    # 清明節（4/5 週日，4/6 週一補假）
-    date(2026, 4, 6),
-    # 勞動節
-    date(2026, 5, 1),
-    # 端午節（農曆5/5 ≈ 6/19 週五）
-    date(2026, 6, 19),
-    # 中秋節（農曆8/15 ≈ 9/25 週五）
-    date(2026, 9, 25),
-    # 國慶日（10/10 週六，10/9 週五補假）
-    date(2026, 10, 9),
-}
-
+# ── 國定假日／工作日計算：單一來源為 utils/workdays.py ─────────────────────
+# （依行政院人事行政總處「中華民國115年政府行政機關辦公日曆表」；
+#   假日表含臨時停班日，如 2026/7/10 颱風停班）
 def count_workdays(start: date, end: date) -> int:
-    """計算 start（不含）到 end（含）之間的工作天數，排除週六日及國定假日。"""
+    """計算 start（不含）到 end（含）之間的工作天數，排除週六日及國定假日。
+
+    保留本頁原有語意：任一端為空或 start >= end 一律回 0（不回負值），
+    實際計算委由 utils.workdays.net_workdays()。
+    """
     if not start or not end or start >= end:
         return 0
-    count = 0
-    cur = start
-    while cur < end:
-        cur += timedelta(days=1)
-        if cur.weekday() < 5 and cur not in TAIWAN_HOLIDAYS:
-            count += 1
-    return count
+    return net_workdays(start, end)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -605,7 +585,8 @@ with fd2:
         sel_delay = st.selectbox("進料延遲",
             ["全部", "有逾期料", "IQC 中", "無問題"])
     with fc3:
-        search = st.text_input("工單號 / 料號搜尋", placeholder="輸入關鍵字")
+        search = st.text_input("工單號 / 料號搜尋", value=_WO_FROM_URL,
+                               placeholder="輸入關鍵字")
 
 dff = df.copy()
 
@@ -1194,9 +1175,21 @@ with tab3:
             _dates = mat_df["預計到料日"].dropna()
             d_min  = _dates.min() if not _dates.empty else TODAY
             d_max  = _dates.max() if not _dates.empty else TODAY + timedelta(days=30)
+            # 預設值必須落在 [d_min, d_max] 內；篩到單一工單時區間可能只剩一天，
+            # 直接用 TODAY 會超出範圍而拋 StreamlitAPIException，故先夾住。
+            _lo = max(TODAY, d_min)
+            _hi = min(d_max, max(_lo, TODAY + timedelta(days=30)))
+            if _lo > _hi:
+                _lo = _hi
+            # 清掉超出新範圍的舊 session 值（否則 Streamlit 會沿用而再次爆掉）
+            _sv = st.session_state.get("mat_range")
+            if _sv is not None:
+                _vals = list(_sv) if isinstance(_sv, (list, tuple)) else [_sv]
+                if any((v is not None and (v < d_min or v > d_max)) for v in _vals):
+                    del st.session_state["mat_range"]
             mat_range = st.date_input(
                 "到料日區間",
-                value=(TODAY, min(d_max, TODAY + timedelta(days=30))),
+                value=(_lo, _hi),
                 min_value=d_min, max_value=d_max,
                 key="mat_range"
             )
@@ -1207,7 +1200,8 @@ with tab3:
             sel_urgent = st.selectbox("急件篩選",
                 ["全部", "🚨 急件（≤10工作天）", "📦 不急件"], key="mat_urgent")
         with fc4:
-            mat_search = st.text_input("料號 / 工單搜尋", placeholder="輸入關鍵字", key="mat_kw")
+            mat_search = st.text_input("料號 / 工單搜尋", value=_WO_FROM_URL,
+                                       placeholder="輸入關鍵字", key="mat_kw")
 
         mdf = mat_df.copy()
         if isinstance(mat_range, (list, tuple)) and len(mat_range) == 2:

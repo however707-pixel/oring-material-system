@@ -9,19 +9,20 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import inject_css, render_header, render_sidebar
-from utils.warroom_data import (TAKT_PEOPLE, TAKT_TRIM, add_standard_hours,
-                                add_takt, trim_mean)
+from utils.warroom_data import TAKT_TRIM, add_standard_hours, trim_mean
 
-st.set_page_config(page_title="組裝 製程時間分析", page_icon="🔩", layout="wide")
+st.set_page_config(page_title="包裝 製程時間分析", page_icon="📦", layout="wide")
 inject_css()
-render_header(title="組裝 製程時間分析", subtitle="Assembly Cycle Time Analysis · Process Station", badge="製程站 PS")
+render_header(title="包裝 製程時間分析", subtitle="Packaging Cycle Time Analysis · Process Station", badge="製程站 PS")
 render_sidebar()
 
 # ─── NAS 掃描 ─────────────────────────────────────────────────────────────────
 # 目錄層級：料號 / 工單 / Start|End / 序號_YYYYMMDDHHMMSS_Start(End).txt
-# 與測試站同一套檔名時間戳邏輯；差別：組裝以「同序號 Start→End 配對」計工時
+# 與組裝同一套檔名時間戳邏輯與配對方式；差別在單台工時只認「頭尾」：
+# 包裝每一台都會刷 End，只有 Start 代表那台還在包裝中，不是缺資料，
+# 故不套用組裝那條「節拍（頭頭）× 人數」的補值（add_standard_hours use_takt=False）。
 
-LOG_ROOT = "//192.168.2.34/Oring_Share/Soft_Test/Log_file/OringAssembly"
+LOG_ROOT = "//192.168.2.34/Oring_Share/Soft_Test/Log_file/OringPackage"
 
 _FNAME_RE = re.compile(r"^([^_]+)_(\d{14})_")
 
@@ -34,8 +35,8 @@ def _clean_pno(name: str) -> str:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def scan_assembly(root: str):
-    """掃描 NAS 組裝 Log 樹。回傳 (DataFrame, 錯誤訊息或 None)"""
+def scan_package(root: str):
+    """掃描 NAS 包裝 Log 樹。回傳 (DataFrame, 錯誤訊息或 None)"""
     rows = []
     try:
         lv1 = [d for d in os.scandir(root) if d.is_dir()]
@@ -87,36 +88,32 @@ with st.expander("📖 計算邏輯說明"):
 | **資料來源** | `{LOG_ROOT}`<br>層級：**成品料號 → 工單號碼 → Start / End** |
 | **時間解析** | 檔名 `序號_YYYYMMDDHHMMSS_Start(End)` 取 `_` 後 14 碼時間戳 |
 | **配對方式** | 同一 料號/工單 內，**相同序號**的 Start 與 End 配對；同序號重複刷入時取**最後一筆** |
-| **節拍（頭頭）** | 同工單內依 Start 排序，**下一台 Start − 本台 Start**（分鐘） |
-| **單台工時取值** | 依該台資料完整度**擇一**：<br>① **有刷 End** → 直接取**頭尾工時 End − Start**<br>② **只有 Start** → 取**節拍 × 線上人數**（預設 {TAKT_PEOPLE} 人）<br>兩者皆不成立者不計入平均。實測全廠約 38% 走 ①、62% 走 ② |
+| **單台工時** | **頭尾工時＝End − Start**。包裝每台都會刷 End，故**只認這一條**；<br>只有 Start 的那幾台代表**還在包裝中**，不補值、不計入平均 |
 | **工單平均** | 對該工單的單台工時**去頭 {TAKT_TRIM:.0%}、去尾 {TAKT_TRIM:.0%}，只算中間 {1 - 2 * TAKT_TRIM:.0%}**，濾掉換線／等料／休息造成的極端值 |
-| **狀態分類** | ✅ 完成＝有 Start 有 End；🔧 組裝中＝有 Start 無 End（或 End 早於 Start）；⚠ 缺 Start＝只有 End |
-| **排除條件** | ① **跨日**　② 工時或節拍 ≤ 0 或 > **異常門檻**　③ 無 End 又是工單**最後一台**（無下一台可算節拍）<br>此三類不計入平均，但仍列於明細供追查 |
+| **狀態分類** | ✅ 完成＝有 Start 有 End；📦 包裝中＝有 Start 無 End（**還在生產中**，或 End 早於 Start）；⚠ 缺 Start＝只有 End |
+| **排除條件** | ① **尚未刷 End**（包裝中）　② **跨日**　③ 工時 ≤ 0 或 > **異常門檻**<br>此三類不計入平均，但仍列於明細供追查 |
 """, unsafe_allow_html=True)
 
 # ─── 控制列 ───────────────────────────────────────────────────────────────────
 
-c_btn, c_gap, c_ppl, _ = st.columns([1.2, 1.2, 1.2, 2.4])
+c_btn, c_gap, _ = st.columns([1.2, 1.2, 3.6])
 with c_btn:
     st.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
     if st.button("🔄 重新掃描 NAS", use_container_width=True):
-        scan_assembly.clear()
+        scan_package.clear()
         st.rerun()
 with c_gap:
-    gap_min = st.number_input("異常節拍門檻 (分)", min_value=5, max_value=1440, value=120,
-                              help="兩台之間的節拍超過此分鐘數視為異常（換線／等料／休息），不計入平均")
-with c_ppl:
-    people = st.number_input("線上人數", min_value=1, max_value=50, value=TAKT_PEOPLE,
-                             help="標準工時 = 節拍 × 線上人數")
+    gap_min = st.number_input("異常工時門檻 (分)", min_value=5, max_value=1440, value=120,
+                              help="單台工時超過此分鐘數視為異常（換線／等料／休息／忘了刷），不計入平均")
 
-with st.spinner("掃描 NAS 組裝 Log 中…"):
-    df_raw, err = scan_assembly(LOG_ROOT)
+with st.spinner("掃描 NAS 包裝 Log 中…"):
+    df_raw, err = scan_package(LOG_ROOT)
 
 if err:
     st.error(err)
     st.stop()
 if df_raw.empty:
-    st.warning("OringAssembly 資料夾中沒有可解析的 Log。")
+    st.warning("OringPackage 資料夾中沒有可解析的 Log。")
     st.stop()
 
 # ─── Start / End 配對 ─────────────────────────────────────────────────────────
@@ -133,7 +130,7 @@ def _status(r):
     if pd.isna(r["開始時間"]):
         return "⚠ 缺 Start"
     if pd.isna(r["結束時間"]) or r["工時(分)"] < 0:
-        return "🔧 組裝中"
+        return "📦 包裝中"
     return "✅ 完成"
 
 pair["狀態"] = pair.apply(_status, axis=1)
@@ -141,9 +138,8 @@ done = pair["狀態"] == "✅ 完成"
 pair.loc[~done, "工時(分)"] = pd.NA
 
 # ─── 單台標準工時 ─────────────────────────────────────────────────────────────
-# 有刷 End → 直接用頭尾工時；只有 Start → 節拍（頭頭）× 線上人數
-pair = add_takt(pair, gap_min)          # 注意：add_takt 會依 料號/工單/開始時間 重排列序
-pair = add_standard_hours(pair, gap_min, people)
+# use_takt=False：只認頭尾工時；只有 Start 的那台＝還在包裝中，不用節拍補值
+pair = add_standard_hours(pair, gap_min, use_takt=False)
 
 # ─── 篩選 ─────────────────────────────────────────────────────────────────────
 
@@ -170,7 +166,7 @@ if sel_day != ALL:
 
 today = date.today()
 n_done   = int((view["狀態"] == "✅ 完成").sum())
-n_wip    = int((view["狀態"] == "🔧 組裝中").sum())
+n_wip    = int((view["狀態"] == "📦 包裝中").sum())
 n_orphan = int((view["狀態"] == "⚠ 缺 Start").sum())
 n_today  = int((view["狀態"].eq("✅ 完成") &
                 (view["結束時間"].dt.date == today)).sum())
@@ -180,12 +176,11 @@ n_valid  = len(ok_view)
 
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("完成台數", f"{n_done} 台")
-m2.metric("組裝中", f"{n_wip} 台", help="已刷 Start、尚未刷 End")
+m2.metric("包裝中", f"{n_wip} 台", help="已刷 Start、尚未刷 End，代表還在生產中，不計入平均")
 m3.metric("今日完成", f"{n_today} 台")
 m4.metric("標準工時", "—" if pd.isna(std_all) else f"{std_all:.1f} 分",
-          help=f"有刷 End 取頭尾工時、只有 Start 取節拍×{people}人；"
-               f"再去頭 {TAKT_TRIM:.0%}、去尾 {TAKT_TRIM:.0%} 取中間 "
-               f"{1 - 2 * TAKT_TRIM:.0%} 平均。有效樣本 {n_valid} 台")
+          help=f"單台取頭尾工時 End − Start，再去頭 {TAKT_TRIM:.0%}、去尾 {TAKT_TRIM:.0%} "
+               f"取中間 {1 - 2 * TAKT_TRIM:.0%} 平均。有效樣本 {n_valid} 台")
 m5.metric("缺 Start 異常", f"{n_orphan} 筆")
 
 # ─── 一、彙總：料號 / 工單 ────────────────────────────────────────────────────
@@ -195,7 +190,7 @@ summary = (
     view.groupby(GRP)
     .agg(**{
         "完成台數":  ("狀態", lambda s: (s == "✅ 完成").sum()),
-        "組裝中":    ("狀態", lambda s: (s == "🔧 組裝中").sum()),
+        "包裝中":    ("狀態", lambda s: (s == "📦 包裝中").sum()),
         "有效樣本":  ("工時有效", "sum"),
     })
     .join(ok_view.groupby(GRP)["標準工時(分)"]
@@ -203,10 +198,10 @@ summary = (
     .reset_index()
 )
 summary["標準工時(分)"] = summary["標準工時(分)"].astype(float).round(1)
-summary = summary[GRP + ["完成台數", "組裝中", "有效樣本", "標準工時(分)"]]
+summary = summary[GRP + ["完成台數", "包裝中", "有效樣本", "標準工時(分)"]]
 
-st.subheader("📋 產量與組裝標準工時")
-st.caption(f"單台取值：有刷 End 用「頭尾工時 End − Start」，只有 Start 用「節拍（頭頭）× {people} 人」；"
+st.subheader("📋 產量與包裝標準工時")
+st.caption(f"單台取值：頭尾工時（End − Start）；只有 Start 的視為還在包裝中，不計入。"
            f"工單平均再去頭 {TAKT_TRIM:.0%}、去尾 {TAKT_TRIM:.0%}，只算中間 {1 - 2 * TAKT_TRIM:.0%}。")
 st.dataframe(summary, use_container_width=True, hide_index=True)
 
@@ -214,36 +209,35 @@ buf_s = io.BytesIO()
 summary.to_excel(buf_s, index=False, engine="openpyxl")
 buf_s.seek(0)
 st.download_button("⬇ 匯出彙總表 (Excel)", data=buf_s,
-                   file_name="assembly_summary.xlsx",
+                   file_name="packaging_summary.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ─── 二、單台明細 ─────────────────────────────────────────────────────────────
 
 st.divider()
-st.subheader("🔩 單台組裝明細")
+st.subheader("📦 單台包裝明細")
 
 detail = view.sort_values("開始時間", ascending=False).copy()
 detail["備註"] = ""
 has_start = detail["開始時間"].notna()
-detail.loc[has_start & ~detail["工時有效"], "備註"] = \
-    f"無可用工時：無 End 且無下一台，或跨日／>{gap_min} 分"
+detail.loc[has_start & (detail["狀態"] == "📦 包裝中"), "備註"] = "尚未刷 End，包裝中"
+detail.loc[has_start & ~detail["工時有效"] & (detail["狀態"] == "✅ 完成"), "備註"] = \
+    f"工時異常：跨日或 >{gap_min} 分"
 detail.loc[(detail["Start筆數"] > 1) | (detail["End筆數"] > 1), "備註"] += " 重複刷入取最後一筆"
 
 show = detail[["成品料號", "工單號碼", "序號", "狀態", "開始時間", "結束時間",
-               "工時來源", "標準工時(分)", "節拍(分)", "備註"]].copy()
+               "標準工時(分)", "備註"]].copy()
 for c in ["開始時間", "結束時間"]:
     show[c] = show[c].dt.strftime("%Y-%m-%d %H:%M:%S")
-for c in ["節拍(分)", "標準工時(分)"]:
-    show[c] = pd.to_numeric(show[c], errors="coerce").round(1)
-st.caption(f"「工時來源」標示該台採哪一條路：**頭尾**＝有刷 End，直接用 End − Start；"
-           f"**頭頭×{people}**＝只有 Start，用節拍 × 人數。")
+show["標準工時(分)"] = pd.to_numeric(show["標準工時(分)"], errors="coerce").round(1)
+st.caption("「標準工時(分)」＝該台 End − Start；空白代表尚未刷 End（包裝中）或該筆工時被判為異常。")
 st.dataframe(show, use_container_width=True, hide_index=True)
 
 buf_d = io.BytesIO()
 show.to_excel(buf_d, index=False, engine="openpyxl")
 buf_d.seek(0)
 st.download_button("⬇ 匯出單台明細 (Excel)", data=buf_d,
-                   file_name="assembly_detail.xlsx",
+                   file_name="packaging_detail.xlsx",
                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ─── 異常清單 ─────────────────────────────────────────────────────────────────

@@ -32,6 +32,30 @@ def db_mtime():
     return pd.Timestamp(os.path.getmtime(DB_PATH), unit="s")
 
 
+def sched_mtime():
+    """出貨排程來源（簡版-工單缺料狀況.xlsx）的存檔時間；查不到回 None。
+
+    與 db_mtime()（調件備料統計）分開，出貨排程的快取鍵要用這個，
+    否則早會檔更新、備料檔沒動時，戰情室的出貨概況不會跟著更新。
+    """
+    if not db_exists():
+        return None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            row = conn.execute(
+                "SELECT sched_mtime FROM import_log "
+                "WHERE sched_mtime IS NOT NULL ORDER BY imported_at DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and row[0]:
+            return pd.to_datetime(row[0])
+    except Exception:
+        pass
+    return None
+
+
 def source_filename() -> str | None:
     if not db_exists():
         return None
@@ -82,15 +106,24 @@ def load_wh():
 
 
 def load_sched():
-    """回傳排程 DataFrame，欄位：出貨日 / 料況狀態 / 預計產量（同原版）。"""
+    """回傳排程 DataFrame，欄位：出貨日 / 料況狀態 / 預計產量 / IQC中。"""
     if not db_exists():
         return pd.DataFrame()
     conn = sqlite3.connect(DB_PATH)
     try:
-        df = pd.read_sql_query("""
-            SELECT ship_date, planned_qty, material_rate, status_note
-            FROM shipment_schedule
-        """, conn)
+        try:
+            df = pd.read_sql_query("""
+                SELECT ship_date, planned_qty, material_rate, status_note,
+                       COALESCE(iqc_flag, 0) AS iqc_flag
+                FROM shipment_schedule
+            """, conn)
+        except Exception:
+            # 舊 db 還沒跑過 import（欄位由 import_to_db._migrate 補），先當作沒有 IQC
+            df = pd.read_sql_query("""
+                SELECT ship_date, planned_qty, material_rate, status_note
+                FROM shipment_schedule
+            """, conn)
+            df["iqc_flag"] = 0
     finally:
         conn.close()
 
@@ -105,5 +138,6 @@ def load_sched():
         else:
             status = f"缺料 {rate:.0%}"
         ship = pd.to_datetime(r["ship_date"]).date() if pd.notna(r["ship_date"]) else None
-        rows.append({"出貨日": ship, "料況狀態": status, "預計產量": r["planned_qty"]})
+        rows.append({"出貨日": ship, "料況狀態": status, "預計產量": r["planned_qty"],
+                     "IQC中": bool(r["iqc_flag"])})
     return pd.DataFrame(rows)

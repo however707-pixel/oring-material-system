@@ -3,12 +3,13 @@ import pandas as pd
 import io
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, date
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from utils.shared import ensure_calamine, inject_css, render_header, render_sidebar, render_sd_loader, render_nas_loader
+from utils.shared import (ensure_calamine, inject_css, render_header, render_sidebar,
+                          render_sd_loader, render_nas_loader, first_existing_dir)
 
 ensure_calamine()
 
@@ -40,7 +41,13 @@ with st.sidebar:
     shortage_file = st.file_uploader("📂 上傳廠內排程表（工單缺料）", type=["xlsx", "xls", "csv"])
     sd_source     = render_sd_loader(key="factory")
 
-    _NAS_SHIPDATE_DIR = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 工作/生管部/09. 廠內改機排程/2025早會"
+    # 年度資料夾每年會換名（2025早會 → 2026），依當年自動挑存在的那個
+    _SHIP_BASE = "//192.168.2.34/MO_Storage/ORing MO/ORing-MO 工作/生管部/09. 廠內改機排程"
+    _Y = date.today().year
+    _NAS_SHIPDATE_DIR = first_existing_dir(
+        f"{_SHIP_BASE}/{_Y}", f"{_SHIP_BASE}/{_Y}早會",
+        f"{_SHIP_BASE}/{_Y - 1}", f"{_SHIP_BASE}/{_Y - 1}早會",
+    )
     _NAS_SHIPDATE_PFX = "寶橋早會資料"
     shipdate_file = render_nas_loader(
         key="factory_shipdate",

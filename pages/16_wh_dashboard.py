@@ -9,6 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import render_sidebar
 from utils.leave_mail import fetch_today_leaves
 from db import queries as wh_db
+# 備料／上架 KPI 口徑、國定假日、日標準：與戰情室共用同一份，避免兩頁各自漂移
+from utils.warroom_data import (
+    TW_HOLIDAYS, PENDING_STATUSES,
+    STD_B_Q13, STD_B_Q4, STD_I_Q13, STD_I_Q4,
+    compute_wh_kpi, prev_workday, ensure_latest_db,
+)
 
 st.set_page_config(page_title="倉儲備料看板", page_icon="🏭",
                    layout="wide", initial_sidebar_state="expanded")
@@ -75,26 +81,7 @@ div[data-testid="stDownloadButton"] > button:hover, div[data-testid="stButton"] 
 TODAY = date.today()
 NOW   = datetime.now()
 
-# ── 台灣國定假日（依行政院人事行政總處公告，請每年更新）──
-TW_HOLIDAYS = {
-    # 2026
-    date(2026,  1,  1),  # 元旦
-    date(2026,  1, 27),  # 春節補假
-    date(2026,  1, 28),  # 除夕
-    date(2026,  1, 29),  # 春節
-    date(2026,  1, 30),  # 春節
-    date(2026,  1, 31),  # 春節
-    date(2026,  2,  1),  # 春節
-    date(2026,  2,  2),  # 春節
-    date(2026,  2, 28),  # 和平紀念日
-    date(2026,  4,  4),  # 兒童節
-    date(2026,  4,  5),  # 清明節
-    date(2026,  6, 19),  # 端午節
-    date(2026,  6, 20),  # 端午節補假
-    date(2026,  7, 10),  # 颱風停班
-    date(2026,  9, 26),  # 中秋節
-    date(2026, 10, 10),  # 國慶日
-}
+# ── 台灣國定假日：定義在 utils/warroom_data.py（每年更新一處即可）──
 
 # ══════════════════════════════════════════════════════
 # 手動上傳解析（NAS 離線 / 雲端使用）
@@ -137,18 +124,11 @@ else:
     # 資料來源：SQLite（由 db/import_to_db.py 從 NAS 匯入）
     # 即時同步：每次刷新檢查 NAS 是否有新存檔，有異動立即匯入
     # （60 秒內最多檢查一次；20 分鐘排程仍保留作為備援）
+    # 用 warroom_data.ensure_latest_db()：與戰情室共用同一個 60 秒快取，
+    # 任一頁觸發同步，另一頁下次刷新就吃得到同一版資料
     # ══════════════════════════════════════════════════════
-    from db import import_to_db as wh_sync
-
-    @st.cache_data(ttl=60, show_spinner=False)
-    def _auto_sync():
-        try:
-            return wh_sync.sync_if_newer()
-        except Exception as e:
-            return False, f"同步失敗：{e}"
-
     # 匯入成功後 db_mtime() 隨之改變，load_wh 的快取 key 也跟著換，自動改讀新資料
-    _did_sync, _sync_msg = _auto_sync()
+    _did_sync, _sync_msg = ensure_latest_db()
 
     db_ready  = wh_db.db_exists()
     src_mtime = wh_db.db_mtime() if db_ready else None
@@ -271,8 +251,10 @@ if _has_upload:
             st.error(f"解析失敗：{e}\n\n請確認檔案包含「調撥單」與「入庫單據」工作表。")
             st.stop()
 else:
+    # 注意：參數名不可加底線前綴——Streamlit 對底線開頭的參數刻意不納入 hash，
+    # 那樣 mtime 就進不了快取鍵，資料換版時快取不會失效（只能等 TTL 到）
     @st.cache_data(ttl=5*60, show_spinner=False)
-    def load_wh(_mtime_key):
+    def load_wh(mtime_key):
         return wh_db.load_wh()
 
     with st.spinner("載入資料中…"):
@@ -281,89 +263,35 @@ else:
 # ══════════════════════════════════════════════════════
 # 計算 KPI（顯示前一工作日數值）
 # ══════════════════════════════════════════════════════
-def _prev_workday(d):
-    """回傳 d 的前一個工作日（跳過週六、週日及國定假日）"""
-    prev = d - timedelta(days=1)
-    while prev.weekday() >= 5 or prev in TW_HOLIDAYS:
-        prev -= timedelta(days=1)
-    return prev
-
-YESTERDAY = _prev_workday(TODAY)
+YESTERDAY = prev_workday(TODAY)
 
 # ── 每日標準（KPI 卡指標與月標準線共用；月標準 = 日標準 × 22 工作天）──
+# 日標準 STD_B_*/STD_I_* 定義在 utils/warroom_data.py，與戰情室共用
 STD_DAYS = 22
-STD_B_Q13, STD_B_Q4 = 250, 300   # 備料 日標準（第1~3季 / 第4季）
-STD_I_Q13, STD_I_Q4 = 150, 200   # 上架(入庫) 日標準（第1~3季 / 第4季）
-_Q_NUM = (YESTERDAY.month - 1) // 3 + 1   # KPI 卡顯示前一工作日，指標依其所屬季
-b_target_day = STD_B_Q4 if _Q_NUM == 4 else STD_B_Q13
-i_target_day = STD_I_Q4 if _Q_NUM == 4 else STD_I_Q13
 
-# ── 防呆設定：廠內／委外判定 & 待完成有效狀態 ──────────
-# 待完成備料只計入這些狀態，排除空白／已完成等髒資料
-# （例：來源誤鍵、需求筆數爆量又無狀態的列，不應灌進待完成）
-PENDING_STATUSES = ('待備料', '備料中')
+# ── 備料／上架 KPI：口徑統一走 warroom_data.compute_wh_kpi ──────────────
+# 備料 已完成：完成日=昨日 且 狀態=已完成 → Σ需求筆數（廠內／委外再拆分）
+# 備料 待完成：需求日<=昨日、完成日空白、狀態∈(待備料,備料中) → Σ需求筆數
+# 上架 已完成：需求單位含「入庫」且 完成日=昨日 → Σ完成筆數（不看狀態，避免「上架W」漏算）
+# 上架 待完成：入庫單據完成日空白 → Σ筆數（顯示全部；完成率分母只計逾期）
+_K = compute_wh_kpi(diao, inbound, YESTERDAY)
 
-def _inhouse(df):
-    """廠內判定：需求單位或單別含 生產加工／廠內／場內（『場』為常見錯字）。"""
-    unit = df['需求單位'].astype(str)
-    dan  = df['單別'].astype(str)
-    return (unit.str.contains('生產加工|廠內|場內', na=False)
-            | dan.str.contains('廠內|場內', na=False))
+b_done           = _K['b_done']
+b_done_inhouse   = _K['b_done_inhouse']
+b_done_outsource = _K['b_done_outsource']
+b_pend           = _K['b_pend']
+b_pend_inhouse   = _K['b_pend_inhouse']
+b_pend_outsource = _K['b_pend_outsource']
+b_rate           = _K['b_rate']
 
-# ── 備料（調撥單）──────────────────────────────────────
-# 已完成：K欄（完成日）= 昨日 且 M欄（狀態）= 已完成 → 加總 G欄（需求筆數）
-b_done_rows = diao[
-    diao['完成日'].notna() &
-    (diao['完成日'].dt.date == YESTERDAY) &
-    (diao['狀態'] == '已完成')
-]
-b_done = int(b_done_rows['需求筆數'].sum())
+i_done           = _K['i_done']
+i_pend           = _K['i_pend']
+i_pend_overdue   = _K['i_pend_overdue']
+i_rate           = _K['i_rate']
 
-# 已完成拆分：廠內（含「場內」錯字）／委外
-_inhouse_mask = _inhouse(b_done_rows)
-b_done_inhouse  = int(b_done_rows[_inhouse_mask]['需求筆數'].sum())
-b_done_outsource = b_done - b_done_inhouse
-
-# 待完成：需求日有值且<=昨日、完成日空白，且狀態為待備料/備料中
-# （狀態防呆：排除空白等髒資料，避免單一爆量列灌爆數字）
-_pend_base = (
-    diao['需求日'].notna() &
-    (diao['需求日'].dt.date <= YESTERDAY) &
-    diao['完成日'].isna()
-)
-b_pend_rows = diao[_pend_base & diao['狀態'].isin(PENDING_STATUSES)]
-b_pend = int(b_pend_rows['需求筆數'].sum())
-
-# 待完成拆分：廠內（含「場內」錯字）／委外
-_pend_inhouse_mask = _inhouse(b_pend_rows)
-b_pend_inhouse   = int(b_pend_rows[_pend_inhouse_mask]['需求筆數'].sum())
-b_pend_outsource = b_pend - b_pend_inhouse
-
-b_total = b_done + b_pend
-b_rate  = b_done / b_total if b_total else 0
-
-# ── 入庫 ────────────────────────────────────────────────
-# 已完成：調撥單 E欄（需求單位）=入庫 且 K欄（完成日）=昨日 → 加總 H欄（完成筆數）
-# （改依 E欄 判定，不看 M欄狀態，避免「上架W」等狀態變體漏算）
-ib_done_rows = diao[
-    diao['需求單位'].astype(str).str.contains('入庫', na=False) &
-    diao['完成日'].notna() &
-    (diao['完成日'].dt.date == YESTERDAY)
-]
-i_done = int(ib_done_rows['完成筆數'].sum())
-
-# 待完成：入庫單據 I欄（完成日）空白 → 加總 G欄（筆數）
-ib_pend_rows = inbound[inbound['完成日'].isna()]
-i_pend = int(ib_pend_rows['筆數'].sum())
-
-# 完成率分母：待完成只計「已逾期」（預計完成日<=昨日；空白視為逾期），
-# 未到期單據不算進昨日該完成的量（口徑比照備料卡）；待完成顯示值仍為全部 i_pend
-_ib_not_due = (ib_pend_rows['預計完成日'].notna() &
-               (ib_pend_rows['預計完成日'].dt.date > YESTERDAY))
-i_pend_overdue = int(ib_pend_rows[~_ib_not_due]['筆數'].sum())
-
-i_total = i_done + i_pend_overdue
-i_rate  = i_done / i_total if i_total else 0
+_Q_NUM       = _K['q_num']            # KPI 卡顯示前一工作日，指標依其所屬季
+b_target_day = _K['b_target_day']
+i_target_day = _K['i_target_day']
 
 
 # ══════════════════════════════════════════════════════

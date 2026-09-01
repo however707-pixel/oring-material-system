@@ -5,12 +5,19 @@ import re
 import io
 from datetime import date, timedelta, datetime
 import sys, os
+from streamlit_autorefresh import st_autorefresh
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.shared import render_sidebar
+from utils.workdays import TW_OFF_DAYS, net_workdays
 
 st.set_page_config(page_title="工單進度看板", page_icon="📺",
                    layout="wide", initial_sidebar_state="collapsed")
+
+# 每 5 分鐘自動刷新；配合 load_parsed() 以「檔案 mtime」當快取鍵，
+# NAS 上的簡版檔一存新的，下次刷新就會重讀（不必等 TTL 到期）
+REFRESH_MIN = 5
+st_autorefresh(interval=REFRESH_MIN * 60 * 1000, key="kanban_autorefresh")
 
 st.markdown("""
 <style>
@@ -119,39 +126,15 @@ REF_YEAR = TODAY.year
 DAILY_CAP   = 200
 MIN_BUFFER  = 10
 
-TAIWAN_HOLIDAYS = {
-    # ── 2026 台灣國定假日 ──────────────────────────────────
-    date(2026, 1, 1),   # 元旦
-    date(2026, 1, 2),   # 彈性放假
-    # 春節
-    date(2026, 2, 16),  # 除夕（彈性放假）
-    date(2026, 2, 17),  # 春節初一
-    date(2026, 2, 18),  # 春節初二
-    date(2026, 2, 19),  # 春節初三
-    date(2026, 2, 20),  # 春節初四
-    # 228（2/28週六，3/2週一補假）
-    date(2026, 3, 2),
-    # 兒童節（4/4週六，4/3週五補假）
-    date(2026, 4, 3),
-    # 清明節（4/5週日，4/6週一補假）
-    date(2026, 4, 6),
-    # 勞動節
-    date(2026, 5, 1),
-    # 端午節（農曆5/5 ≈ 6/19 週五）
-    date(2026, 6, 19),
-    # 中秋節（農曆8/15 ≈ 9/25 週五）
-    date(2026, 9, 25),
-    # 國慶日（10/10週六，10/9週五補假）
-    date(2026, 10, 9),
-}
+# 國定假日／工作日計算：單一來源為 utils/workdays.py
+# （依行政院人事行政總處「中華民國115年政府行政機關辦公日曆表」；
+#   TW_OFF_DAYS = 國定假日 ∪ 臨時停班日，如 2026/7/10 颱風停班）
+TAIWAN_HOLIDAYS = TW_OFF_DAYS
 
 def count_workdays(start, end):
+    """start（不含）~ end（含）的工作天數；start >= end 或任一端為空回 0。"""
     if not start or not end or start >= end: return 0
-    count, cur = 0, start
-    while cur < end:
-        cur += timedelta(days=1)
-        if cur.weekday() < 5 and cur not in TAIWAN_HOLIDAYS: count += 1
-    return count
+    return net_workdays(start, end)
 
 def parse_date_str(s):
     try:
@@ -242,13 +225,23 @@ def find_latest():
         return f,mtime
     except Exception: return None,None
 
+# 解析結果以 (檔案路徑, mtime) 當快取鍵：檔案一換版快取就失效。
+# 注意參數名不可加底線前綴——Streamlit 對底線開頭的參數刻意不納入 hash，
+# 那樣就退化成「只能等 TTL 到期」，畫面會停在舊版資料。
 @st.cache_data(ttl=20*60, show_spinner=False)
+def load_parsed(path, mtime_key):
+    return parse_file(path)
+
+
 def load_data():
+    """每次執行都重新看 NAS 最新檔（glob 很輕），實際解析走快取。"""
     try:
-        path,mtime=find_latest()
-        if path is None: return None,None,None
-        return parse_file(path),path,mtime
-    except Exception: return None,None,None
+        path, mtime = find_latest()
+        if path is None:
+            return None, None, None
+        return load_parsed(path, str(mtime)), path, mtime
+    except Exception:
+        return None, None, None
 
 if st.session_state.get("kanban_bytes"):
     try:
@@ -275,8 +268,14 @@ else:
 # ══════════════════════════════════════════════════════
 wday_names=["一","二","三","四","五","六","日"]
 wday=wday_names[TODAY.weekday()]
-next_ref=20-(NOW.minute%20)
+next_ref=REFRESH_MIN-(NOW.minute%REFRESH_MIN)
 data_ts=src_mtime.strftime('%m/%d %H:%M') if src_mtime else "⚠️ 離線"
+
+# 來源檔不是今天存的就標出來（NAS 離線退回 data/kanban_latest.xlsx 時特別容易誤看）
+_stale = bool(src_mtime is not None and src_mtime.date() != TODAY)
+_stale_tag = ('<span style="background:#7C2D12;color:#FFD9A8;font-size:12px;font-weight:700;'
+              'padding:2px 9px;border-radius:20px;margin-left:8px">⚠️ 非今日資料</span>'
+              if _stale else '')
 
 st.markdown(
     f'<div style="background:linear-gradient(90deg,#0f2356 0%,#1e3a8a 50%,#0f2356 100%);'
@@ -288,8 +287,8 @@ st.markdown(
     f'<div style="color:#B9DDF5;font-size:15px;font-weight:600;letter-spacing:1px;margin-bottom:4px">'
     f'ORing &nbsp;·&nbsp; 生管 PC</div>'
     f'<div style="color:#e0eefa;font-size:14px">'
-    f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 每 20 分鐘自動更新</div>'
-    f'<div style="color:#b9ddf5;font-size:13px;margin-top:2px">資料：{data_ts}</div>'
+    f'🕐 {NOW.strftime("%H:%M")} &nbsp;｜&nbsp; 每 {REFRESH_MIN} 分鐘自動檢查更新</div>'
+    f'<div style="color:#b9ddf5;font-size:13px;margin-top:2px">資料：{data_ts}{_stale_tag}</div>'
     f'</div>'
 
     f'<div style="text-align:center">'
