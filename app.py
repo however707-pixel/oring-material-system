@@ -464,42 +464,53 @@ else:
 .car-wrap .dsr { position:absolute; top:0; left:0; width:1px; height:1px;
   opacity:0; border:0; padding:0; margin:0; -webkit-appearance:none; appearance:none; }
 
-.car-stage { position:relative; height:530px; perspective:1500px; perspective-origin:50% 44%;
+/* --s = 相對中央的槽位（-2..2，帶正負決定左右）；--a = |--s|，管後退量與景深
+   兩個都用 @property 註冊，值一變 transform/opacity/filter 會跟著重算，
+   所以整段動畫只要動這兩個數字，不必為每張卡各寫一組 keyframes。 */
+@property --s { syntax:'<number>'; initial-value:0; inherits:false; }
+@property --a { syntax:'<number>'; initial-value:0; inherits:false; }
+@property --o { syntax:'<number>'; initial-value:1; inherits:false; }
+
+.car-stage { position:relative; height:526px; perspective:1250px; perspective-origin:50% 44%;
   z-index:2;
-  --cw:clamp(280px, 23.5vw, 360px);   /* 卡片寬：跟著視窗縮放 */
-  --r:clamp(320px, 30vw, 470px); }    /* 轉盤半徑：太小側卡會被切掉 */
-.car-ring { position:absolute; left:50%; top:0; width:var(--cw); height:490px;
-  margin-left:calc(var(--cw) / -2);
-  transform-style:preserve-3d;
-  transform:translateZ(calc(var(--r) * -1)) rotateY(0deg);
-  transition:transform .75s cubic-bezier(.45,.05,.2,1);
-  animation:ringSpin 30s cubic-bezier(.55,.02,.25,1) infinite; }
-@keyframes ringSpin {
-  0%,  16% { transform:translateZ(calc(var(--r) * -1)) rotateY(0deg); }
-  20%, 36% { transform:translateZ(calc(var(--r) * -1)) rotateY(-72deg); }
-  40%, 56% { transform:translateZ(calc(var(--r) * -1)) rotateY(-144deg); }
-  60%, 76% { transform:translateZ(calc(var(--r) * -1)) rotateY(-216deg); }
-  80%, 96% { transform:translateZ(calc(var(--r) * -1)) rotateY(-288deg); }
-  100%     { transform:translateZ(calc(var(--r) * -1)) rotateY(-360deg); } }
+  --cw:clamp(272px, 22.5vw, 344px); }  /* 卡片寬：跟著視窗縮放 */
+/* 中央卡在地板上的投影：讓卡片像站在房間裡，而不是貼在畫面上 */
+.car-stage::after { content:""; position:absolute; left:50%; bottom:48px; z-index:0;
+  width:calc(var(--cw) * .84); height:30px; margin-left:calc(var(--cw) * -.42);
+  border-radius:50%; pointer-events:none;
+  background:radial-gradient(closest-side, rgba(20,64,116,.30), rgba(20,64,116,.10) 62%, transparent);
+  filter:blur(7px); }
+.car-ring { position:absolute; left:50%; top:0; width:var(--cw); height:462px;
+  margin-left:calc(var(--cw) / -2); transform-style:preserve-3d; }
+
+.dept { position:absolute; inset:0;
+  border-radius:20px; overflow:hidden; display:flex; flex-direction:column;
+  transform:translateX(calc(var(--s) * 71%))
+            translateZ(calc(var(--a) * -152px))
+            rotateY(calc(var(--s) * -38deg))
+            scale(calc(1 - var(--a) * .05));
+  opacity:var(--o);
+  filter:blur(calc(var(--a) * .8px)) saturate(calc(1 - var(--a) * .18))
+         brightness(calc(1 - var(--a) * .05));
+  background:linear-gradient(150deg,rgba(255,255,255,.93),rgba(232,246,255,.8));
+  border:1px solid rgba(255,255,255,.96);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,1), 0 0 0 1px rgba(158,208,244,.4),
+             0 14px 24px -14px rgba(16,60,110,.42), 0 40px 60px -32px rgba(16,60,110,.5);
+  transition:--s .62s cubic-bezier(.42,.02,.2,1), --a .62s cubic-bezier(.42,.02,.2,1),
+             --o .62s cubic-bezier(.42,.02,.2,1);
+  animation:slotRun 30s cubic-bezier(.5,.02,.24,1) calc(var(--i) * 6s - 30s) infinite; }
+/* 一圈 30s：每張正面停 4.8s，換場 1.2s；滑到 ±2 時 opacity 已為 0，
+   所以從最左直接繞回最右的那一下看不見。 */
+@keyframes slotRun {
+  0%,  16% { --s:0;  --a:0; --o:1; }
+  20%, 36% { --s:-1; --a:1; --o:.74; }
+  40%, 56% { --s:-2; --a:2; --o:0; }
+  60%, 76% { --s:2;  --a:2; --o:0; }
+  80%, 96% { --s:1;  --a:1; --o:.74; }
+  100%     { --s:0;  --a:0; --o:1; } }
 /* 滑到卡片上就停住，方便點連結 */
-.car-wrap:hover .car-ring,
 .car-wrap:hover .dept,
 .car-wrap:hover .rl { animation-play-state:paused; }
-
-.dept { position:absolute; left:0; top:0; width:var(--cw); height:490px;
-  border-radius:20px; overflow:hidden; display:flex; flex-direction:column;
-  backface-visibility:hidden; -webkit-backface-visibility:hidden;
-  transform:rotateY(calc(var(--i) * 72deg)) translateZ(var(--r));
-  background:linear-gradient(150deg,rgba(255,255,255,.9),rgba(230,245,255,.74));
-  border:1px solid rgba(255,255,255,1);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,1), 0 0 0 1px rgba(158,208,244,.55),
-             0 2px 0 rgba(198,228,250,.95), 0 6px 0 rgba(166,206,240,.6),
-             0 16px 26px -8px rgba(16,60,110,.34), 0 40px 56px -22px rgba(16,60,110,.44);
-  animation:faceHi 30s linear calc(var(--i) * 6s - 30s) infinite; }
-@keyframes faceHi {
-  0%,  17% { opacity:1; filter:none; }
-  21%, 95% { opacity:.5; filter:saturate(.62) brightness(1.04); }
-  100%     { opacity:1; filter:none; } }
 
 .dept .dhdr { padding:17px 12px 14px; text-align:center; color:#fff; position:relative; flex:none; }
 .dept .dhdr::before { content:""; position:absolute; left:0; right:0; top:0; height:1px;
@@ -516,8 +527,8 @@ else:
 .dept-wh  .dhdr { background:linear-gradient(160deg,#3730A3,#4338CA,#6366F1); }
 .dept-ps  .dhdr { background:linear-gradient(160deg,#115E59,#0F766E,#14B8A6); }
 
-.dept .dbody { flex:1; padding:14px 14px 16px; display:flex; flex-direction:column; gap:9px;
-  overflow:auto;
+.dept .dbody { flex:1; padding:14px 14px 16px; display:flex; flex-direction:column; gap:8px;
+  justify-content:center; overflow:auto;
   background:linear-gradient(180deg, rgba(255,255,255,.62), rgba(236,246,255,.9)); }
 .dept .dbody::-webkit-scrollbar { width:6px; }
 .dept .dbody::-webkit-scrollbar-thumb { background:rgba(26,100,196,.3); border-radius:3px; }
@@ -581,25 +592,18 @@ a.tl::before { content:"▶"; font-size:9px; flex:none; }
              transform:translateY(-3px); } }
 
 /* ── 手動選片：勾到哪一格就停在哪一格 ── */
-.car-wrap:has(.dsr-m:checked) .car-ring,
 .car-wrap:has(.dsr-m:checked) .dept,
 .car-wrap:has(.dsr-m:checked) .rl { animation:none; }
-.car-wrap:has(.dsr-m:checked) .dept { opacity:.5; filter:saturate(.62) brightness(1.04);
-  pointer-events:none; }
 .car-wrap:has(.dsr-m:checked) .rl { transform:none;
   background:linear-gradient(150deg,rgba(255,255,255,.78),rgba(228,244,255,.56));
   box-shadow:inset 0 1px 0 rgba(255,255,255,1), 0 0 0 1px rgba(158,208,244,.45),
              0 2px 0 rgba(198,228,250,.9), 0 4px 0 rgba(166,206,240,.5),
              0 10px 16px -7px rgba(16,60,110,.26); }
-.car-wrap:has(#ds1:checked) .car-ring { transform:translateZ(calc(var(--r) * -1)) rotateY(0deg); }
-.car-wrap:has(#ds2:checked) .car-ring { transform:translateZ(calc(var(--r) * -1)) rotateY(-72deg); }
-.car-wrap:has(#ds3:checked) .car-ring { transform:translateZ(calc(var(--r) * -1)) rotateY(-144deg); }
-.car-wrap:has(#ds4:checked) .car-ring { transform:translateZ(calc(var(--r) * -1)) rotateY(-216deg); }
-.car-wrap:has(#ds5:checked) .car-ring { transform:translateZ(calc(var(--r) * -1)) rotateY(-288deg); }
-.car-wrap:has(#ds1:checked) .dept-pmc, .car-wrap:has(#ds2:checked) .dept-pc,
-.car-wrap:has(#ds3:checked) .dept-mc,  .car-wrap:has(#ds4:checked) .dept-wh,
-.car-wrap:has(#ds5:checked) .dept-ps {
-  opacity:1; filter:none; pointer-events:auto; }
+.car-wrap:has(#ds1:checked) .dept-pmc{--s:0;--a:0;--o:1} .car-wrap:has(#ds1:checked) .dept-pc{--s:1;--a:1;--o:.74} .car-wrap:has(#ds1:checked) .dept-mc{--s:2;--a:2;--o:0} .car-wrap:has(#ds1:checked) .dept-wh{--s:-2;--a:2;--o:0} .car-wrap:has(#ds1:checked) .dept-ps{--s:-1;--a:1;--o:.74}
+.car-wrap:has(#ds2:checked) .dept-pmc{--s:-1;--a:1;--o:.74} .car-wrap:has(#ds2:checked) .dept-pc{--s:0;--a:0;--o:1} .car-wrap:has(#ds2:checked) .dept-mc{--s:1;--a:1;--o:.74} .car-wrap:has(#ds2:checked) .dept-wh{--s:2;--a:2;--o:0} .car-wrap:has(#ds2:checked) .dept-ps{--s:-2;--a:2;--o:0}
+.car-wrap:has(#ds3:checked) .dept-pmc{--s:-2;--a:2;--o:0} .car-wrap:has(#ds3:checked) .dept-pc{--s:-1;--a:1;--o:.74} .car-wrap:has(#ds3:checked) .dept-mc{--s:0;--a:0;--o:1} .car-wrap:has(#ds3:checked) .dept-wh{--s:1;--a:1;--o:.74} .car-wrap:has(#ds3:checked) .dept-ps{--s:2;--a:2;--o:0}
+.car-wrap:has(#ds4:checked) .dept-pmc{--s:2;--a:2;--o:0} .car-wrap:has(#ds4:checked) .dept-pc{--s:-2;--a:2;--o:0} .car-wrap:has(#ds4:checked) .dept-mc{--s:-1;--a:1;--o:.74} .car-wrap:has(#ds4:checked) .dept-wh{--s:0;--a:0;--o:1} .car-wrap:has(#ds4:checked) .dept-ps{--s:1;--a:1;--o:.74}
+.car-wrap:has(#ds5:checked) .dept-pmc{--s:1;--a:1;--o:.74} .car-wrap:has(#ds5:checked) .dept-pc{--s:2;--a:2;--o:0} .car-wrap:has(#ds5:checked) .dept-mc{--s:-2;--a:2;--o:0} .car-wrap:has(#ds5:checked) .dept-wh{--s:-1;--a:1;--o:.74} .car-wrap:has(#ds5:checked) .dept-ps{--s:0;--a:0;--o:1}
 .car-wrap:has(#ds1:checked) .rl-pmc, .car-wrap:has(#ds2:checked) .rl-pc,
 .car-wrap:has(#ds3:checked) .rl-mc,  .car-wrap:has(#ds4:checked) .rl-wh,
 .car-wrap:has(#ds5:checked) .rl-ps {
@@ -652,10 +656,13 @@ a.tl::before { content:"▶"; font-size:9px; flex:none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .car-ring, .dept, .rl, .ar-scene .globe, .ar-scene .holo, .ar-scene .holo img,
+  .dept, .rl, .ar-scene .globe, .ar-scene .holo, .ar-scene .holo img,
   .ar-scene .holo::after, .oval-center::after, .oval-center .hudc {
     animation:none !important; }
-  .dept { opacity:1 !important; filter:none !important; pointer-events:auto !important; }
+  /* 動畫關掉時要給定槽位，否則五張會疊在正中央 */
+  .dept-pmc{--s:0;--a:0;--o:1} .dept-pc{--s:1;--a:1;--o:.74} .dept-mc{--s:2;--a:2;--o:0}
+  .dept-wh{--s:-2;--a:2;--o:0} .dept-ps{--s:-1;--a:1;--o:.74}
+  .dept { transition:none !important; }
 }
 </style>
 
