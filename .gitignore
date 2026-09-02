@@ -17,3 +17,4 @@ preview_tech.html
 data/mail_log.txt
 data/mail_preview.html
 .bak_*/
+*.bak_*
